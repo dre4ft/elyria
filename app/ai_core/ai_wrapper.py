@@ -14,13 +14,22 @@ class AIWrapper:
         self.tools = tools.tools
 
     def chat(self, message: str, user_id: str, conversation_id: str = None):
-        conv_id = ai_mgmt.add_message(message, user_id, conversation_id)
-        if not conv_id:
+        conversation_id = ai_mgmt.add_message(self.message_wrapper(message), user_id, conversation_id)
+        if not conversation_id:
             raise ValueError("Failed to save message")
-        messages = ai_mgmt.get_conversation_messages(conversation_id) if conversation_id else []
-        messages.append({"role": "user", "content": message})
-        return {"conversation_id": conv_id, "response": self.provider.chat(messages)}
+        
+        messages = ai_mgmt.get_conversation_messages(conversation_id=conversation_id)
+        ai_return = self.provider.chat(messages)
+
+        conversation_id = ai_mgmt.add_message(self.message_wrapper(ai_return["content"], role="assistant"), user_id, conversation_id)
+        if not conversation_id:
+            raise ValueError("Failed to save message")
+        
+        return {"conversation_id": conversation_id, "response": ai_return}
     
+    def message_wrapper(self, message: str, role: str = "user"):
+        return {"role": role, "content": message}
+
     def update_model(self, model):
         self.provider.update_model(model)
     
