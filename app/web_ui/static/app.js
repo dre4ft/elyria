@@ -14,7 +14,7 @@ const API = {
   raw:           'api/request/raw',               // POST { url, request }
   getRequest:    'api/data/requests/byId',        // GET  /:id
   userHistory:   'api/data/requests/byUserId',    // GET  /:userId?limit=&page=
-  chat:          'api/chat',                  // POST { message, requetesId }
+  chat:          'api/chat',                  // POST { message, conversationId }
   collections:   'api/collections',           // GET  → list all collections/folders/requests
   createFolder:  '/api/collections/folder',    // POST { name, parentId? }
   createRequest: '/api/collections/request',   // POST { name, method, url, folderId?, ... }
@@ -27,6 +27,7 @@ const API = {
 // STATE
 // ─────────────────────────────────────────────
 const state = {
+  conversation_id : null,
   currentRequestId: null,
   history: [],
   chatOpen: false,
@@ -1191,7 +1192,7 @@ async function sendChatMessage() {
 
   const payload = {
     message,
-    requetesId: state.currentRequestId || null,
+    conversationId: state.conversation_id || null,
   };
 
   try {
@@ -1201,8 +1202,9 @@ async function sendChatMessage() {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
+    state.conversation_id = data.conversation_id; 
     removeChatLoading();
-    addChatMessage(data.response || data.message || 'Réponse reçue.', 'ai');
+    addChatMessage(data.response.content, 'ai');
   } catch (err) {
     removeChatLoading();
     addChatMessage(`Erreur de connexion : ${err.message}`, 'ai');

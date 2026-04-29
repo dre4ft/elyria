@@ -6,6 +6,7 @@ import ollama
 class OllamaProvider:
     def __init__(self, model=None, host=None):
         self.model = model
+        self.host = host if host else "http://localhost:11434"
         if host:
             ollama.set_host(host)
 
@@ -28,6 +29,13 @@ class OllamaProvider:
     def update_model(self, model):
         self.model = model
 
-    @staticmethod
-    def list_models():
+    
+    def get_models(self):
             return ollama.models()
+    
+    def get_config(self):
+        return {
+            "provider": "ollama",
+            "model": self.model,
+            "host": self.host
+        }

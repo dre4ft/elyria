@@ -4,7 +4,7 @@ from typing import Literal
 import openai
 import rich
 from dotenv import load_dotenv
-from openai import OpenAI
+from app.ai_core.providers_api.openai import OpenAI
 from pydantic import BaseModel
 
 load_dotenv()

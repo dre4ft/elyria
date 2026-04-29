@@ -1,14 +1,14 @@
-from ai_core import ollama as ollama_provider
-from ai_core import openai as openai_provider
+from ai_core.providers_api import ollama as ollama_provider
+from ai_core.providers_api import openai as openai_provider
 from ai_core import tools as tools
 import database.ai_mgmt as ai_mgmt
 
 class AIWrapper:
-    def __init__(self, provider_type, **kwargs):
+    def __init__(self, provider_type, url=None, api_key=None, model=None):
         if provider_type == 'ollama':
-            self.provider = ollama_provider.OllamaProvider(**kwargs)
+            self.provider = ollama_provider.OllamaProvider(model=model, host=url)
         elif provider_type == 'openai':
-            self.provider = openai_provider.OpenAIProvider(**kwargs)
+            self.provider = openai_provider.OpenAIProvider(provider_url=url, api_key=api_key, model=model)
         else:
             raise ValueError(f"Unsupported provider type: {provider_type}")
         self.tools = tools.tools
@@ -24,11 +24,8 @@ class AIWrapper:
     def update_model(self, model):
         self.provider.update_model(model)
     
-    @staticmethod
-    def list_models(provider_type):
-        if provider_type == 'ollama':
-            return ollama_provider.OllamaProvider.list_models()
-        elif provider_type == 'openai':
-            return openai_provider.OpenAIProvider.list_models()
-        else:
-            raise ValueError(f"Unsupported provider type: {provider_type}")
+    def get_models(self):
+        return self.provider.get_models()
+    
+    def get_config(self):
+        return self.provider.get_config()

@@ -1,17 +1,10 @@
-from openai import OpenAI
+import app.ai_core.providers_api.lmstudio as lms
 
 
-
-
-class OpenAIProvider:
-    def __init__(self,provider_url,api_key,model=None):
-        self.url = provider_url
-        self.key = api_key
-        self.model = model 
-        self.client =  OpenAI(
-                        api_key=self.key,
-                        base_url=self.url)
-        
+class LMStudioProvider:
+    def __init__(self, model):
+        self.model = model
+        self.client = lms.Client()
 
     def chat(self, messages: list, tools: list = None):
         params = {
@@ -29,12 +22,5 @@ class OpenAIProvider:
             "content": message.content,
             "tool_calls": message.tool_calls if hasattr(message, 'tool_calls') else None
         }
-    
-    def update_model(self, model):
-        self.model = model
-        
-    @staticmethod
-    def list_models():
-        return OpenAI().models.list()
 
-        
+
