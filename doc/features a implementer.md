@@ -1,0 +1,5 @@
+- postman like ui et envoie de requete avec logique metier modulaire pour pouvoir fit avec tools mcp
+- azzaro compiler
+- gestion des logs top 
+- auth et equipage 
+- mode request local les requetes sont envoyes depuis le front (capacites plus limites)

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Elyria — Workflow Builder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            base: { 900:'#0a0f1c', 800:'#0f1629', 700:'#141c35', 600:'#1a2340', 500:'#212b4a' },
+            primary: { DEFAULT:'#7c3aed', light:'#8b5cf6', dark:'#6d28d9', 50:'rgba(124,58,237,0.08)', 100:'rgba(124,58,237,0.15)' },
+            accent:  { DEFAULT:'#06b6d4', light:'#22d3ee', dark:'#0891b2', 50:'rgba(6,182,212,0.08)', 100:'rgba(6,182,212,0.15)' },
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="stylesheet" href="static/styles.css" />
+  <link rel="stylesheet" href="static/workflow.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body class="h-full bg-base-900 text-gray-200 font-['Inter',sans-serif] overflow-hidden">
+
+  <!-- ===== TOP BAR ===== -->
+  <header class="h-12 bg-base-800 border-b border-white/5 flex items-center justify-between px-5 shrink-0 z-50 relative">
+    <div class="flex items-center gap-3">
+      <a href="/" class="flex items-center gap-3 no-underline">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+          <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <span class="text-sm font-semibold tracking-wide text-white">Ely<span class="text-primary-light">ria</span></span>
+      </a>
+      <div class="w-px h-5 bg-white/10 mx-1"></div>
+      <div class="flex items-center gap-1.5">
+        <svg class="w-4 h-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z"/></svg>
+        <span class="text-xs font-semibold text-accent-light">Workflow Builder</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <input id="wf-name" type="text" value="Mon workflow de test" class="h-8 px-3 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 font-medium focus:outline-none focus:border-primary/40 w-52 text-center" />
+      <div class="w-px h-5 bg-white/10 mx-1"></div>
+      <button id="btn-run-workflow" class="h-8 px-4 rounded-lg bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white text-xs font-semibold shadow-lg shadow-green-600/20 transition-all flex items-center gap-1.5 active:scale-[0.97]">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
+        Exécuter
+      </button>
+      <button id="btn-stop-workflow" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-red-500/15 border border-white/5 hover:border-red-500/40 text-gray-500 hover:text-red-400 text-xs font-semibold transition-all flex items-center gap-1.5 hidden">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z"/></svg>
+        Stop
+      </button>
+      <button id="btn-clear-canvas" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-500 hover:text-gray-300 text-xs font-medium transition-all flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+        Clear
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== MAIN LAYOUT ===== -->
+  <div class="flex h-[calc(100vh-3rem)]">
+
+    <!-- ===== LEFT — BLOCK PALETTE ===== -->
+    <aside id="wf-palette" class="w-60 min-w-[240px] bg-base-800 border-r border-white/5 flex flex-col shrink-0 overflow-hidden">
+      <div class="p-3 border-b border-white/5">
+        <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Briques</span>
+      </div>
+      <div class="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin">
+
+        <!-- Category: Flow -->
+        <div class="px-2 pt-2 pb-1"><span class="text-[9px] uppercase tracking-widest text-gray-600 font-bold">Contrôle de flux</span></div>
+
+        <div class="wf-palette-item" data-block-type="start" draggable="true">
+          <div class="wf-palette-icon bg-green-500/15 text-green-400"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg></div>
+          <div><div class="wf-palette-label">Start</div><div class="wf-palette-desc">Point d'entrée du workflow</div></div>
+        </div>
+
+        <div class="wf-palette-item" data-block-type="if_else" draggable="true">
+          <div class="wf-palette-icon bg-amber-500/15 text-amber-400"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/></svg></div>
+          <div><div class="wf-palette-label">If / Else</div><div class="wf-palette-desc">Branche conditionnelle</div></div>
+        </div>
+
+        <div class="wf-palette-item" data-block-type="for_loop" draggable="true">
+          <div class="wf-palette-icon bg-blue-500/15 text-blue-400"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3"/></svg></div>
+          <div><div class="wf-palette-label">For Loop</div><div class="wf-palette-desc">Boucle for x in range(n)</div></div>
+        </div>
+
+        <div class="wf-palette-item" data-block-type="delay" draggable="true">
+          <div class="wf-palette-icon bg-purple-500/15 text-purple-400"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+          <div><div class="wf-palette-label">Delay</div><div class="wf-palette-desc">Pause (ms)</div></div>
+        </div>
+
+        <!-- Category: Data -->
+        <div class="px-2 pt-4 pb-1"><span class="text-[9px] uppercase tracking-widest text-gray-600 font-bold">Données</span></div>
+
+        <div class="wf-palette-item" data-block-type="set_data" draggable="true">
+          <div class="wf-palette-icon bg-cyan-500/15 text-cyan-400"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></svg></div>
+          <div><div class="wf-palette-label">Set Data</div><div class="wf-palette-desc">Définir des variables</div></div>
+        </div>
+
+        <div class="wf-palette-item" data-block-type="assert" draggable="true">
+          <div class="wf-palette-icon bg-emerald-500/15 text-emerald-400"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+          <div><div class="wf-palette-label">Assert</div><div class="wf-palette-desc">Vérifier une condition</div></div>
+        </div>
+
+        <!-- Category: API -->
+        <div class="px-2 pt-4 pb-1"><span class="text-[9px] uppercase tracking-widest text-gray-600 font-bold">Requêtes</span></div>
+
+        <div class="wf-palette-item" data-block-type="http_request" draggable="true">
+          <div class="wf-palette-icon bg-violet-500/15 text-violet-400"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg></div>
+          <div><div class="wf-palette-label">HTTP Request</div><div class="wf-palette-desc">Envoyer une requête API</div></div>
+        </div>
+
+        <div class="wf-palette-item" data-block-type="raw_request" draggable="true">
+          <div class="wf-palette-icon bg-teal-500/15 text-teal-400"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"/></svg></div>
+          <div><div class="wf-palette-label">Raw Request</div><div class="wf-palette-desc">Socket / HTTP brut</div></div>
+        </div>
+
+        <!-- Category: Saved Requests from Collections -->
+        <div class="px-2 pt-4 pb-1 flex items-center justify-between">
+          <span class="text-[9px] uppercase tracking-widest text-gray-600 font-bold">Mes collections</span>
+          <button id="btn-refresh-saved" class="text-[9px] text-gray-600 hover:text-gray-400 transition-colors" title="Rafraîchir">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
+          </button>
+        </div>
+        <div id="wf-saved-requests" class="space-y-0.5">
+          <div id="wf-saved-loading" class="text-[10px] text-gray-600 px-3 py-2">Chargement...</div>
+          <div id="wf-saved-empty" class="text-[10px] text-gray-600 px-3 py-2 hidden">Aucune requête sauvegardée</div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- ===== CENTER — CANVAS ===== -->
+    <div class="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+      <!-- Canvas toolbar -->
+      <div class="h-9 bg-base-800/60 border-b border-white/5 flex items-center px-4 gap-3 shrink-0">
+        <div class="flex items-center gap-1.5">
+          <button id="btn-zoom-in" class="wf-toolbar-btn" title="Zoom +"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6"/></svg></button>
+          <button id="btn-zoom-out" class="wf-toolbar-btn" title="Zoom -"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM13.5 10.5h-6"/></svg></button>
+          <button id="btn-zoom-fit" class="wf-toolbar-btn" title="Ajuster"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg></button>
+          <span id="wf-zoom-level" class="text-[10px] text-gray-600 font-mono ml-1">100%</span>
+        </div>
+        <div class="w-px h-4 bg-white/5"></div>
+        <span id="wf-node-count" class="text-[10px] text-gray-600">0 blocs</span>
+      </div>
+
+      <!-- SVG Canvas -->
+      <div id="wf-canvas-wrapper" class="flex-1 relative overflow-hidden bg-base-900">
+        <svg id="wf-connections" class="absolute inset-0 w-full h-full pointer-events-none z-10"></svg>
+        <div id="wf-canvas" class="absolute inset-0 wf-grid">
+          <!-- Nodes rendered here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== RIGHT — CONFIG PANEL + LOGS ===== -->
+    <aside id="wf-right-panel" class="w-80 min-w-[300px] bg-base-800 border-l border-white/5 flex flex-col shrink-0">
+      <!-- Right panel tabs -->
+      <div class="px-2 pt-2 pb-0 shrink-0">
+        <div class="flex bg-base-900/60 rounded-lg p-0.5">
+          <button data-wfpanel="config" class="wf-panel-tab active flex-1 h-7 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.204-.107-.397.165-.71.505-.78.929l-.15.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.506-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Config
+          </button>
+          <button data-wfpanel="logs" class="wf-panel-tab flex-1 h-7 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"/></svg>
+            Logs
+            <span id="wf-log-count" class="hidden px-1.5 py-0.5 rounded-full bg-accent/15 text-[9px] font-bold text-accent font-mono">0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Config Panel -->
+      <div id="wfpanel-config" class="wf-rpanel active flex-1 overflow-y-auto p-4 scrollbar-thin">
+        <div id="wf-config-empty" class="flex flex-col items-center justify-center h-full text-center px-6">
+          <div class="w-10 h-10 rounded-xl bg-base-700 flex items-center justify-center mb-3">
+            <svg class="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59"/></svg>
+          </div>
+          <p class="text-xs text-gray-600 leading-relaxed">Sélectionnez un bloc<br/>pour le configurer</p>
+        </div>
+        <div id="wf-config-form" class="hidden space-y-4">
+          <!-- Dynamic config form injected by JS -->
+        </div>
+      </div>
+
+      <!-- Logs Panel -->
+      <div id="wfpanel-logs" class="wf-rpanel flex-1 flex flex-col overflow-hidden hidden">
+        <div class="flex items-center justify-between p-3 border-b border-white/5 shrink-0">
+          <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Exécution</span>
+          <button id="btn-clear-logs" class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors">Effacer</button>
+        </div>
+        <div id="wf-logs" class="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-thin font-['JetBrains_Mono'] text-[11px]">
+          <div class="text-gray-600 text-center py-8 text-xs">Aucun log pour l'instant</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script src="static/workflow.js"></script>
+</body>
+</html>

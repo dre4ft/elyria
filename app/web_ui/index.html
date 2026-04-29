@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Elyria — API Client</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            base: {
+              900: '#0a0f1c',
+              800: '#0f1629',
+              700: '#141c35',
+              600: '#1a2340',
+              500: '#212b4a',
+            },
+            primary: {
+              DEFAULT: '#7c3aed',
+              light: '#8b5cf6',
+              dark: '#6d28d9',
+              50: 'rgba(124,58,237,0.08)',
+              100: 'rgba(124,58,237,0.15)',
+            },
+            accent: {
+              DEFAULT: '#06b6d4',
+              light: '#22d3ee',
+              dark: '#0891b2',
+              50: 'rgba(6,182,212,0.08)',
+              100: 'rgba(6,182,212,0.15)',
+            },
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="stylesheet" href="static/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body class="h-full bg-base-900 text-gray-200 font-['Inter',sans-serif] overflow-hidden">
+
+  <!-- ===== TOP BAR ===== -->
+  <header class="h-12 bg-base-800 border-b border-white/5 flex items-center justify-between px-5 shrink-0 z-50 relative">
+    <div class="flex items-center gap-3">
+      <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+        <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      </div>
+      <span class="text-sm font-semibold tracking-wide text-white">Ely<span class="text-primary-light">ria</span></span>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="workflow" class="group relative h-8 px-3 rounded-lg bg-base-700 hover:bg-accent/20 border border-white/5 hover:border-accent/40 transition-all duration-200 flex items-center gap-2 text-xs font-medium text-gray-400 hover:text-accent-light no-underline" title="Workflow Builder">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z"/></svg>
+        <span>Workflows</span>
+      </a>
+      <button id="btn-toggle-chat" class="group relative h-8 px-3 rounded-lg bg-base-700 hover:bg-primary/20 border border-white/5 hover:border-primary/40 transition-all duration-200 flex items-center gap-2 text-xs font-medium text-gray-400 hover:text-primary-light" title="Ouvrir l'assistant IA">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+        <span>Assistant IA</span>
+        <kbd class="hidden sm:inline-block ml-1 px-1.5 py-0.5 rounded bg-base-900/60 text-[10px] text-gray-500 font-mono">Ctrl+I</kbd>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== MAIN LAYOUT ===== -->
+  <div class="flex h-[calc(100vh-3rem)]">
+
+    <!-- ===== SIDEBAR — COLLECTIONS + HISTORY ===== -->
+    <aside id="sidebar" class="w-72 min-w-[272px] bg-base-800 border-r border-white/5 flex flex-col shrink-0">
+
+      <!-- Sidebar Tab Switcher -->
+      <div class="px-2 pt-3 pb-0 shrink-0">
+        <div class="flex bg-base-900/60 rounded-lg p-0.5">
+          <button data-sidebar="collections" class="sidebar-tab-btn active flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-[11px] font-semibold transition-all duration-200">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+            Collections
+          </button>
+          <button data-sidebar="history" class="sidebar-tab-btn flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-[11px] font-semibold transition-all duration-200">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Historique
+          </button>
+        </div>
+      </div>
+
+      <!-- ══════ COLLECTIONS PANEL ══════ -->
+      <div id="sidebar-collections" class="sidebar-panel active flex-1 flex flex-col overflow-hidden">
+        <!-- Collections Header -->
+        <div class="p-4 pb-2 shrink-0">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Mes collections</span>
+            <div class="flex items-center gap-1">
+              <button id="btn-new-folder" class="w-6 h-6 rounded-md hover:bg-primary/15 flex items-center justify-center text-gray-500 hover:text-primary-light transition-colors" title="Nouveau dossier">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+              </button>
+              <button id="btn-new-request" class="w-6 h-6 rounded-md hover:bg-accent/15 flex items-center justify-center text-gray-500 hover:text-accent-light transition-colors" title="Nouvelle requête">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="relative">
+            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input id="search-collections" type="text" placeholder="Rechercher…" class="w-full h-8 pl-8 pr-3 rounded-lg bg-base-900/60 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all" />
+          </div>
+        </div>
+        <!-- Collections Tree -->
+        <div id="collections-tree" class="flex-1 overflow-y-auto px-2 pb-2 scrollbar-thin">
+          <!-- Populated by JS -->
+          <div id="collections-empty" class="flex flex-col items-center justify-center h-full text-center px-6">
+            <div class="w-10 h-10 rounded-xl bg-base-700 flex items-center justify-center mb-3">
+              <svg class="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+            </div>
+            <p class="text-xs text-gray-600 leading-relaxed mb-3">Organisez vos requêtes<br/>en collections et dossiers</p>
+            <button id="btn-create-first-collection" class="h-7 px-3 rounded-lg bg-primary/10 hover:bg-primary/20 border border-primary/20 hover:border-primary/40 text-[11px] font-medium text-primary-light transition-all flex items-center gap-1.5">
+              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+              Créer une collection
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════ HISTORY PANEL ══════ -->
+      <div id="sidebar-history" class="sidebar-panel flex-1 flex flex-col overflow-hidden hidden">
+        <!-- History Header -->
+        <div class="p-4 pb-2 shrink-0">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Requêtes récentes</span>
+            <button id="btn-refresh-history" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors" title="Rafraîchir">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            </button>
+          </div>
+          <div class="relative">
+            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input id="search-history" type="text" placeholder="Rechercher…" class="w-full h-8 pl-8 pr-3 rounded-lg bg-base-900/60 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all" />
+          </div>
+        </div>
+        <!-- History List -->
+        <div id="history-list" class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5 scrollbar-thin">
+          <!-- items populated by JS -->
+          <div id="history-empty" class="flex flex-col items-center justify-center h-full text-center px-6">
+            <div class="w-10 h-10 rounded-xl bg-base-700 flex items-center justify-center mb-3">
+              <svg class="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <p class="text-xs text-gray-600 leading-relaxed">Aucune requête pour l'instant.<br/>Lancez votre première requête !</p>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- ===== CENTER — REQUEST BUILDER + RESPONSE ===== -->
+    <main class="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+      <!-- ── Tabs: Structured / Raw ── -->
+      <div class="border-b border-white/5 bg-base-800/50 px-5 pt-3 flex items-end gap-0">
+        <button data-tab="structured" class="tab-btn active relative px-5 py-2.5 text-xs font-semibold rounded-t-lg transition-all duration-200">
+          <span class="relative z-10">Structurée</span>
+        </button>
+        <button data-tab="raw" class="tab-btn relative px-5 py-2.5 text-xs font-semibold rounded-t-lg transition-all duration-200">
+          <span class="relative z-10">Raw HTTP</span>
+        </button>
+      </div>
+
+      <!-- ── REQUEST PANELS ── -->
+      <div class="flex-1 flex flex-col overflow-hidden">
+
+        <!-- ====== STRUCTURED TAB ====== -->
+        <div id="tab-structured" class="tab-panel active flex-1 flex flex-col overflow-hidden">
+          <!-- URL Bar -->
+          <div class="p-5 pb-0">
+            <div class="flex gap-2">
+              <div class="relative">
+                <select id="req-method" class="appearance-none h-10 pl-3 pr-8 rounded-lg bg-base-700 border border-white/8 text-sm font-semibold text-primary-light focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all cursor-pointer">
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="PATCH">PATCH</option>
+                  <option value="DELETE">DELETE</option>
+                  <option value="HEAD">HEAD</option>
+                  <option value="OPTIONS">OPTIONS</option>
+                </select>
+                <svg class="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+              </div>
+              <input id="req-url" type="text" placeholder="https://api.example.com/v1/resource" class="flex-1 h-10 px-4 rounded-lg bg-base-700 border border-white/8 text-sm font-['JetBrains_Mono'] text-gray-200 placeholder-gray-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all" />
+              <button id="btn-send-structured" class="h-10 px-6 rounded-lg bg-gradient-to-r from-primary to-primary-light hover:from-primary-light hover:to-primary text-white text-sm font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all duration-200 flex items-center gap-2 active:scale-[0.97]">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
+                Envoyer
+              </button>
+            </div>
+          </div>
+
+          <!-- Params + Headers + Body sub-tabs -->
+          <div class="px-5 pt-4">
+            <div class="flex gap-0 border-b border-white/5">
+              <button data-subtab="params" class="subtab-btn active px-4 py-2 text-xs font-medium transition-all duration-200">Params<span id="params-count" class="ml-1.5 hidden px-1.5 py-0.5 rounded-full bg-primary/15 text-[10px] font-semibold text-primary-light font-mono">0</span></button>
+              <button data-subtab="headers" class="subtab-btn px-4 py-2 text-xs font-medium transition-all duration-200">Headers</button>
+              <button data-subtab="body" class="subtab-btn px-4 py-2 text-xs font-medium transition-all duration-200">Body</button>
+            </div>
+          </div>
+
+          <!-- Params Panel -->
+          <div id="subtab-params" class="subtab-panel active flex-1 overflow-hidden px-5 pt-3 pb-2">
+            <div class="h-full flex flex-col">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Query Parameters</span>
+                <div class="flex items-center gap-2">
+                  <button id="btn-parse-url-params" class="h-6 px-2 rounded-md bg-base-700 hover:bg-accent/15 border border-white/5 hover:border-accent/30 text-[10px] font-medium text-gray-500 hover:text-accent-light transition-all flex items-center gap-1" title="Parser les params depuis l'URL">
+                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Depuis l'URL
+                  </button>
+                </div>
+              </div>
+              <div id="params-list" class="flex-1 overflow-y-auto space-y-2 scrollbar-thin">
+                <!-- param rows added by JS -->
+              </div>
+              <button id="btn-add-param" class="mt-2 h-8 px-3 rounded-lg border border-dashed border-white/10 hover:border-accent/40 text-xs text-gray-500 hover:text-accent-light transition-all duration-200 flex items-center gap-1.5 w-fit">
+                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                Ajouter un paramètre
+              </button>
+            </div>
+          </div>
+
+          <!-- Headers Panel -->
+          <div id="subtab-headers" class="subtab-panel flex-1 overflow-hidden px-5 pt-3 pb-2 hidden">
+            <div class="h-full flex flex-col">
+              <div id="headers-list" class="flex-1 overflow-y-auto space-y-2 scrollbar-thin">
+                <!-- header rows added by JS -->
+              </div>
+              <button id="btn-add-header" class="mt-2 h-8 px-3 rounded-lg border border-dashed border-white/10 hover:border-primary/40 text-xs text-gray-500 hover:text-primary-light transition-all duration-200 flex items-center gap-1.5 w-fit">
+                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                Ajouter un header
+              </button>
+            </div>
+          </div>
+
+          <!-- Body Panel -->
+          <div id="subtab-body" class="subtab-panel flex-1 overflow-hidden px-5 pt-3 pb-2 hidden">
+            <div class="h-full flex flex-col">
+              <div class="flex items-center gap-3 mb-2">
+                <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Content-Type</span>
+                <select id="body-content-type" class="h-7 px-2 rounded-md bg-base-700 border border-white/8 text-xs text-gray-300 focus:outline-none focus:border-primary/40">
+                  <option value="application/json">JSON</option>
+                  <option value="text/plain">Text</option>
+                  <option value="application/xml">XML</option>
+                  <option value="application/x-www-form-urlencoded">Form URL Encoded</option>
+                </select>
+              </div>
+              <textarea id="req-body" placeholder='{ "key": "value" }' class="flex-1 w-full p-4 rounded-lg bg-base-900/60 border border-white/5 text-sm font-['JetBrains_Mono'] text-gray-300 placeholder-gray-700 resize-none focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all scrollbar-thin"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- ====== RAW TAB ====== -->
+        <div id="tab-raw" class="tab-panel flex-1 flex flex-col overflow-hidden hidden">
+          <div class="p-5 pb-0">
+            <div class="flex gap-2 items-start">
+              <input id="raw-url" type="text" placeholder="https://api.example.com" class="flex-1 h-10 px-4 rounded-lg bg-base-700 border border-white/8 text-sm font-['JetBrains_Mono'] text-gray-200 placeholder-gray-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all" />
+              <button id="btn-send-raw" class="h-10 px-6 rounded-lg bg-gradient-to-r from-accent-dark to-accent hover:from-accent hover:to-accent-light text-white text-sm font-semibold shadow-lg shadow-accent/20 hover:shadow-accent/40 transition-all duration-200 flex items-center gap-2 active:scale-[0.97]">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
+                Envoyer Raw
+              </button>
+            </div>
+          </div>
+          <div class="flex-1 p-5 pt-3 overflow-hidden">
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2 block">Requête HTTP brute (socket)</label>
+            <textarea id="raw-request" placeholder="GET /api/v1/users HTTP/1.1&#10;Host: api.example.com&#10;Accept: application/json&#10;&#10;" class="w-full h-full p-4 rounded-lg bg-base-900/60 border border-white/5 text-sm font-['JetBrains_Mono'] text-gray-300 placeholder-gray-700 resize-none focus:outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all scrollbar-thin"></textarea>
+          </div>
+        </div>
+
+        <!-- ===== RESPONSE ZONE ===== -->
+        <div id="response-zone" class="border-t border-white/5 bg-base-800/30 flex flex-col shrink-0" style="height: 40%;">
+          <!-- Response resize handle -->
+          <div id="response-resize" class="h-1 cursor-row-resize hover:bg-primary/30 transition-colors group flex items-center justify-center">
+            <div class="w-8 h-0.5 rounded-full bg-white/10 group-hover:bg-primary/50 transition-colors"></div>
+          </div>
+
+          <!-- Response Header Bar -->
+          <div class="flex items-center justify-between px-5 py-2 border-b border-white/5">
+            <div class="flex items-center gap-3">
+              <h3 class="text-xs font-semibold uppercase tracking-widest text-gray-500">Réponse</h3>
+              <span id="resp-status" class="hidden items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold font-['JetBrains_Mono']"></span>
+              <span id="resp-time" class="hidden text-[10px] text-gray-600 font-mono"></span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button data-resptab="body" class="resptab-btn active px-3 py-1 text-[11px] font-medium rounded-md transition-all">Body</button>
+              <button data-resptab="headers" class="resptab-btn px-3 py-1 text-[11px] font-medium rounded-md transition-all">Headers</button>
+            </div>
+          </div>
+
+          <!-- Response Body -->
+          <div id="resptab-body" class="resptab-panel active flex-1 overflow-auto p-5 scrollbar-thin">
+            <div id="resp-empty" class="flex flex-col items-center justify-center h-full text-center">
+              <div class="w-12 h-12 rounded-2xl bg-base-700/50 flex items-center justify-center mb-3">
+                <svg class="w-6 h-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
+              </div>
+              <p class="text-xs text-gray-600">Envoyez une requête pour voir la réponse ici</p>
+            </div>
+            <pre id="resp-body-content" class="hidden text-sm font-['JetBrains_Mono'] text-gray-300 whitespace-pre-wrap break-all leading-relaxed"></pre>
+          </div>
+
+          <!-- Response Headers -->
+          <div id="resptab-headers" class="resptab-panel flex-1 overflow-auto p-5 scrollbar-thin hidden">
+            <div id="resp-headers-content" class="space-y-1"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ===== CHAT PANEL (hidden by default) ===== -->
+    <aside id="chat-panel" class="w-[380px] min-w-[320px] bg-base-800 border-l border-white/5 flex-col shrink-0 hidden">
+      <!-- Chat Header -->
+      <div class="h-12 px-4 border-b border-white/5 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+            <svg class="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+          </div>
+          <span class="text-xs font-semibold text-white">Assistant IA</span>
+        </div>
+        <button id="btn-close-chat" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Chat Messages -->
+      <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
+        <div class="flex gap-3">
+          <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+            <svg class="w-3.5 h-3.5 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+          </div>
+          <div class="bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed max-w-[280px]">
+            Bonjour ! Je suis votre assistant API. Posez-moi des questions sur vos requêtes ou demandez-moi de l'aide pour débugger vos appels.
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat context indicator -->
+      <div id="chat-context" class="px-4 py-2 border-t border-white/5 hidden">
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary-50 border border-primary/20">
+          <svg class="w-3 h-3 text-primary-light shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"/></svg>
+          <span class="text-[10px] text-primary-light font-medium truncate">Contexte : requête <span id="chat-context-id" class="font-mono">—</span></span>
+        </div>
+      </div>
+
+      <!-- Chat Input -->
+      <div class="p-4 border-t border-white/5 shrink-0">
+        <div class="relative">
+          <textarea id="chat-input" rows="2" placeholder="Posez une question sur votre requête…" class="w-full px-4 py-3 pr-12 rounded-xl bg-base-900/60 border border-white/8 text-xs text-gray-300 placeholder-gray-600 resize-none focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all scrollbar-thin"></textarea>
+          <button id="btn-send-chat" class="absolute right-2.5 bottom-2.5 w-7 h-7 rounded-lg bg-primary hover:bg-primary-light text-white flex items-center justify-center transition-all active:scale-90">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- ===== LOADING OVERLAY ===== -->
+  <div id="loading-overlay" class="fixed inset-0 bg-base-900/80 backdrop-blur-sm z-[100] hidden items-center justify-center">
+    <div class="flex flex-col items-center gap-3">
+      <div class="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+      <span class="text-xs text-gray-400">Envoi en cours…</span>
+    </div>
+  </div>
+
+  <script src="static/app.js"></script>
+</body>
+</html>
