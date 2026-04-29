@@ -10,12 +10,12 @@ const AUTH_TOKEN = '1234';
 const AUTH_HEADER = { 'Authorization': `Bearer ${AUTH_TOKEN}` };
 
 const API = {
-  structured:    '/request/rest',              // POST { url, method, headers?, body? }
-  raw:           '/request/raw',               // POST { url, request }
-  getRequest:    '/data/requests/byId',        // GET  /:id
-  userHistory:   '/data/requests/byUserId',    // GET  /:userId?limit=&page=
-  chat:          '/api/chat',                  // POST { message, requetesId }
-  collections:   '/api/collections',           // GET  → list all collections/folders/requests
+  structured:    'api/request/rest',              // POST { url, method, headers?, body? }
+  raw:           'api/request/raw',               // POST { url, request }
+  getRequest:    'api/data/requests/byId',        // GET  /:id
+  userHistory:   'api/data/requests/byUserId',    // GET  /:userId?limit=&page=
+  chat:          'api/chat',                  // POST { message, requetesId }
+  collections:   'api/collections',           // GET  → list all collections/folders/requests
   createFolder:  '/api/collections/folder',    // POST { name, parentId? }
   createRequest: '/api/collections/request',   // POST { name, method, url, folderId?, ... }
   updateRequest: '/api/collections/request',   // PUT  /:id { name, method, url, ... }

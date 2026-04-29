@@ -4,8 +4,8 @@
    ═══════════════════════════════════════════════════════════════ */
 
 const API = {
-  structured: '/request/rest',
-  raw: '/request/raw',
+  structured: '/api/request/rest',
+  raw: '/api/request/raw',
   collections: '/api/collections',
 };
 const AUTH_HEADER = { 'Authorization': 'Bearer 1234' };

@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from request_manager.request_api import app as request_router
 from database.data_api import app as data_router
 from database.collection_api import app as collection_router
+from ai_core.ai_api import app as ai_router
 
 
 app = FastAPI()
@@ -11,7 +12,7 @@ app = FastAPI()
 
 @app.middleware("http")
 async def check_authorization(request: Request, call_next):
-    public_routes = ["/", "/workflow", "/static", "/docs", "/openapi.json"]
+    public_routes = ["/", "/workflow", "/static"]
 
     if request.url.path in public_routes or request.url.path.startswith("/static"):
         return await call_next(request)
@@ -61,6 +62,7 @@ app.mount("/static", StaticFiles(directory="web_ui/static", html=True), name="fr
 app.include_router(request_router)
 app.include_router(data_router)
 app.include_router(collection_router)
+app.include_router(ai_router)
 
 if __name__ == "__main__":
     import uvicorn 

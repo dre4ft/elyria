@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
 
 
-app = APIRouter(prefix="/data")
+app = APIRouter(prefix="/api")
 
 
 

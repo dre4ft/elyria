@@ -3,9 +3,20 @@ from threading import Lock
 
 DATABASE_NAME = "database.db"
 
-# 🔒 vrai lock global
+
 _db_lock = Lock()
 _IS_INIT = False
+
+
+INIT_AI_MESSAGES = """
+CREATE TABLE IF NOT EXISTS ai_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    message TEXT NOT NULL,
+    timestamp DATETIME NOT NULL
+)
+"""
 
 
 INIT_USER = """
@@ -104,6 +115,7 @@ def init_db():
         cursor = conn.cursor()
 
         cursor.execute(INIT_USER)
+        cursor.execute(INIT_AI_MESSAGES)
         cursor.execute(INIT_REQUEST)
         cursor.execute(INIT_FOLDERS)
         cursor.execute(INIT_SAVED_REQUESTS)

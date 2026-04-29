@@ -12,7 +12,7 @@ from database.request_mgmt import add_request
 import ssl
 import socket
 
-app = APIRouter(prefix="/request")
+app = APIRouter(prefix="/api/request")
 
 
 

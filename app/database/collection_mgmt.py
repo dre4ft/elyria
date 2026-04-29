@@ -1,4 +1,4 @@
-from .database import connect
+from database.database import connect
 from database import json_helper
 import uuid_utils
 from datetime import datetime
