@@ -18,12 +18,23 @@ CREATE TABLE IF NOT EXISTS ai_messages (
 )
 """
 
+INIT_KEYS = """
+CREATE TABLE IF NOT EXISTS keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key_id TEXT UNIQUE NOT NULL,
+    key_value TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    created_at DATETIME NOT NULL
+)
+"""
+
 
 INIT_USER = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT UNIQUE NOT NULL,
-    email TEXT UNIQUE NOT NULL,
+    hashed_digest TEXT NOT NULL,
+    salt TEXT NOT NULL,
     username TEXT UNIQUE NOT NULL,
     teams TEXT
 )
@@ -119,7 +130,7 @@ def init_db():
         cursor.execute(INIT_REQUEST)
         cursor.execute(INIT_FOLDERS)
         cursor.execute(INIT_SAVED_REQUESTS)
-
+        cursor.execute(INIT_KEYS)
         conn.commit()
         conn.close()
 

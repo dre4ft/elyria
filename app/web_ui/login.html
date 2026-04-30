@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Elyria — Connexion</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            base: {
+              900: '#0a0f1c',
+              800: '#0f1629',
+              700: '#141c35',
+              600: '#1a2340',
+              500: '#212b4a',
+            },
+            primary: {
+              DEFAULT: '#7c3aed',
+              light: '#8b5cf6',
+              dark: '#6d28d9',
+              50: 'rgba(124,58,237,0.08)',
+              100: 'rgba(124,58,237,0.15)',
+            },
+            accent: {
+              DEFAULT: '#06b6d4',
+              light: '#22d3ee',
+              dark: '#0891b2',
+              50: 'rgba(6,182,212,0.08)',
+              100: 'rgba(6,182,212,0.15)',
+            },
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="stylesheet" href="static/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    .auth-input {
+      transition: all 0.2s;
+    }
+    .auth-input:focus {
+      border-color: rgba(124, 58, 237, 0.5);
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+    }
+    .auth-tab {
+      position: relative;
+      transition: all 0.2s;
+    }
+    .auth-tab.active {
+      color: #c4b5fd;
+    }
+    .auth-tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: #7c3aed;
+      border-radius: 2px 2px 0 0;
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .auth-card {
+      animation: fadeInUp 0.4s ease;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-4px); }
+      40% { transform: translateX(4px); }
+      60% { transform: translateX(-3px); }
+      80% { transform: translateX(3px); }
+    }
+    .shake { animation: shake 0.4s ease; }
+    .error-banner {
+      animation: fadeInUp 0.2s ease;
+    }
+  </style>
+</head>
+<body class="h-full bg-base-900 text-gray-200 font-['Inter',sans-serif] flex items-center justify-center overflow-hidden">
+
+  <!-- Background decoration -->
+  <div class="absolute inset-0 overflow-hidden pointer-events-none">
+    <div class="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-primary/5 blur-3xl"></div>
+    <div class="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-accent/5 blur-3xl"></div>
+  </div>
+
+  <!-- Auth Card -->
+  <div class="auth-card relative z-10 w-full max-w-md mx-4">
+
+    <!-- Logo -->
+    <div class="flex items-center justify-center gap-3 mb-8">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/20">
+        <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      </div>
+      <span class="text-lg font-semibold tracking-wide text-white">Ely<span class="text-primary-light">ria</span></span>
+    </div>
+
+    <!-- Card -->
+    <div class="bg-base-800 border border-white/5 rounded-2xl p-6 shadow-2xl shadow-black/30">
+
+      <!-- Tabs -->
+      <div class="flex border-b border-white/5 mb-6">
+        <button id="tab-login" class="auth-tab active flex-1 pb-3 text-sm font-semibold text-gray-400 hover:text-gray-200 transition-colors">
+          Connexion
+        </button>
+        <button id="tab-register" class="auth-tab flex-1 pb-3 text-sm font-semibold text-gray-400 hover:text-gray-200 transition-colors">
+          Inscription
+        </button>
+      </div>
+
+      <!-- Error Banner -->
+      <div id="auth-error" class="error-banner hidden mb-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400 flex items-start gap-2">
+        <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+        <span id="auth-error-msg"></span>
+      </div>
+
+      <!-- Success Banner -->
+      <div id="auth-success" class="hidden mb-4 px-4 py-3 rounded-xl bg-green-500/10 border border-green-500/20 text-xs text-green-400 flex items-start gap-2">
+        <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span id="auth-success-msg"></span>
+      </div>
+
+      <!-- ===== LOGIN FORM ===== -->
+      <form id="form-login" class="space-y-4">
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5">Nom d'utilisateur</label>
+          <input id="login-username" type="text" autocomplete="username" placeholder="admin" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none" />
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5">Mot de passe</label>
+          <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none font-['JetBrains_Mono']" />
+        </div>
+        <button id="btn-login" type="submit" class="w-full h-11 rounded-xl bg-gradient-to-r from-primary to-primary-light hover:from-primary-light hover:to-primary text-white text-sm font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98]">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/></svg>
+          Se connecter
+        </button>
+      </form>
+
+      <!-- ===== REGISTER FORM ===== -->
+      <form id="form-register" class="space-y-4 hidden">
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5">Nom d'utilisateur</label>
+          <input id="reg-username" type="text" autocomplete="username" placeholder="admin" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none" />
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5">Mot de passe</label>
+          <input id="reg-password" type="password" autocomplete="new-password" placeholder="••••••••" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none font-['JetBrains_Mono']" />
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5">
+            Équipes
+            <span class="text-gray-600 font-normal normal-case tracking-normal">— optionnel</span>
+          </label>
+          <input id="reg-teams" type="text" placeholder="team-a, team-b" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none" />
+        </div>
+        <button id="btn-register" type="submit" class="w-full h-11 rounded-xl bg-gradient-to-r from-accent-dark to-accent hover:from-accent hover:to-accent-light text-white text-sm font-semibold shadow-lg shadow-accent/20 hover:shadow-accent/40 transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98]">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0112 21c-2.003 0-3.933-.479-5.627-1.344"/></svg>
+          Créer un compte
+        </button>
+      </form>
+    </div>
+
+    <!-- Footer link -->
+    <p class="text-center mt-4 text-[11px] text-gray-600">
+      Retour à <a href="/app" class="text-primary-light hover:text-primary-light/80 transition-colors">l'application</a>
+    </p>
+  </div>
+
+  <script src="static/auth.js"></script>
+  <script>
+    // ── Hash SHA-512 du mot de passe via Web Crypto API ──
+    async function hashPassword(password) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password);
+      const hashBuffer = await crypto.subtle.digest('SHA-512', data);
+      return Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+    }
+
+    // ── DOM refs
+    const $ = (s) => document.querySelector(s);
+
+    const tabLogin    = $('#tab-login');
+    const tabRegister = $('#tab-register');
+    const formLogin   = $('#form-login');
+    const formRegister = $('#form-register');
+    const errorBanner = $('#auth-error');
+    const errorMsg    = $('#auth-error-msg');
+    const successBanner = $('#auth-success');
+    const successMsg  = $('#auth-success-msg');
+    const btnLogin    = $('#btn-login');
+    const btnRegister = $('#btn-register');
+
+    // ── Tab switching
+    tabLogin.addEventListener('click', () => {
+      tabLogin.classList.add('active');
+      tabRegister.classList.remove('active');
+      formLogin.classList.remove('hidden');
+      formRegister.classList.add('hidden');
+      hideMessages();
+    });
+
+    tabRegister.addEventListener('click', () => {
+      tabRegister.classList.add('active');
+      tabLogin.classList.remove('active');
+      formRegister.classList.remove('hidden');
+      formLogin.classList.add('hidden');
+      hideMessages();
+    });
+
+    function hideMessages() {
+      errorBanner.classList.add('hidden');
+      successBanner.classList.add('hidden');
+    }
+
+    function showError(msg) {
+      successBanner.classList.add('hidden');
+      errorMsg.textContent = msg;
+      errorBanner.classList.remove('hidden');
+      // Shake the card
+      const card = document.querySelector('.auth-card');
+      card.classList.remove('shake');
+      void card.offsetWidth;
+      card.classList.add('shake');
+    }
+
+    function showSuccess(msg) {
+      errorBanner.classList.add('hidden');
+      successMsg.textContent = msg;
+      successBanner.classList.remove('hidden');
+    }
+
+    function setLoading(btn, loading) {
+      if (loading) {
+        btn.disabled = true;
+        btn.dataset.originalHtml = btn.innerHTML;
+        btn.innerHTML = `<span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> Chargement…`;
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = btn.dataset.originalHtml;
+      }
+    }
+
+    // ── Login
+    formLogin.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideMessages();
+
+      const username = $('#login-username').value.trim();
+      const password = $('#login-password').value;
+
+      if (!username) { showError("Le nom d'utilisateur est requis."); return; }
+      if (!password) { showError('Le mot de passe est requis.'); return; }
+
+      // Digest = SHA-512 du mot de passe via Web Crypto API
+      const digest = await hashPassword(password);
+
+      setLoading(btnLogin, true);
+      const result = await loginUser(username, digest);
+      setLoading(btnLogin, false);
+
+      if (result.success) {
+        navigateWithToken('/');
+      } else {
+        showError(result.error);
+      }
+    });
+
+    // ── Register
+    formRegister.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideMessages();
+
+      const username = $('#reg-username').value.trim();
+      const password = $('#reg-password').value;
+      const teamsRaw = $('#reg-teams').value.trim();
+
+      if (!username) { showError("Le nom d'utilisateur est requis."); return; }
+      if (!password) { showError('Le mot de passe est requis.'); return; }
+
+      // Digest = SHA-512 du mot de passe via Web Crypto API
+      const digest = await hashPassword(password);
+
+      const teams = teamsRaw
+        ? teamsRaw.split(',').map(t => t.trim()).filter(Boolean)
+        : [];
+
+      setLoading(btnRegister, true);
+      const result = await registerUser(username, digest, teams);
+      setLoading(btnRegister, false);
+
+      if (result.success) {
+        showSuccess('Compte créé avec succès ! Vous pouvez maintenant vous connecter.');
+        // Switch to login tab after a beat
+        setTimeout(() => tabLogin.click(), 1500);
+        // Pre-fill login username
+        $('#login-username').value = username;
+        $('#login-password').value = '';
+        $('#reg-username').value = '';
+        $('#reg-password').value = '';
+        $('#reg-teams').value = '';
+      } else {
+        showError(result.error);
+      }
+    });
+
+    // ── Focus first input
+    $('#login-username').focus();
+  </script>
+</body>
+</html>

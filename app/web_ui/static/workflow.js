@@ -8,7 +8,7 @@ const API = {
   raw: '/api/request/raw',
   collections: '/api/collections',
 };
-const AUTH_HEADER = { 'Authorization': 'Bearer 1234' };
+// AUTH_HEADER fourni dynamiquement par auth.js via getAuthHeader()
 
 // Cache of saved requests loaded from collections
 let savedRequestsCache = {};
@@ -149,6 +149,18 @@ const dom = {
 // INIT
 // ─────────────────────────────────────────────
 function init() {
+  initAuth();
+
+  // Afficher le nom d'utilisateur et configurer le bouton logout
+  const user = getUser();
+  const usernameEl = document.getElementById('header-username');
+  const logoutBtn = document.getElementById('btn-logout');
+  if (user && usernameEl && logoutBtn) {
+    usernameEl.textContent = user.username || user.userId;
+    usernameEl.classList.remove('hidden');
+    logoutBtn.addEventListener('click', logout);
+  }
+
   setupPanelTabs();
   setupPaletteDrag();
   setupCanvasInteractions();
@@ -290,7 +302,7 @@ async function loadSavedRequests(force = false) {
     if (loading) loading.classList.remove('hidden');
     if (empty) empty.classList.add('hidden');
 
-    const res = await fetch(API.collections, { headers: { ...AUTH_HEADER } });
+    const res = await fetch(API.collections, { headers: { ...getAuthHeader() } });
     if (!res.ok) throw new Error('Failed');
 
     const tree = await res.json();
@@ -858,7 +870,7 @@ async function executeNode(nodeId, ctx) {
 
         const res = await fetch(API.structured, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
           body: JSON.stringify(payload),
         });
         const data = await res.json();
@@ -876,7 +888,7 @@ async function executeNode(nodeId, ctx) {
 
         const res = await fetch(API.raw, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
           body: JSON.stringify({ url, request: rawReq }),
         });
         const data = await res.json();

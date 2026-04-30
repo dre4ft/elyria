@@ -7,7 +7,6 @@ from fastapi.exceptions import HTTPException
 from pydantic import BaseModel, Field
 from .utils import _generate_request_uuid
 from typing import Literal, List,Optional
-import sys
 from database.request_mgmt import add_request
 import ssl
 import socket
@@ -226,8 +225,8 @@ def get_auth(request: Request):
 class RESTRequest(BaseModel):
     method : str
     url : str
-    headers : dict = None
-    body : dict = None 
+    headers : str = None
+    body : str = None 
 
 
 class WWWFormRequest(BaseModel):
@@ -258,10 +257,11 @@ def x_www_form_urlencoded_request(request:WWWFormRequest,auth:str = Depends(get_
 
 @app.post("/rest")
 def rest_request(request : RESTRequest,auth:str = Depends(get_auth)):
-   
+    body = json.loads(request.body) if request.body else None
+    headers = json.loads(request.headers) if request.headers else None
     token = auth
     if token == "1234":
-        return handle_request(user_token=token,method=request.method,url=request.url,json=request.body,headers=request.headers)                                          
+        return handle_request(user_token=token,method=request.method,url=request.url,json=body,headers=headers)                                          
     raise HTTPException(status_code=403, detail="unauthorized")
 
 @app.post("/raw")

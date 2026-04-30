@@ -5,15 +5,15 @@ from request_manager.request_api import app as request_router
 from database.data_api import app as data_router
 from database.collection_api import app as collection_router
 from ai_core.ai_api import app as ai_router
-
+import jwt 
+from database.user_mgmt import get_key
 
 app = FastAPI()
 
 
 @app.middleware("http")
 async def check_authorization(request: Request, call_next):
-    public_routes = ["/", "/workflow", "/static"]
-
+    public_routes = ["/", "/workflow", "/static", "/api/user/login", "/api/user/create"]
     if request.url.path in public_routes or request.url.path.startswith("/static"):
         return await call_next(request)
 
@@ -22,7 +22,7 @@ async def check_authorization(request: Request, call_next):
     if not auth:
         return JSONResponse(
             status_code=401,
-            content={"detail": "Missing Authorization header"}
+            content={"detail": "Invalid Authorization format"}
         )
 
     if not auth.startswith("Bearer "):
@@ -31,12 +31,51 @@ async def check_authorization(request: Request, call_next):
             content={"detail": "Invalid Authorization format"}
         )
 
-    request.state.token = auth.replace("Bearer ", "")
+    split_token = auth.split("Bearer ")[1]
+    split_token_parts = split_token.split(".")
+    if len(split_token_parts) != 3:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid Authorization format"}
+        )
+    try:
+        unverified_payload = jwt.decode(split_token, options={"verify_signature": False})
+        key_id = unverified_payload.get("kid")
+        if not key_id:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid Authorization format"}
+            )
+        key_value = get_key(key_id)
+        if not key_value:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid Authorization format"}
+            )
+        request.state.token = jwt.decode(split_token, key_value, algorithms=["HS512"])
+    except jwt.ExpiredSignatureError:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid Authorization format"}
+        )
+    except jwt.InvalidTokenError:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid Authorization format"}
+        )
+    
+    
     return await call_next(request)
 
-
-
 @app.get("/")
+async def serve_index():
+    try:
+        with open("web_ui/login.html", "r") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Frontend file not found")
+
+@app.get("/app")
 async def serve_index():
     try:
         with open("web_ui/index.html", "r") as f:
