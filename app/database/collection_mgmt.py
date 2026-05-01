@@ -92,6 +92,26 @@ def _get_all_child_folder_ids(cursor, parent_id: str):
 # SAVED REQUESTS
 # ═══════════════════════════════════════════════
 
+def get_request_by_id(saved_request_id: str):
+    conn = None
+    try:
+        conn = connect()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM saved_requests WHERE saved_request_id=?",
+            (saved_request_id,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+        return None
+    except Exception as e:
+        print("get_request_by_id error:", e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
 def create_saved_request(name: str, author_user_id: str, folder_id: str = None,
                          method: str = "GET", url: str = "",
                          headers: dict = None, body: str = None,

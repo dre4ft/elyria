@@ -1,5 +1,5 @@
 from database.database import connect
-import datetime
+from datetime import datetime, timedelta
 
 def add_user(user_id: str, hashed_digest: str, salt: str, username: str, teams: str = None):
     conn = connect()
@@ -159,7 +159,7 @@ def delete_old_keys(max_age_seconds: int = 3600):
     conn = connect()
     cursor = conn.cursor()
     try:
-        cutoff_time = datetime.now() - datetime.timedelta(seconds=max_age_seconds)
+        cutoff_time = datetime.now() - timedelta(seconds=max_age_seconds)
         cursor.execute("DELETE FROM keys WHERE created_at < ?", (cutoff_time))
         conn.commit()
         return True

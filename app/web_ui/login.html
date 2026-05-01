@@ -171,7 +171,7 @@
 
     <!-- Footer link -->
     <p class="text-center mt-4 text-[11px] text-gray-600">
-      Retour à <a href="/app" class="text-primary-light hover:text-primary-light/80 transition-colors">l'application</a>
+      Retour à <a  onclick="navigateTo('/app')" class="text-primary-light hover:text-primary-light/80 transition-colors cursor-pointer">l'application</a>
     </p>
   </div>
 
@@ -270,7 +270,7 @@
       setLoading(btnLogin, false);
 
       if (result.success) {
-        navigateWithToken('/');
+        navigateTo('/app');
       } else {
         showError(result.error);
       }

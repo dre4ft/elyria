@@ -2,22 +2,27 @@ from fastapi import FastAPI, Request,HTTPException
 from fastapi.responses import JSONResponse,HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from request_manager.request_api import app as request_router
-from database.data_api import app as data_router
+from database.request_log_api import app as data_router
 from database.collection_api import app as collection_router
 from ai_core.ai_api import app as ai_router
+from auth_users.user_api import app as user_router
+
 import jwt 
 from database.user_mgmt import get_key
+
+
 
 app = FastAPI()
 
 
 @app.middleware("http")
 async def check_authorization(request: Request, call_next):
-    public_routes = ["/", "/workflow", "/static", "/api/user/login", "/api/user/create"]
-    if request.url.path in public_routes or request.url.path.startswith("/static"):
+    public_routes = ["/", "/login", "/app", "/workflow", "/api/user/login", "/api/user/create"]
+    auth = request.headers.get("authorization")
+    if request.url.path in public_routes or request.url.path.startswith("/static/"):
         return await call_next(request)
 
-    auth = request.headers.get("authorization")
+    
 
     if not auth:
         return JSONResponse(
@@ -68,6 +73,15 @@ async def check_authorization(request: Request, call_next):
     return await call_next(request)
 
 @app.get("/")
+async def second_route():
+    try:
+        with open("web_ui/login.html", "r") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Frontend file not found")
+
+
+@app.get("/login")
 async def serve_index():
     try:
         with open("web_ui/login.html", "r") as f:
@@ -90,7 +104,7 @@ async def serve_index():
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Frontend file not found")
-    
+
 
 
 
@@ -102,6 +116,10 @@ app.include_router(request_router)
 app.include_router(data_router)
 app.include_router(collection_router)
 app.include_router(ai_router)
+app.include_router(user_router)
+
+
+
 
 if __name__ == "__main__":
     import uvicorn 

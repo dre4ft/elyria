@@ -1,6 +1,3 @@
-import requests
-from requests import exceptions
-import json
 from fastapi import APIRouter,Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
@@ -8,8 +5,6 @@ from pydantic import BaseModel, Field
 import uuid_utils 
 from typing import Literal, List,Optional
 from database.request_mgmt import add_request
-import ssl
-import socket
 from database.user_mgmt import add_user, get_user_salt, get_user_by_username, is_valid_user, add_key, delete_key, delete_old_keys
 import hashlib
 import jwt
@@ -89,8 +84,8 @@ async def login(request: LoginRequest):
         user = get_user_by_username(request.username)
         key_id = _generate_request_uuid()
         key = secrets.token_bytes(64).hex()
-        add_key(key_id, key)
-        token = create_jwt_token(user["user_id"], "your_secret_key", key_id)
+        add_key(key_id, key, user["user_id"])
+        token = create_jwt_token(user["user_id"], key, key_id)
         return JSONResponse(content={"token": token, "user_id": user["user_id"], "username": user["username"], "teams": user["teams"]})
     else:
         raise HTTPException(status_code=401, detail="Invalid credentials")

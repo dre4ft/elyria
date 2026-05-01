@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 api_key = os.getenv("deepseek")
-
+#api_key = os.getenv("nvidia_integrate")
 
 
 app = APIRouter(prefix="/api/chat")
@@ -19,6 +19,12 @@ TODO:
 make provider dynamic (ollama, openai, etc.) based on user/team settings
 
 """
+
+"""AI_PROVIDER = AIWrapper(
+    provider_type='openai',
+    url='https://integrate.api.nvidia.com/v1',
+    api_key=api_key,
+    model='deepseek-ai/deepseek-v4-pro')"""
 
 
 AI_PROVIDER = AIWrapper(

@@ -9,15 +9,15 @@
 const API = {
   structured:    'api/request/rest',              // POST { url, method, headers?, body? }
   raw:           'api/request/raw',               // POST { url, request }
-  getRequest:    'api/data/requests/byId',        // GET  /:id
-  userHistory:   'api/data/requests/byUserId',    // GET  /:userId?limit=&page=
+  getRequest:    'api/requests/byId',        // GET  /:id
+  userHistory:   'api/requests/byUserId',    // GET  /:userId?limit=&page=
   chat:          'api/chat',                  // POST { message, conversationId }
   collections:   'api/collections',           // GET  → list all collections/folders/requests
-  createFolder:  '/api/collections/folder',    // POST { name, parentId? }
-  createRequest: '/api/collections/request',   // POST { name, method, url, folderId?, ... }
-  updateRequest: '/api/collections/request',   // PUT  /:id { name, method, url, ... }
-  deleteRequest: '/api/collections/request',   // DELETE /:id
-  deleteFolder:  '/api/collections/folder',    // DELETE /:id
+  createFolder:  'api/collections/folder',    // POST { name, parentId? }
+  createRequest: 'api/collections/request',   // POST { name, method, url, folderId?, ... }
+  updateRequest: 'api/collections/request',   // PUT  /:id { name, method, url, ... }
+  deleteRequest: 'api/collections/request',   // DELETE /:id
+  deleteFolder:  'api/collections/folder',    // DELETE /:id
 };
 
 // ─────────────────────────────────────────────
@@ -198,6 +198,8 @@ const dom = {
 // INIT
 // ─────────────────────────────────────────────
 function init() {
+  if (window.__appInitCalled) return;
+  window.__appInitCalled = true;
   initAuth();
 
   // Afficher le nom d'utilisateur et configurer le bouton logout
@@ -1646,3 +1648,4 @@ document.head.appendChild(shakeStyle);
 // START
 // ─────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', init);
+init();

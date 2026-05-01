@@ -149,6 +149,8 @@ const dom = {
 // INIT
 // ─────────────────────────────────────────────
 function init() {
+  if (window.__appInitCalled) return;
+  window.__appInitCalled = true;
   initAuth();
 
   // Afficher le nom d'utilisateur et configurer le bouton logout
@@ -1027,3 +1029,4 @@ function sleep(ms) {
 // START
 // ─────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', init);
+init();

@@ -10,7 +10,8 @@ app = APIRouter(prefix="/api/collections")
 
 
 def get_user_token(request: Request) -> str:
-    token = getattr(request.state, "token", None)
+    raw_token = getattr(request.state, "token", None)
+    token = raw_token["sub"]
     if not token:
         raise HTTPException(status_code=401, detail="Missing token")
     return token

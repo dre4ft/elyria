@@ -123,7 +123,7 @@ def _send_request(protocol="http", host="127.0.0.1", port=8000, raw_request=""):
 """
 
 
-def handle_raw(user_token: str, url: str, request: str):
+def handle_raw(user_token: str, url: str, request: str,is_done_by_ai:bool=False):
     request_uuid = _generate_request_uuid()
     author = user_token
 
@@ -184,15 +184,16 @@ def handle_raw(user_token: str, url: str, request: str):
         request_uuid=request_uuid,
         author=author,
         request=req,
-        response=resp
+        response=resp,
+        is_done_by_ai=is_done_by_ai
     )
+    return request_uuid,resp
+    #return _handle_response(request_uuid, resp, dict)
 
-    return _handle_response(request_uuid, resp, dict)
-
-def handle_request(user_token : str, url : str,method :str ,headers:dict=None,query_params:dict =None,body:str=None,json :dict=None,auth :str = None,allow_redirect:bool=False,proxies:dict=None):
+def handle_request(user_id : str, url : str,method :str ,headers:dict=None,query_params:dict =None,body:str=None,json :dict=None,auth :str = None,allow_redirect:bool=False,proxies:dict=None,is_done_by_ai:bool=False):
     
     request_uuid = _generate_request_uuid()
-    author = user_token
+    author = user_id
     req = {"method":method,"headers" : headers,"body":body}
     resp = _make_request(method=method,
                         url=url,
@@ -202,8 +203,9 @@ def handle_request(user_token : str, url : str,method :str ,headers:dict=None,qu
                         json=json,
                         allow_redirect=allow_redirect,
                         proxies=proxies)
-    add_request(request_uuid=request_uuid,author=author,request=req,response=resp)
-    return _handle_response(request_uuid,resp,dict)  
+    add_request(request_uuid=request_uuid,author=author,request=req,response=resp,is_done_by_ai=is_done_by_ai)
+    return request_uuid,resp
+    #return _handle_response(request_uuid,resp,dict)  
 
 
 
@@ -252,7 +254,8 @@ def x_www_form_urlencoded_request(request:WWWFormRequest,auth:str = Depends(get_
     if token == "1234":
         if not request.headers :
             request.headers["Content-Type"] = "application/x-www-form-urlencoded"
-        return handle_request(user_token=token,url=request.url,method=request.method,headers= request.headers,query_params=request.query_params)
+        req_uuid, resp =  handle_request(user_token=token,url=request.url,method=request.method,headers= request.headers,query_params=request.query_params)
+        return _handle_response(req_uuid,resp,dict)
     raise HTTPException(status_code=403, detail="unauthorized")
 
 @app.post("/rest")
@@ -261,7 +264,8 @@ def rest_request(request : RESTRequest,auth:str = Depends(get_auth)):
     headers = json.loads(request.headers) if request.headers else None
     token = auth
     if token == "1234":
-        return handle_request(user_token=token,method=request.method,url=request.url,json=body,headers=headers)                                          
+        req_uuid, resp = handle_request(user_token=token,method=request.method,url=request.url,json=body,headers=headers)                                          
+        return _handle_response(req_uuid,resp,dict)
     raise HTTPException(status_code=403, detail="unauthorized")
 
 @app.post("/raw")
@@ -269,7 +273,8 @@ def send_raw_request(request : RawRequest,auth:str = Depends(get_auth)):
    
     token = auth
     if token == "1234":
-        return handle_raw(user_token=token,url=request.url,request=request.request)                                          
+        req_uuid, resp = handle_raw(user_token=token,url=request.url,request=request.request)                                          
+        return _handle_response(req_uuid,resp,dict)
     raise HTTPException(status_code=403, detail="unauthorized")
 
 """
