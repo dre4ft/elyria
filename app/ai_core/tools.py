@@ -97,6 +97,18 @@ def get_tools():
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_users_last_five_requests",
+                "description": "Get the last five requests sent by the user",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        },
     ]
 
 
@@ -105,42 +117,38 @@ def get_tools():
 
 
 
-def handle_tool_call(tool_name, parameters):
+def handle_tool_call(current_user_id, tool_name, parameters):
     if tool_name == "add_request":
-        return create_structured_request(name=parameters["name"], url=parameters["url"], method=parameters["method"], folder_id=parameters.get("folder_id"), headers=parameters.get("headers"), body=parameters.get("body"))
+        return create_structured_request(current_user_id, name=parameters["name"], url=parameters["url"], method=parameters["method"], folder_id=parameters.get("folder_id"), headers=parameters.get("headers"), body=parameters.get("body"))
     elif tool_name == "create_folder":
-        return create_folder(name=parameters["name"], parent_id=parameters.get("parent_id"))
+        return create_folder(current_user_id, name=parameters["name"], parent_id=parameters.get("parent_id"))
     elif tool_name == "get_sent_request_response":
-        return get_sent_request_response(request_uuid=parameters["request_uuid"])
+        return get_sent_request_response(current_user_id, request_uuid=parameters["request_uuid"])
     elif tool_name == "send_request":
-        return send_request(url=parameters["url"], method=parameters["method"], headers=parameters.get("headers"), body=parameters.get("body"))
+        return send_request(current_user_id, url=parameters["url"], method=parameters["method"], headers=parameters.get("headers"), body=parameters.get("body"))
     elif tool_name == "send_request_by_id":
-        return send_request_by_id(request_id=parameters["request_id"])
+        return send_request_by_id(current_user_id, request_id=parameters["request_id"])
     elif tool_name == "send_raw_request":
-        return send_raw_request(url=parameters["url"], request=parameters["request"])
+        return send_raw_request(current_user_id, url=parameters["url"], request=parameters["request"])
     else:
         raise ValueError(f"Unknown tool: {tool_name}")
 
-def create_structured_request(name,  url, method,folder_id=None, headers=None, body=None):
-    current_user_id = "a8e327d8-2939-4d36-a9c6-bf1b16793c33"  # TODO: get the actual user ID from the context/session
+def create_structured_request(current_user_id, name,  url, method,folder_id=None, headers=None, body=None):
     headers = json_helper.from_json(headers) if headers else None
     request_id = collection_mgmt.create_saved_request(name=name, author_user_id=current_user_id, folder_id=folder_id, method=method, url=url, headers=headers, body=body, is_done_by_ai=True)
     return {"request_id": request_id}
 
 
-def create_folder(name, parent_id=None):
-    current_user_id = "a8e327d8-2939-4d36-a9c6-bf1b16793c33"  # TODO: get the actual user ID from the context/session
+def create_folder(current_user_id, name, parent_id=None):
     folder_id = collection_mgmt.create_folder(name=name, author_user_id=current_user_id, parent_id=parent_id)
     return {"folder_id": folder_id}
 
-def send_request(url:str, method: str, headers:str=None, body:str=None):
-    current_user_id = "a8e327d8-2939-4d36-a9c6-bf1b16793c33"  # TODO: get the actual user ID from the context/session
+def send_request(current_user_id, url:str, method: str, headers:str=None, body:str=None):
     headers = json_helper.from_json(headers) if headers else None
     req_uuid, resp = handle_request(user_id=current_user_id, url=url, method=method, headers=headers, body=body, is_done_by_ai=True) 
     return {"response_uuid":req_uuid,"response": resp}
 
-def send_request_by_id(request_id: str):
-    current_user_id = "a8e327d8-2939-4d36-a9c6-bf1b16793c33"  # TODO: get the actual user ID from the context/session
+def send_request_by_id(current_user_id, request_id: str):
     request = collection_mgmt.get_request_by_id(request_id)
     if not request:
         return {"error": f"Request with ID {request_id} not found"}
@@ -150,17 +158,21 @@ def send_request_by_id(request_id: str):
     return {"response_uuid": req_uuid, "response": resp}
 
 
-def send_raw_request(url:str, request:str):
-    current_user_id = "a8e327d8-2939-4d36-a9c6-bf1b16793c33"  # TODO: get the actual user ID from the context/session
+def send_raw_request(current_user_id, url:str, request:str):
     req_uuid, resp = handle_raw(user_token=current_user_id, url=url, request=request,is_done_by_ai=True)
     return {"response_uuid": req_uuid, "response": resp}
 
-def get_sent_request_response(request_uuid: str):
-    current_user_id = "a8e327d8-2939-4d36-a9c6-bf1b16793c33"  # TODO: get the actual user ID from the context/session
+def get_sent_request_response(current_user_id, request_uuid: str):
+
     response = request_mgmt.get_requests_by_id(request_uuid)
     if not response:
         return {"error": f"Request with UUID {request_uuid} not found"}
     if response["author"] != current_user_id:
         return {"error": "Unauthorized"}
     return {"response": response}
+
+
+def get_users_last_five_requests(current_user_id):
+    requests = request_mgmt.get_last_n_requests_by_user(current_user_id, n=5)
+    return {"requests": requests}
 

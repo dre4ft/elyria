@@ -5,11 +5,11 @@ from ai_core.providers_api import openai as openai_provider
 from ai_core import tools as tools
 import database.ai_mgmt as ai_mgmt
 
-MAX_TOOL_ROUNDS = 10
+
 
 
 class AIWrapper:
-    def __init__(self, provider_type, url=None, api_key=None, model=None):
+    def __init__(self, provider_type, url=None, api_key=None, model=None, tools_rounds :int =5):
         if provider_type == 'ollama':
             self.provider = ollama_provider.OllamaProvider(model=model, host=url)
         elif provider_type == 'openai':
@@ -17,13 +17,14 @@ class AIWrapper:
         else:
             raise ValueError(f"Unsupported provider type: {provider_type}")
         self.tools = tools.get_tools()
+        self.rounds = tools_rounds
 
     def chat(self, message: str, user_id: str, conversation_id: str = None):
         conversation_id = ai_mgmt.add_message(self.message_wrapper(message), user_id, conversation_id)
         if not conversation_id:
             raise ValueError("Failed to save message")
 
-        for _ in range(MAX_TOOL_ROUNDS):
+        for _ in range(self.rounds):
             messages = ai_mgmt.get_conversation_messages(conversation_id=conversation_id)
             ai_return = self.provider.chat(messages, tools=self.tools)
 
@@ -52,7 +53,7 @@ class AIWrapper:
             if raw_tool_calls:
                 for tc in raw_tool_calls:
                     tool_params = json.loads(tc.function.arguments)
-                    tool_response = tools.handle_tool_call(tc.function.name, tool_params)
+                    tool_response = tools.handle_tool_call(user_id, tc.function.name, tool_params)
                     tool_msg = {
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -64,7 +65,6 @@ class AIWrapper:
             else:
                 return {"conversation_id": conversation_id, "response": ai_return}
 
-        # Max rounds exhausted — force a final text response without tools
         messages = ai_mgmt.get_conversation_messages(conversation_id=conversation_id)
         ai_return = self.provider.chat(messages)
         final_msg = {"role": "assistant", "content": ai_return["content"]}

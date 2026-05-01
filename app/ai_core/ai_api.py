@@ -57,6 +57,7 @@ class InitProviderRequest(BaseModel):
     provider_url: str = None
     api_key: str = None 
     model: str = None
+    tools_rounds: int = 5
 
 """
 
@@ -99,7 +100,8 @@ async def init_provider(init_request: InitProviderRequest):
             provider_type=init_request.provider_type,
             url=init_request.provider_url,
             api_key=init_request.api_key,
-            model=init_request.model
+            model=init_request.model,
+            tools_rounds=init_request.tools_rounds
         )
         return JSONResponse(content={"message": f"Provider {init_request.provider_type} initialized successfully"})
     except ValueError as e:

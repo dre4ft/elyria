@@ -114,3 +114,20 @@ def get_requests_by_userid(author_user_id:str, limit : int = 10, offset :int =0)
     finally:
         if conn:
             conn.close()
+
+def get_last_n_requests_by_user(author_user_id:str, n:int = 5):
+    conn = None 
+    try:
+        conn = connect()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM requests WHERE author_user_id=? ORDER BY date DESC LIMIT ?",(author_user_id,n))
+
+        return [dict(row) for row in cursor.fetchall()]
+
+    except Exception as e:
+        print("Unexpected error:", e)
+        return None 
+
+    finally:
+        if conn:
+            conn.close()
