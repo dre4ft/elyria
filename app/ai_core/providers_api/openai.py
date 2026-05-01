@@ -18,6 +18,8 @@ class OpenAIProvider:
             "model": self.model,
             "messages": messages,
             "stream": False,
+            "reasoning_effort": "high",
+            "extra_body": {"thinking": {"type": "enabled"}}
         }
         if tools:
             params["tools"] = tools
@@ -27,7 +29,8 @@ class OpenAIProvider:
         message = response.choices[0].message
         return {
             "content": message.content,
-            "tool_calls": message.tool_calls if hasattr(message, 'tool_calls') else None
+            "tool_calls": message.tool_calls if hasattr(message, 'tool_calls') else None,
+            "reasoning_content": getattr(message, 'reasoning_content', None),
         }
     
     def update_model(self, model):

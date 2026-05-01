@@ -15,7 +15,7 @@ def get_tools():
                         "folder_id": {"type": "string", "description": "ID of the folder to put the request in (optional)"},
                         "url": {"type": "string", "description": "URL of the request"},
                         "method": {"type": "string", "description": "HTTP method of the request"},
-                        "headers": {"type": "dict", "description": "Headers of the request (optional)"},
+                        "headers": {"type": "string", "description": "Headers of the request (optional) in string format, will be parsed as JSON"},
                         "body": {"type": "string", "description": "Body of the request (optional)"},
                     },
                     "required": ["name", "url", "method"],
@@ -47,7 +47,7 @@ def get_tools():
                     "properties": {
                         "url": {"type": "string", "description": "URL of the request"},
                         "method": {"type": "string", "description": "HTTP method of the request"},
-                        "headers": {"type": "dict", "description": "Headers of the request (optional)"},
+                        "headers": {"type": "string", "description": "Headers of the request (optional) in string format, will be parsed as JSON"},
                         "body": {"type": "string", "description": "Body of the request (optional)"},
                     },
                     "required": ["url", "method"],
@@ -123,6 +123,7 @@ def handle_tool_call(tool_name, parameters):
 
 def create_structured_request(name,  url, method,folder_id=None, headers=None, body=None):
     current_user_id = "a8e327d8-2939-4d36-a9c6-bf1b16793c33"  # TODO: get the actual user ID from the context/session
+    headers = json_helper.from_json(headers) if headers else None
     request_id = collection_mgmt.create_saved_request(name=name, author_user_id=current_user_id, folder_id=folder_id, method=method, url=url, headers=headers, body=body, is_done_by_ai=True)
     return {"request_id": request_id}
 
@@ -132,8 +133,9 @@ def create_folder(name, parent_id=None):
     folder_id = collection_mgmt.create_folder(name=name, author_user_id=current_user_id, parent_id=parent_id)
     return {"folder_id": folder_id}
 
-def send_request(url:str, method: str, headers:dict=None, body:str=None):
+def send_request(url:str, method: str, headers:str=None, body:str=None):
     current_user_id = "a8e327d8-2939-4d36-a9c6-bf1b16793c33"  # TODO: get the actual user ID from the context/session
+    headers = json_helper.from_json(headers) if headers else None
     req_uuid, resp = handle_request(user_id=current_user_id, url=url, method=method, headers=headers, body=body, is_done_by_ai=True) 
     return {"response_uuid":req_uuid,"response": resp}
 

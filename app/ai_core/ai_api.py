@@ -113,7 +113,7 @@ def get_provider_config():
 
 @app.post("")
 async def chat_endpoint(request: Request, chat_request: ChatRequest):
-    user_id = request.state.token
+    user_id = request.state.token["sub"]
     try:
         response = AI_PROVIDER.chat(
             message=chat_request.message,

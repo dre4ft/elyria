@@ -28,6 +28,8 @@ class AIWrapper:
             ai_return = self.provider.chat(messages, tools=self.tools)
 
             assistant_msg = {"role": "assistant", "content": ai_return["content"]}
+            if ai_return.get("reasoning_content"):
+                assistant_msg["reasoning_content"] = ai_return["reasoning_content"]
 
             raw_tool_calls = ai_return.get("tool_calls")
             if raw_tool_calls:
@@ -65,9 +67,10 @@ class AIWrapper:
         # Max rounds exhausted — force a final text response without tools
         messages = ai_mgmt.get_conversation_messages(conversation_id=conversation_id)
         ai_return = self.provider.chat(messages)
-        conversation_id = ai_mgmt.add_message(
-            self.message_wrapper(ai_return["content"], role="assistant"), user_id, conversation_id
-        )
+        final_msg = {"role": "assistant", "content": ai_return["content"]}
+        if ai_return.get("reasoning_content"):
+            final_msg["reasoning_content"] = ai_return["reasoning_content"]
+        conversation_id = ai_mgmt.add_message(final_msg, user_id, conversation_id)
         return {"conversation_id": conversation_id, "response": ai_return}
 
     def message_wrapper(self, message: str, role: str = "user"):
