@@ -97,6 +97,19 @@
   border-color: rgba(124, 58, 237, 0.25);
 }
 
+/* ── AI Badge ── */
+.ai-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  flex-shrink: 0;
+}
+
 /* ── Method Badges ── */
 .method-badge {
   font-size: 9px;
@@ -401,13 +414,17 @@ textarea {
 }
 .collection-request {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   padding: 0.375rem 0.5rem;
   border-radius: 0.375rem;
   cursor: pointer;
   transition: all 0.15s;
   border: 1px solid transparent;
+}
+.collection-request .method-badge {
+  margin-top: 1px;
+  flex-shrink: 0;
 }
 .collection-request:hover {
   background: rgba(255, 255, 255, 0.03);
@@ -416,6 +433,9 @@ textarea {
 .collection-request.active {
   background: rgba(124, 58, 237, 0.1);
   border-color: rgba(124, 58, 237, 0.25);
+}
+.collection-request.active .method-badge {
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.3);
 }
 .collection-folder-header .folder-actions {
   display: flex;

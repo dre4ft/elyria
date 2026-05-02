@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ReqVault — Workflow Builder</title>
+  <title>Elyria — Workflow Builder</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -29,12 +29,12 @@
   <!-- ===== TOP BAR ===== -->
   <header class="h-12 bg-base-800 border-b border-white/5 flex items-center justify-between px-5 shrink-0 z-50 relative">
     <div class="flex items-center gap-3">
-      <a href="/" class="flex items-center gap-3 no-underline">
+      <button onclick="navigateTo('/app')" class="flex items-center gap-3 no-underline bg-transparent border-none cursor-pointer p-0">
         <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
           <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
         </div>
         <span class="text-sm font-semibold tracking-wide text-white">Ely<span class="text-primary-light">ria</span></span>
-      </a>
+      </button>
       <div class="w-px h-5 bg-white/10 mx-1"></div>
       <div class="flex items-center gap-1.5">
         <svg class="w-4 h-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z"/></svg>
@@ -55,6 +55,11 @@
       <button id="btn-clear-canvas" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-500 hover:text-gray-300 text-xs font-medium transition-all flex items-center gap-1.5">
         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
         Clear
+      </button>
+      <div class="w-px h-5 bg-white/10 mx-1"></div>
+      <span id="header-username" class="text-[10px] text-gray-500 font-medium hidden"></span>
+      <button id="btn-logout" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-red-500/10 border border-white/5 hover:border-red-500/30 text-gray-500 hover:text-red-400 text-xs font-medium transition-all flex items-center gap-1.5" title="Déconnexion">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/></svg>
       </button>
     </div>
   </header>
@@ -116,6 +121,18 @@
         <div class="wf-palette-item" data-block-type="raw_request" draggable="true">
           <div class="wf-palette-icon bg-teal-500/15 text-teal-400"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"/></svg></div>
           <div><div class="wf-palette-label">Raw Request</div><div class="wf-palette-desc">Socket / HTTP brut</div></div>
+        </div>
+
+        <!-- Category: Saved Requests from Collections -->
+        <div class="px-2 pt-4 pb-1 flex items-center justify-between">
+          <span class="text-[9px] uppercase tracking-widest text-gray-600 font-bold">Mes collections</span>
+          <button id="btn-refresh-saved" class="text-[9px] text-gray-600 hover:text-gray-400 transition-colors" title="Rafraîchir">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
+          </button>
+        </div>
+        <div id="wf-saved-requests" class="space-y-0.5">
+          <div id="wf-saved-loading" class="text-[10px] text-gray-600 px-3 py-2">Chargement...</div>
+          <div id="wf-saved-empty" class="text-[10px] text-gray-600 px-3 py-2 hidden">Aucune requête sauvegardée</div>
         </div>
 
       </div>
@@ -187,6 +204,7 @@
     </aside>
   </div>
 
+  <script src="static/auth.js"></script>
   <script src="static/workflow.js"></script>
 </body>
 </html>

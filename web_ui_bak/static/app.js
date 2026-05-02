@@ -4,31 +4,111 @@
    ═══════════════════════════════════════════════════════════════ */
 
 // ─────────────────────────────────────────────
-// CONFIG — API Endpoints (placeholders)
+// CONFIG — API Endpoints
 // ─────────────────────────────────────────────
 const API = {
-  structured:    '/request/rest',           // POST { url, method, headers?, body? }
-  raw:           '/request/raw',            // POST { url, request }
-  getRequest:    '/data/requests',          // GET  /api/requests/:id
-  chat:          '/api/chat',             // POST { message, requetesId }
-  collections:   '/api/collections',       // GET  → list all collections/folders/requests
-  createFolder:  '/api/collections/folder',// POST { name, parentId? }
-  createRequest: '/api/collections/request',// POST { name, method, url, folderId?, ... }
-  updateRequest: '/api/collections/request',// PUT  /:id { name, method, url, ... }
-  deleteRequest: '/api/collections/request',// DELETE /:id
-  deleteFolder:  '/api/collections/folder', // DELETE /:id
+  structured:    'api/request/rest',              // POST { url, method, headers?, body? }
+  raw:           'api/request/raw',               // POST { url, request }
+  getRequest:    'api/requests/byId',        // GET  /:id
+  userHistory:   'api/requests/byUserId',    // GET  /:userId?limit=&page=
+  chat:          'api/chat',                  // POST { message, conversationId }
+  collections:   'api/collections',           // GET  → list all collections/folders/requests
+  createFolder:  'api/collections/folder',    // POST { name, parentId? }
+  createRequest: 'api/collections/request',   // POST { name, method, url, folderId?, ... }
+  updateRequest: 'api/collections/request',   // PUT  /:id { name, method, url, ... }
+  deleteRequest: 'api/collections/request',   // DELETE /:id
+  deleteFolder:  'api/collections/folder',    // DELETE /:id
 };
 
 // ─────────────────────────────────────────────
 // STATE
 // ─────────────────────────────────────────────
 const state = {
+  conversation_id : null,
   currentRequestId: null,
   history: [],
   chatOpen: false,
   sidebarTab: 'collections',  // 'collections' | 'history'
   collections: [],             // tree: [{ id, name, type:'folder', children:[], expanded }, { id, name, type:'request', method, url }]
+  activeCollectionId: null,   // ID de la requête de collection actuellement chargée
 };
+
+// Clé localStorage pour la sauvegarde temporaire du builder
+const BUILDER_STATE_KEY = 'elyria_builder_state';
+
+// ─────────────────────────────────────────────
+// BUILDER STATE PERSISTENCE (localStorage temporaire)
+// ─────────────────────────────────────────────
+function saveBuilderState() {
+  const builderState = {
+    method: dom.reqMethod.value,
+    url: dom.reqUrl.value,
+    body: dom.reqBody.value,
+    contentType: dom.bodyContentType.value,
+    params: getParams(),
+    headers: getHeaders(),
+    activeCollectionId: state.activeCollectionId,
+    savedAt: Date.now(),
+  };
+  try {
+    localStorage.setItem(BUILDER_STATE_KEY, JSON.stringify(builderState));
+  } catch {}
+}
+
+function restoreBuilderState() {
+  try {
+    const raw = localStorage.getItem(BUILDER_STATE_KEY);
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    if (!saved || typeof saved !== 'object') return false;
+
+    dom.reqMethod.value = saved.method || 'GET';
+    dom.reqUrl.value = saved.url || '';
+    dom.reqBody.value = saved.body || '';
+    if (saved.contentType) dom.bodyContentType.value = saved.contentType;
+
+    // Restaurer les params
+    clearParams();
+    const params = saved.params || [];
+    if (params.length > 0) {
+      params.forEach(p => addParamRow(p.key, p.value, p.enabled !== false));
+    } else {
+      addParamRow('', '', true);
+    }
+
+    // Restaurer les headers
+    clearHeaders();
+    const headers = saved.headers || {};
+    const headerEntries = Object.entries(headers);
+    if (headerEntries.length > 0) {
+      headerEntries.forEach(([k, v]) => addHeaderRow(k, v));
+    } else {
+      addHeaderRow('', '');
+    }
+
+    state.activeCollectionId = saved.activeCollectionId || null;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function setupBuilderAutoSave() {
+  // Sauvegarder à chaque changement dans le builder
+  dom.reqMethod.addEventListener('change', saveBuilderState);
+  dom.reqUrl.addEventListener('input', saveBuilderState);
+  dom.reqBody.addEventListener('input', saveBuilderState);
+  dom.bodyContentType.addEventListener('change', saveBuilderState);
+
+  // Observer les changements dans les listes params/headers
+  const observer = new MutationObserver(() => saveBuilderState());
+  observer.observe(dom.paramsList, { childList: true, subtree: true, characterData: true });
+  observer.observe(dom.headersList, { childList: true, subtree: true, characterData: true });
+
+  // Sauvegarder aussi quand on tape dans les inputs params/headers
+  dom.paramsList.addEventListener('input', saveBuilderState);
+  dom.headersList.addEventListener('input', saveBuilderState);
+}
 
 // ─────────────────────────────────────────────
 // DOM REFERENCES
@@ -83,6 +163,7 @@ const dom = {
   searchCollections: $('#search-collections'),
   btnNewFolder:     $('#btn-new-folder'),
   btnNewRequest:    $('#btn-new-request'),
+  btnRefreshCol:    $('#btn-refresh-collections'),
   btnCreateFirst:   $('#btn-create-first-collection'),
 
   // Sidebar — history
@@ -98,8 +179,16 @@ const dom = {
   btnSendChat:   $('#btn-send-chat'),
   btnToggleChat: $('#btn-toggle-chat'),
   btnCloseChat:  $('#btn-close-chat'),
+  btnClearChat:  $('#btn-clear-chat'),
   chatContext:   $('#chat-context'),
   chatContextId: $('#chat-context-id'),
+
+  // Modal
+  createModal:    $('#create-modal'),
+  modalTitle:     $('#modal-title'),
+  modalInput:     $('#modal-input'),
+  btnModalCancel: $('#btn-modal-cancel'),
+  btnModalOk:     $('#btn-modal-ok'),
 
   // Loading
   loadingOverlay: $('#loading-overlay'),
@@ -109,6 +198,20 @@ const dom = {
 // INIT
 // ─────────────────────────────────────────────
 function init() {
+  if (window.__appInitCalled) return;
+  window.__appInitCalled = true;
+  initAuth();
+
+  // Afficher le nom d'utilisateur et configurer le bouton logout
+  const user = getUser();
+  const usernameEl = $('#header-username');
+  const logoutBtn = $('#btn-logout');
+  if (user && usernameEl && logoutBtn) {
+    usernameEl.textContent = user.username || user.userId;
+    usernameEl.classList.remove('hidden');
+    logoutBtn.addEventListener('click', logout);
+  }
+
   setupSidebarTabs();
   setupTabs();
   setupSubtabs();
@@ -122,12 +225,21 @@ function init() {
   setupResizeHandle();
   setupKeyboardShortcuts();
 
-  // Add initial empty rows
-  addParamRow('', '', true);
-  addHeaderRow('', '');
+  // Restaurer l'état du builder (ou ajouter des rows vides par défaut)
+  const restored = restoreBuilderState();
+  if (!restored) {
+    addParamRow('', '', true);
+    addHeaderRow('', '');
+  }
 
-  // Load collections (mock for now)
+  // Activer l'auto-sauvegarde du builder
+  setupBuilderAutoSave();
+
+  // Load collections
   loadCollections();
+
+  // Load user's past requests from backend
+  loadHistory();
 }
 
 // ─────────────────────────────────────────────
@@ -426,20 +538,22 @@ async function sendStructured() {
   try {
     const res = await fetch(API.structured, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(payload),
     });
     const data = await res.json();
     const elapsed = Math.round(performance.now() - startTime);
 
+    const responseData = data.response || data;
+
     // Store in history
     const entry = {
-      id: data.requestId || data.id || generateId(),
+      id: data.request_uuid || generateId(),
       method,
       url,
-      statusCode: data.statusCode,
-      headers: data.headers || {},
-      body: data.body || '',
+      statusCode: responseData.status_code,
+      headers: responseData.headers || {},
+      body: responseData.body || '',
       type: 'structured',
       reqHeaders: headers,
       reqBody: body,
@@ -448,6 +562,9 @@ async function sendStructured() {
     };
     addToHistory(entry);
     displayResponse(entry, elapsed);
+
+    // Sync collection request if anything changed
+    syncCollectionRequest({ method, url, headers, body });
   } catch (err) {
     displayError(err.message);
   } finally {
@@ -469,29 +586,33 @@ async function sendRaw() {
   try {
     const res = await fetch(API.raw, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(payload),
     });
     const data = await res.json();
     const elapsed = Math.round(performance.now() - startTime);
+
+    const responseData = data.response || data;
 
     // Detect method from raw
     const methodMatch = rawRequest.match(/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s/i);
     const method = methodMatch ? methodMatch[1].toUpperCase() : 'RAW';
 
     const entry = {
-      id: data.requestId || data.id || generateId(),
+      id: data.request_uuid || generateId(),
       method,
       url,
-      statusCode: data.statusCode,
-      headers: data.headers || {},
-      body: data.body || '',
+      statusCode: responseData.status_code,
+      headers: responseData.headers || {},
+      body: responseData.body || '',
       type: 'raw',
       rawRequest,
       timestamp: Date.now(),
     };
     addToHistory(entry);
     displayResponse(entry, elapsed);
+
+    syncCollectionRequest({ method, url });
   } catch (err) {
     displayError(err.message);
   } finally {
@@ -560,54 +681,59 @@ function displayError(message) {
 // COLLECTIONS (Directory)
 // ─────────────────────────────────────────────
 function setupCollections() {
-  dom.btnNewFolder.addEventListener('click', () => createFolder());
-  dom.btnNewRequest.addEventListener('click', () => createCollectionRequest());
-  dom.btnCreateFirst.addEventListener('click', () => createFolder());
+  dom.btnNewFolder.addEventListener('click', () => showCreateModal('Créer un dossier', 'Nom du dossier', createFolder));
+  dom.btnNewRequest.addEventListener('click', () => showCreateModal('Créer une requête', 'Nom de la requête', createCollectionRequest));
+  dom.btnCreateFirst.addEventListener('click', () => showCreateModal('Créer un dossier', 'Nom du dossier', createFolder));
+  dom.btnRefreshCol.addEventListener('click', () => loadCollections());
   dom.searchCollections.addEventListener('input', renderCollections);
+
+  // Setup modal
+  dom.btnModalCancel.addEventListener('click', hideCreateModal);
+  dom.btnModalOk.addEventListener('click', () => {
+    const name = dom.modalInput.value.trim();
+    if (name && dom.btnModalOk.callback) {
+      dom.btnModalOk.callback(name);
+    }
+    hideCreateModal();
+  });
+  dom.modalInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      dom.btnModalOk.click();
+    } else if (e.key === 'Escape') {
+      hideCreateModal();
+    }
+  });
 }
 
 async function loadCollections() {
-  // TODO: Replace with real API call
-  // try {
-  //   const res = await fetch(API.collections);
-  //   state.collections = await res.json();
-  // } catch { }
+  // Sauvegarder l'état expanded des dossiers existants
+  const expandedMap = {};
+  function collectExpanded(nodes) {
+    for (const n of nodes) {
+      if (n.type === 'folder') {
+        expandedMap[n.id] = !!n.expanded;
+        if (n.children) collectExpanded(n.children);
+      }
+    }
+  }
+  collectExpanded(state.collections);
 
-  // Mock data for UI preview
-  state.collections = [
-    {
-      id: 'f1', name: 'Auth Service', type: 'folder', expanded: true,
-      children: [
-        { id: 'r1', name: 'Login', type: 'request', method: 'POST', url: 'https://api.example.com/auth/login' },
-        { id: 'r2', name: 'Register', type: 'request', method: 'POST', url: 'https://api.example.com/auth/register' },
-        { id: 'r3', name: 'Refresh Token', type: 'request', method: 'POST', url: 'https://api.example.com/auth/refresh' },
-      ]
-    },
-    {
-      id: 'f2', name: 'Users', type: 'folder', expanded: false,
-      children: [
-        { id: 'r4', name: 'List Users', type: 'request', method: 'GET', url: 'https://api.example.com/users' },
-        { id: 'r5', name: 'Get User', type: 'request', method: 'GET', url: 'https://api.example.com/users/:id' },
-        { id: 'r6', name: 'Update User', type: 'request', method: 'PUT', url: 'https://api.example.com/users/:id' },
-        { id: 'r7', name: 'Delete User', type: 'request', method: 'DELETE', url: 'https://api.example.com/users/:id' },
-      ]
-    },
-    {
-      id: 'f3', name: 'Orders', type: 'folder', expanded: false,
-      children: [
-        {
-          id: 'f4', name: 'CRUD', type: 'folder', expanded: false,
-          children: [
-            { id: 'r8', name: 'Create Order', type: 'request', method: 'POST', url: 'https://api.example.com/orders' },
-            { id: 'r9', name: 'List Orders', type: 'request', method: 'GET', url: 'https://api.example.com/orders' },
-          ]
-        },
-        { id: 'r10', name: 'Cancel Order', type: 'request', method: 'PATCH', url: 'https://api.example.com/orders/:id/cancel' },
-      ]
-    },
-    { id: 'r11', name: 'Health Check', type: 'request', method: 'GET', url: 'https://api.example.com/health' },
-  ];
-
+  try {
+    const res = await fetch(API.collections, { headers: { ...getAuthHeader() } });
+    if (res.ok) {
+      state.collections = await res.json();
+      // Restaurer l'état expanded
+      function restoreExpanded(nodes) {
+        for (const n of nodes) {
+          if (n.type === 'folder') {
+            if (expandedMap.hasOwnProperty(n.id)) n.expanded = expandedMap[n.id];
+            if (n.children) restoreExpanded(n.children);
+          }
+        }
+      }
+      restoreExpanded(state.collections);
+    }
+  } catch { }
   renderCollections();
 }
 
@@ -691,6 +817,13 @@ function renderFolderNode(folder, depth) {
     childrenContainer.appendChild(renderCollectionNode(child, depth + 1));
   });
 
+  // Double-click to rename
+  header.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.folder-actions')) return;
+    e.stopPropagation();
+    renameFolder(folder);
+  });
+
   // Toggle expand/collapse
   header.addEventListener('click', (e) => {
     if (e.target.closest('.folder-actions')) return;
@@ -722,7 +855,7 @@ function renderFolderNode(folder, depth) {
   // Folder action: add request
   header.querySelector('[data-action="add-request"]').addEventListener('click', (e) => {
     e.stopPropagation();
-    createCollectionRequest(folder.id);
+    showCreateModal('Créer une requête', 'Nom de la requête', (name) => createCollectionRequest(name, folder.id));
   });
 
   // Folder action: delete
@@ -741,10 +874,24 @@ function renderRequestNode(req) {
   item.className = 'collection-request';
   item.dataset.id = req.id;
 
-  const methodLower = (req.method || 'GET').toLowerCase();
+  const method = req.method || 'GET';
+  const methodLower = method.toLowerCase();
+  const isActive = req.id === state.activeCollectionId;
+  if (isActive) item.classList.add('active');
+
+  const aiBadge = req.isDoneByAI
+    ? `<span class="ai-badge" title="Généré par IA"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg></span>`
+    : '';
+
+  const urlPreview = req.url ? `<span class="text-[10px] text-gray-600 truncate font-['JetBrains_Mono'] block leading-tight">${escapeHtml(truncateUrl(req.url, 40))}</span>` : '';
+
   item.innerHTML = `
-    <span class="method-badge ${methodLower}" style="font-size:8px;padding:1px 4px;min-width:30px;">${escapeHtml(req.method || 'GET')}</span>
-    <span class="text-xs text-gray-300 truncate flex-1">${escapeHtml(req.name)}</span>
+    <span class="method-badge ${methodLower}">${escapeHtml(method)}</span>
+    <div class="flex-1 min-w-0">
+      <span class="text-xs text-gray-300 truncate block leading-tight">${escapeHtml(req.name)}</span>
+      ${urlPreview}
+    </div>
+    ${aiBadge}
     <div class="req-actions">
       <button title="Supprimer" data-action="delete-request">
         <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
@@ -756,9 +903,13 @@ function renderRequestNode(req) {
   item.addEventListener('click', (e) => {
     if (e.target.closest('.req-actions')) return;
     loadCollectionRequest(req);
-    // Highlight active
-    dom.collectionsTree.querySelectorAll('.collection-request').forEach(el => el.classList.remove('active'));
-    item.classList.add('active');
+  });
+
+  // Double-click to rename
+  item.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.req-actions')) return;
+    e.stopPropagation();
+    renameRequest(req);
   });
 
   // Delete action
@@ -798,73 +949,194 @@ function loadCollectionRequest(req) {
   } else {
     headerEntries.forEach(([k, v]) => addHeaderRow(k, v));
   }
-}
 
-function createFolder(parentId) {
-  const name = prompt('Nom du dossier :');
-  if (!name || !name.trim()) return;
+  // Marquer comme actif et sauvegarder
+  state.activeCollectionId = req.id;
 
-  const newFolder = {
-    id: 'f-' + generateId().substring(0, 8),
-    name: name.trim(),
-    type: 'folder',
-    expanded: true,
-    children: [],
-  };
+  // Save snapshot in localStorage for auto-sync on send
+  saveCollectionSnapshot(req);
+  saveBuilderState();
 
-  // TODO: API call
-  // await fetch(API.createFolder, { method:'POST', body: JSON.stringify({ name, parentId }) });
-
-  if (parentId) {
-    const parent = findNodeById(state.collections, parentId);
-    if (parent && parent.children) {
-      parent.children.push(newFolder);
-    }
-  } else {
-    state.collections.push(newFolder);
-  }
+  // Re-render pour mettre à jour l'état actif visuel
   renderCollections();
 }
 
-function createCollectionRequest(folderId) {
-  const name = prompt('Nom de la requête :');
-  if (!name || !name.trim()) return;
+// ─────────────────────────────────────────────
+// COLLECTION REQUEST AUTO-SYNC (localStorage)
+// ─────────────────────────────────────────────
 
-  const newReq = {
-    id: 'r-' + generateId().substring(0, 8),
-    name: name.trim(),
-    type: 'request',
-    method: 'GET',
-    url: '',
-  };
-
-  // TODO: API call
-  // await fetch(API.createRequest, { method:'POST', body: JSON.stringify({ name, folderId }) });
-
-  if (folderId) {
-    const folder = findNodeById(state.collections, folderId);
-    if (folder && folder.children) {
-      folder.children.push(newReq);
-      folder.expanded = true;
-    }
-  } else {
-    state.collections.push(newReq);
-  }
-  renderCollections();
+function saveCollectionSnapshot(req) {
+  const headers = req.headers || {};
+  localStorage.setItem('collectionSnap', JSON.stringify({
+    id: req.id,
+    method: req.method || 'GET',
+    url: req.url || '',
+    headers: typeof headers === 'string' ? safeJsonParse(headers) || {} : headers,
+    body: req.body || '',
+  }));
 }
 
-function deleteCollectionFolder(id) {
+async function syncCollectionRequest(current) {
+  const raw = localStorage.getItem('collectionSnap');
+  if (!raw) return;
+  const snap = safeJsonParse(raw);
+  if (!snap || !snap.id) return;
+
+  const snapHeaders = sortKeys(snap.headers || {});
+  const currHeaders = sortKeys(current.headers || {});
+
+  const changed = (
+    (current.method && current.method !== snap.method) ||
+    (current.url && current.url !== snap.url) ||
+    (current.headers && JSON.stringify(currHeaders) !== JSON.stringify(snapHeaders)) ||
+    (current.body !== undefined && current.body !== snap.body)
+  );
+
+  if (!changed) return;
+
+  const merged = {
+    method: current.method || snap.method,
+    url: current.url || snap.url,
+    headers: current.headers || snap.headers,
+    body: current.body !== undefined ? current.body : snap.body,
+  };
+
+  const res = await fetch(`${API.updateRequest}/${snap.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify(merged),
+  });
+
+  if (res.ok) {
+    // Mettre à jour le snapshot local
+    const updatedSnap = { id: snap.id, ...merged };
+    localStorage.setItem('collectionSnap', JSON.stringify(updatedSnap));
+
+    // Rafraîchir l'arbre des collections depuis le backend
+    await loadCollections();
+
+    // Mettre à jour le champ url dans l'état builder sauvegardé
+    saveBuilderState();
+  }
+}
+
+function sortKeys(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const sorted = {};
+  Object.keys(obj).sort().forEach(k => { sorted[k] = obj[k]; });
+  return sorted;
+}
+
+// Clear snapshot when switching to non-collection request
+function clearCollectionSnapshot() {
+  localStorage.removeItem('collectionSnap');
+}
+
+async function createFolder(name, parentId) {
+  if (!name || !name.trim()) return;
+
+  const res = await fetch(API.createFolder, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ name: name.trim(), parentId }),
+  });
+
+  if (res.ok) {
+    loadCollections(); // Recharger tout depuis le backend
+  }
+}
+
+async function createCollectionRequest(name, folderId) {
+  if (!name || !name.trim()) return;
+
+  const res = await fetch(API.createRequest, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({
+      name: name.trim(),
+      method: 'GET',
+      url: '',
+      folderId,
+    }),
+  });
+
+  if (res.ok) {
+    loadCollections(); // Recharger tout depuis le backend
+  }
+}
+
+async function deleteCollectionFolder(id) {
   if (!confirm('Supprimer ce dossier et son contenu ?')) return;
-  // TODO: API call
-  state.collections = removeNodeById(state.collections, id);
-  renderCollections();
+  await fetch(`${API.deleteFolder}/${id}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() },
+  });
+  loadCollections(); // Recharger tout depuis le backend
 }
 
-function deleteCollectionRequest(id) {
+async function deleteCollectionRequest(id) {
   if (!confirm('Supprimer cette requête ?')) return;
-  // TODO: API call
-  state.collections = removeNodeById(state.collections, id);
-  renderCollections();
+  const res = await fetch(`${API.deleteRequest}/${id}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() },
+  });
+  if (res.ok) {
+    if (state.activeCollectionId === id) {
+      state.activeCollectionId = null;
+      clearCollectionSnapshot();
+      saveBuilderState();
+    }
+    loadCollections();
+  }
+}
+
+async function renameRequest(req) {
+  const newName = prompt('Renommer la requête :', req.name);
+  if (!newName || !newName.trim() || newName.trim() === req.name) return;
+
+  const res = await fetch(`${API.updateRequest}/${req.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ name: newName.trim() }),
+  });
+
+  if (res.ok) {
+    await loadCollections();
+    if (state.activeCollectionId === req.id) {
+      saveCollectionSnapshot({ ...req, name: newName.trim() });
+      saveBuilderState();
+    }
+  }
+}
+
+async function renameFolder(folder) {
+  const newName = prompt('Renommer le dossier :', folder.name);
+  if (!newName || !newName.trim() || newName.trim() === folder.name) return;
+
+  const res = await fetch(`${API.updateRequest}/${folder.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ name: newName.trim() }),
+  });
+
+  if (res.ok) {
+    loadCollections();
+  }
+}
+
+function showCreateModal(title, placeholder, callback) {
+  dom.modalTitle.textContent = title;
+  dom.modalInput.placeholder = placeholder;
+  dom.modalInput.value = '';
+  dom.btnModalOk.callback = callback;
+  dom.createModal.classList.remove('hidden');
+  dom.createModal.classList.add('flex');
+  dom.modalInput.focus();
+}
+
+function hideCreateModal() {
+  dom.createModal.classList.add('hidden');
+  dom.createModal.classList.remove('flex');
 }
 
 function findNodeById(nodes, id) {
@@ -891,7 +1163,46 @@ function removeNodeById(nodes, id) {
 // ─────────────────────────────────────────────
 function setupHistory() {
   dom.searchHistory.addEventListener('input', renderHistory);
-  dom.btnRefresh.addEventListener('click', renderHistory);
+  dom.btnRefresh.addEventListener('click', () => loadHistory(true));
+}
+
+async function loadHistory(forceRefresh = false) {
+  if (state.history.length > 0 && !forceRefresh) return;
+
+  try {
+    const user = getUser();
+    const userId = user ? user.userId : 'anonymous';
+    const url = `${API.userHistory}/${userId}?limit=50&page=1`;
+    const res = await fetch(url, { headers: { ...getAuthHeader() } });
+    if (!res.ok) return;
+    const rows = await res.json();
+    if (!Array.isArray(rows)) return;
+
+    rows.reverse().forEach(row => {
+      const entry = {
+        id: row.request_id,
+        method: row.request_method,
+        url: row.request_url,
+        statusCode: row.request_status_code,
+        reqHeaders: safeJsonParse(row.request_headers) || {},
+        reqBody: row.request_body || '',
+        reqParams: [],
+        headers: safeJsonParse(row.response_headers) || {},
+        body: row.response_body || '',
+        type: 'structured',
+        date: row.date || null,
+        isDoneByAI: row.is_done_by_ai === 1 || row.is_done_by_ai === true,
+        timestamp: row.date ? new Date(row.date).getTime() : Date.now(),
+      };
+      // Avoid duplicates
+      if (!state.history.find(h => h.id === entry.id)) {
+        state.history.push(entry);
+      }
+    });
+
+    state.history.sort((a, b) => b.timestamp - a.timestamp);
+    renderHistory();
+  } catch { }
 }
 
 function addToHistory(entry) {
@@ -922,7 +1233,10 @@ function renderHistory() {
     const urlShort = truncateUrl(entry.url, 28);
     const statusCode = entry.statusCode || '—';
     const statusClass = statusCode >= 500 ? 's5xx' : statusCode >= 400 ? 's4xx' : statusCode >= 300 ? 's3xx' : 's2xx';
-    const timeAgo = formatTimeAgo(entry.timestamp);
+    const dateDisplay = formatDate(entry.date || entry.timestamp);
+    const aiBadge = entry.isDoneByAI
+      ? `<span class="ai-badge" title="Généré par IA"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg></span>`
+      : '';
 
     item.innerHTML = `
       <span class="method-badge ${methodLower}">${entry.method}</span>
@@ -930,7 +1244,8 @@ function renderHistory() {
         <div class="text-xs text-gray-300 truncate font-['JetBrains_Mono'] leading-tight">${escapeHtml(urlShort)}</div>
         <div class="flex items-center gap-2 mt-0.5">
           <span class="text-[10px] font-mono font-semibold ${statusClass === 's2xx' ? 'text-green-400/70' : statusClass === 's4xx' ? 'text-orange-400/70' : statusClass === 's5xx' ? 'text-red-400/70' : 'text-blue-400/70'}">${statusCode}</span>
-          <span class="text-[10px] text-gray-600">${timeAgo}</span>
+          <span class="text-[10px] text-gray-600">${dateDisplay}</span>
+          ${aiBadge}
         </div>
       </div>
     `;
@@ -941,16 +1256,34 @@ function renderHistory() {
 }
 
 async function loadHistoryEntry(entry) {
+  clearCollectionSnapshot();
+  state.activeCollectionId = null;
   state.currentRequestId = entry.id;
   updateChatContext();
+  renderCollections();
 
   // Try to fetch the latest from the API
   let freshEntry = entry;
   try {
-    const res = await fetch(`${API.getRequest}/${entry.id}`);
+    const res = await fetch(`${API.getRequest}/${entry.id}`, {
+      headers: { ...getAuthHeader() },
+    });
     if (res.ok) {
-      const data = await res.json();
-      freshEntry = { ...entry, ...data };
+      const row = await res.json();
+      freshEntry = {
+        ...entry,
+        id: row.request_id || entry.id,
+        method: row.request_method || entry.method,
+        url: row.request_url || entry.url,
+        statusCode: row.request_status_code || entry.statusCode,
+        reqHeaders: safeJsonParse(row.request_headers) || entry.reqHeaders,
+        reqBody: row.request_body || entry.reqBody,
+        headers: safeJsonParse(row.response_headers) || entry.headers,
+        body: row.response_body || entry.body,
+        date: row.date || entry.date,
+        isDoneByAI: row.is_done_by_ai === 1 || row.is_done_by_ai === true,
+        timestamp: row.date ? new Date(row.date).getTime() : entry.timestamp,
+      };
     }
   } catch {
     // Use cached entry
@@ -1021,6 +1354,7 @@ async function loadHistoryEntry(entry) {
 function setupChat() {
   dom.btnToggleChat.addEventListener('click', toggleChat);
   dom.btnCloseChat.addEventListener('click', toggleChat);
+  dom.btnClearChat.addEventListener('click', clearChatHistory);
   dom.btnSendChat.addEventListener('click', sendChatMessage);
   dom.chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1040,6 +1374,30 @@ function toggleChat() {
     dom.chatPanel.classList.add('hidden');
     dom.chatPanel.classList.remove('flex');
   }
+  updateChatContext();
+}
+
+function clearChatHistory() {
+  // Clear all messages
+  dom.chatMessages.innerHTML = '';
+
+  // Reset conversation ID
+  state.conversation_id = null;
+
+  // Add initial welcome message
+  const initialMessage = document.createElement('div');
+  initialMessage.className = 'flex gap-3';
+  initialMessage.innerHTML = `
+    <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+      <svg class="w-3.5 h-3.5 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+    </div>
+    <div class="bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed max-w-[280px]">
+      Bonjour ! Je suis votre assistant API. Posez-moi des questions sur vos requêtes ou demandez-moi de l'aide pour débugger vos appels.
+    </div>
+  `;
+  dom.chatMessages.appendChild(initialMessage);
+
+  // Update context
   updateChatContext();
 }
 
@@ -1097,18 +1455,19 @@ async function sendChatMessage() {
 
   const payload = {
     message,
-    requetesId: state.currentRequestId || null,
+    conversationId: state.conversation_id || null,
   };
 
   try {
     const res = await fetch(API.chat, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(payload),
     });
     const data = await res.json();
+    state.conversation_id = data.conversation_id; 
     removeChatLoading();
-    addChatMessage(data.response || data.message || 'Réponse reçue.', 'ai');
+    addChatMessage(data.response.content, 'ai');
   } catch (err) {
     removeChatLoading();
     addChatMessage(`Erreur de connexion : ${err.message}`, 'ai');
@@ -1213,6 +1572,23 @@ function truncateUrl(url, max) {
   }
 }
 
+function formatDate(dateOrTs) {
+  if (!dateOrTs) return '';
+  const d = typeof dateOrTs === 'string' ? new Date(dateOrTs) : new Date(dateOrTs);
+  if (isNaN(d.getTime())) return '';
+  const now = new Date();
+  const diff = now - d;
+  const secs = Math.floor(diff / 1000);
+
+  if (secs < 5) return 'maintenant';
+  if (secs < 60) return `${secs}s`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}min`;
+  if (secs < 86400) {
+    return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
 function formatTimeAgo(ts) {
   if (!ts) return '';
   const diff = Date.now() - ts;
@@ -1247,6 +1623,15 @@ function generateId() {
   });
 }
 
+function safeJsonParse(str) {
+  if (!str) return null;
+  try {
+    return JSON.parse(str);
+  } catch {
+    return null;
+  }
+}
+
 // ── Shake keyframes (injected once) ──
 const shakeStyle = document.createElement('style');
 shakeStyle.textContent = `
@@ -1263,3 +1648,4 @@ document.head.appendChild(shakeStyle);
 // START
 // ─────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', init);
+init();

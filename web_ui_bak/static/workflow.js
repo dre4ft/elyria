@@ -4,9 +4,14 @@
    ═══════════════════════════════════════════════════════════════ */
 
 const API = {
-  structured: '/api/request',
-  raw: '/api/raw-request',
+  structured: '/api/request/rest',
+  raw: '/api/request/raw',
+  collections: '/api/collections',
 };
+// AUTH_HEADER fourni dynamiquement par auth.js via getAuthHeader()
+
+// Cache of saved requests loaded from collections
+let savedRequestsCache = {};
 
 // ─────────────────────────────────────────────
 // BLOCK DEFINITIONS
@@ -144,10 +149,26 @@ const dom = {
 // INIT
 // ─────────────────────────────────────────────
 function init() {
+  if (window.__appInitCalled) return;
+  window.__appInitCalled = true;
+  initAuth();
+
+  // Afficher le nom d'utilisateur et configurer le bouton logout
+  const user = getUser();
+  const usernameEl = document.getElementById('header-username');
+  const logoutBtn = document.getElementById('btn-logout');
+  if (user && usernameEl && logoutBtn) {
+    usernameEl.textContent = user.username || user.userId;
+    usernameEl.classList.remove('hidden');
+    logoutBtn.addEventListener('click', logout);
+  }
+
   setupPanelTabs();
   setupPaletteDrag();
   setupCanvasInteractions();
   setupToolbar();
+  setupSavedRequests();
+  loadSavedRequests();
   updateNodeCount();
 }
 
@@ -171,11 +192,21 @@ function setupPanelTabs() {
 // PALETTE DRAG → CANVAS DROP
 // ─────────────────────────────────────────────
 function setupPaletteDrag() {
-  $$('.wf-palette-item').forEach(item => {
-    item.addEventListener('dragstart', (e) => {
+  // Event delegation on the whole palette sidebar
+  const palette = document.getElementById('wf-palette');
+  palette.addEventListener('dragstart', (e) => {
+    const item = e.target.closest('.wf-palette-item, .wf-saved-item');
+    if (!item) return;
+
+    if (item.dataset.blockType) {
       e.dataTransfer.setData('block-type', item.dataset.blockType);
-      e.dataTransfer.effectAllowed = 'copy';
-    });
+    }
+
+    if (item.dataset.savedId) {
+      e.dataTransfer.setData('saved-id', item.dataset.savedId);
+    }
+
+    e.dataTransfer.effectAllowed = 'copy';
   });
 
   dom.canvasWrapper.addEventListener('dragover', (e) => {
@@ -185,11 +216,18 @@ function setupPaletteDrag() {
 
   dom.canvasWrapper.addEventListener('drop', (e) => {
     e.preventDefault();
-    const type = e.dataTransfer.getData('block-type');
-    if (!type || !BLOCK_DEFS[type]) return;
     const rect = dom.canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) / wf.zoom;
     const y = (e.clientY - rect.top) / wf.zoom;
+
+    const savedId = e.dataTransfer.getData('saved-id');
+    if (savedId && savedRequestsCache[savedId]) {
+      addSavedRequestNode(savedRequestsCache[savedId], x, y);
+      return;
+    }
+
+    const type = e.dataTransfer.getData('block-type');
+    if (!type || !BLOCK_DEFS[type]) return;
     addNode(type, x, y);
   });
 }
@@ -214,6 +252,111 @@ function addNode(type, x, y) {
   renderNode(node);
   selectNode(node.id);
   updateNodeCount();
+}
+
+// ─────────────────────────────────────────────
+// SAVED REQUEST → NODE
+// ─────────────────────────────────────────────
+function addSavedRequestNode(req, x, y) {
+  const data = {
+    method: req.method || 'GET',
+    url: req.url || '',
+    headers: req.headers ? (typeof req.headers === 'string' ? req.headers : JSON.stringify(req.headers)) : '',
+    body: req.body || '',
+    saveTo: 'response',
+  };
+
+  const node = {
+    id: 'n' + (wf.nextId++),
+    type: 'http_request',
+    x: Math.round(x / 24) * 24,
+    y: Math.round(y / 24) * 24,
+    data,
+    status: null,
+  };
+  wf.nodes.push(node);
+  renderNode(node);
+  selectNode(node.id);
+  updateNodeCount();
+}
+
+// ─────────────────────────────────────────────
+// LOAD SAVED REQUESTS FROM COLLECTIONS
+// ─────────────────────────────────────────────
+function setupSavedRequests() {
+  const refreshBtn = document.getElementById('btn-refresh-saved');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => loadSavedRequests(true));
+  }
+}
+
+async function loadSavedRequests(force = false) {
+  const container = document.getElementById('wf-saved-requests');
+  const loading = document.getElementById('wf-saved-loading');
+  const empty = document.getElementById('wf-saved-empty');
+
+  if (!container) return;
+
+  // Clear previous items
+  container.querySelectorAll('.wf-saved-item').forEach(el => el.remove());
+
+  try {
+    if (loading) loading.classList.remove('hidden');
+    if (empty) empty.classList.add('hidden');
+
+    const res = await fetch(API.collections, { headers: { ...getAuthHeader() } });
+    if (!res.ok) throw new Error('Failed');
+
+    const tree = await res.json();
+    if (loading) loading.classList.add('hidden');
+
+    // Flatten tree to get all request nodes
+    const requests = [];
+    function walk(nodes) {
+      for (const node of nodes) {
+        if (node.type === 'request') requests.push(node);
+        if (node.type === 'folder' && node.children) walk(node.children);
+      }
+    }
+    walk(tree);
+
+    if (requests.length === 0) {
+      if (empty) empty.classList.remove('hidden');
+      savedRequestsCache = {};
+      return;
+    }
+
+    savedRequestsCache = {};
+    requests.forEach(req => {
+      savedRequestsCache[req.id] = req;
+      const item = renderSavedRequestItem(req);
+      container.appendChild(item);
+    });
+  } catch {
+    if (loading) loading.classList.add('hidden');
+    if (empty) empty.classList.remove('hidden');
+    savedRequestsCache = {};
+  }
+}
+
+function renderSavedRequestItem(req) {
+  const item = document.createElement('div');
+  item.className = 'wf-saved-item';
+  item.dataset.savedId = req.id;
+  item.draggable = true;
+
+  const methodLower = (req.method || 'GET').toLowerCase();
+  const aiBadge = req.isDoneByAI
+    ? `<span class="ai-badge" title="Généré par IA" style="width:14px;height:14px;margin-left:auto;flex-shrink:0;"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg></span>`
+    : '';
+
+  item.innerHTML = `
+    <span class="method-badge ${methodLower}" style="font-size:7px;padding:1px 3px;min-width:26px;flex-shrink:0;">${escapeHtml(req.method || 'GET')}</span>
+    <span class="text-[10px] text-gray-300 truncate flex-1 font-medium">${escapeHtml(req.name)}</span>
+    ${aiBadge}
+  `;
+
+  return item;
 }
 
 // ─────────────────────────────────────────────
@@ -468,6 +611,39 @@ function renderConfigPanel(nodeId) {
 
   dom.configForm.innerHTML = html;
 
+  // Add examples for assert block
+  if (node.type === 'assert') {
+    dom.configForm.innerHTML += `
+      <div class="wf-config-examples">
+        <div class="wf-config-examples-title">
+          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/></svg>
+          ctx.response
+        </div>
+        <div class="wf-config-example" data-expr="ctx.response.status_code === 200"><span class="wf-example-key">status_code</span> : number — Code HTTP</div>
+        <div class="wf-config-example" data-expr="ctx.response.status_code >= 400"><span class="wf-example-key">status_code</span> : number — Erreur client/serveur</div>
+        <div class="wf-config-example" data-expr='ctx.response.headers["content-type"].includes("application/json")'><span class="wf-example-key">headers</span> : object — Content-Type JSON</div>
+        <div class="wf-config-example" data-expr='ctx.response.body.includes("success")'><span class="wf-example-key">body</span> : string — Contient "success"</div>
+        <div class="wf-config-example" data-expr="JSON.parse(ctx.response.body).token !== undefined"><span class="wf-example-key">body</span> : string — Champ JSON "token" existe</div>
+        <div class="wf-config-example" data-expr="ctx.response.status_code < 500"><span class="wf-example-key">status_code</span> : number — Pas d'erreur serveur</div>
+        <div class="wf-config-example" data-expr="ctx.response.status_code === 201 || ctx.response.status_code === 200"><span class="wf-example-key">status_code</span> — 200 ou 201 accepté</div>
+        <div class="wf-config-example" data-expr='ctx.response.headers["content-length"] > 0'><span class="wf-example-key">headers</span> — Body non vide</div>
+        <div class="wf-config-example" data-expr='ctx.response.url.startsWith("https://")'><span class="wf-example-key">url</span> : string — URL en HTTPS</div>
+      </div>
+    `;
+
+    // Click an example to fill the expression field
+    dom.configForm.querySelectorAll('.wf-config-example').forEach(el => {
+      el.addEventListener('click', () => {
+        const textarea = dom.configForm.querySelector('[data-field="expression"]');
+        if (textarea) {
+          textarea.value = el.dataset.expr;
+          node.data.expression = el.dataset.expr;
+          refreshNodeDisplay(node);
+        }
+      });
+    });
+  }
+
   // Bind changes
   dom.configForm.querySelectorAll('[data-field]').forEach(input => {
     const eventType = input.tagName === 'SELECT' ? 'change' : 'input';
@@ -696,13 +872,14 @@ async function executeNode(nodeId, ctx) {
 
         const res = await fetch(API.structured, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
           body: JSON.stringify(payload),
         });
         const data = await res.json();
+        const responseData = data.response || data;
         const saveTo = node.data.saveTo || 'response';
-        ctx[saveTo] = data;
-        addLog(`← ${data.statusCode || '?'} (sauvé dans ctx.${saveTo})`, data.statusCode >= 400 ? 'warn' : 'info');
+        ctx[saveTo] = responseData;
+        addLog(`← ${responseData.status_code || '?'} (sauvé dans ctx.${saveTo})`, responseData.status_code >= 400 ? 'warn' : 'info');
         break;
       }
 
@@ -713,13 +890,14 @@ async function executeNode(nodeId, ctx) {
 
         const res = await fetch(API.raw, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url, rawRequest: rawReq }),
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          body: JSON.stringify({ url, request: rawReq }),
         });
         const data = await res.json();
+        const responseData = data.response || data;
         const saveTo = node.data.saveTo || 'response';
-        ctx[saveTo] = data;
-        addLog(`← ${data.statusCode || '?'} (sauvé dans ctx.${saveTo})`, 'info');
+        ctx[saveTo] = responseData;
+        addLog(`← ${responseData.status_code || '?'} (sauvé dans ctx.${saveTo})`, 'info');
         break;
       }
 
@@ -851,3 +1029,4 @@ function sleep(ms) {
 // START
 // ─────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', init);
+init();
