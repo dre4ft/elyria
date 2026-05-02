@@ -6,11 +6,12 @@ from database.request_log_api import app as data_router
 from database.collection_api import app as collection_router
 from ai_core.ai_api import app as ai_router
 from auth_users.user_api import app as user_router
-
+from dotenv import load_dotenv
+import os
 import jwt 
 from database.user_mgmt import get_key
 
-
+load_dotenv()
 
 app = FastAPI()
 
@@ -123,4 +124,4 @@ app.include_router(user_router)
 
 if __name__ == "__main__":
     import uvicorn 
-    uvicorn.run(app)
+    uvicorn.run(app, host=os.getenv("host"), port=int(os.getenv("port")))
