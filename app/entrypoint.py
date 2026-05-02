@@ -58,7 +58,7 @@ async def check_authorization(request: Request, call_next):
                 status_code=401,
                 content={"detail": "Invalid Authorization format"}
             )
-        request.state.token = jwt.decode(split_token, key_value, algorithms=["HS512"])
+        request.state.token = jwt.decode(split_token, key_value, algorithms=["HS512"])["sub"]
     except jwt.ExpiredSignatureError:
         return JSONResponse(
             status_code=401,

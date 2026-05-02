@@ -123,9 +123,9 @@ def _send_request(protocol="http", host="127.0.0.1", port=8000, raw_request=""):
 """
 
 
-def handle_raw(user_token: str, url: str, request: str,is_done_by_ai:bool=False):
+def handle_raw(user_id: str, url: str, request: str,is_done_by_ai:bool=False):
     request_uuid = _generate_request_uuid()
-    author = user_token
+    author = user_id
 
     # parsing URL minimal
     if url.startswith("https://"):
@@ -251,31 +251,28 @@ class RawRequest(BaseModel):
 def x_www_form_urlencoded_request(request:WWWFormRequest,auth:str = Depends(get_auth)):
     
     token = auth
-    if token == "1234":
-        if not request.headers :
-            request.headers["Content-Type"] = "application/x-www-form-urlencoded"
-        req_uuid, resp =  handle_request(user_token=token,url=request.url,method=request.method,headers= request.headers,query_params=request.query_params)
-        return _handle_response(req_uuid,resp,dict)
-    raise HTTPException(status_code=403, detail="unauthorized")
+    
+    if not request.headers :
+        request.headers["Content-Type"] = "application/x-www-form-urlencoded"
+    req_uuid, resp =  handle_request(user_id=token,url=request.url,method=request.method,headers= request.headers,query_params=request.query_params)
+    return _handle_response(req_uuid,resp,dict)
+    
 
 @app.post("/rest")
 def rest_request(request : RESTRequest,auth:str = Depends(get_auth)):
     body = json.loads(request.body) if request.body else None
     headers = json.loads(request.headers) if request.headers else None
     token = auth
-    if token == "1234":
-        req_uuid, resp = handle_request(user_token=token,method=request.method,url=request.url,json=body,headers=headers)                                          
-        return _handle_response(req_uuid,resp,dict)
-    raise HTTPException(status_code=403, detail="unauthorized")
+    req_uuid, resp = handle_request(user_id=token,method=request.method,url=request.url,json=body,headers=headers)                                          
+    return _handle_response(req_uuid,resp,dict)
+
 
 @app.post("/raw")
 def send_raw_request(request : RawRequest,auth:str = Depends(get_auth)):
-   
     token = auth
-    if token == "1234":
-        req_uuid, resp = handle_raw(user_token=token,url=request.url,request=request.request)                                          
-        return _handle_response(req_uuid,resp,dict)
-    raise HTTPException(status_code=403, detail="unauthorized")
+    req_uuid, resp = handle_raw(user_id=token,url=request.url,request=request.request)                                          
+    return _handle_response(req_uuid,resp,dict)
+    
 
 """
 
