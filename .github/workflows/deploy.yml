@@ -22,7 +22,7 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             set -e  # Arrête en cas d'erreur
-            cd ${{ secrets.REPO_PATH }}
+            cd ${{ secrets.REPO_PATH }}/elyria
             
             echo "=== Pull des dernières modifications ==="
             git fetch origin
