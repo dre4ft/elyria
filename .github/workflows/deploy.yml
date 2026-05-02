@@ -1,0 +1,36 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e  # Arrête en cas d'erreur
+            cd ${{ secrets.REPO_PATH }}/elyria
+            
+            echo "=== Pull des dernières modifications ==="
+            git fetch origin
+            git reset --hard origin/main   # ou git pull origin main
+            
+            echo "=== Mise à jour terminée ==="
+
+            source .venv/bin/activate
+            pip install -r requirements.txt
+            cd app
+            python3 entrypoint.py

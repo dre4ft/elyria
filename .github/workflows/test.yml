@@ -1,0 +1,39 @@
+name: Test Deployment
+
+on:
+  push:
+    branches: [ main ]
+  # Tu peux aussi le lancer manuellement :
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Test SSH Connection + Git Pull
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            echo "=================================================="
+            echo "✅ Connexion SSH réussie"
+            echo "Utilisateur : $(whoami)"
+            echo "Répertoire actuel : $(pwd)"
+            echo "=================================================="
+            
+            cd /var/www/monapp
+            
+            echo "📂 Contenu du dossier :"
+            ls -la
+            
+            echo "🔄 Git status :"
+            git status
+            
+            echo "⬇️  Tentative de git pull :"
+            git pull origin main
+            
+            echo "✅ Test terminé avec succès !"
