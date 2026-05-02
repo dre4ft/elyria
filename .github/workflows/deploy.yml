@@ -29,6 +29,8 @@ jobs:
             git reset --hard origin/main   # ou git pull origin main
             
             echo "=== Mise à jour terminée ==="
-            
+
+            source .venv/bin/activate
+            pip install -r requirements.txt
             cd app
             python3 entrypoint.py
