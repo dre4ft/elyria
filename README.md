@@ -4,7 +4,7 @@
 
 ---
 
-## Pourquoi Elyria
+## 🇫🇷 Pourquoi Elyria
 
 **Workflows de requêtes** — La feature qui change la donne. Simulez des parcours client bout en bout, testez des vulnérabilités (identifiants prédictibles, BOLA) et automatisez des flux d'autorisation complexes. Là où les autres outils s'arrêtent à la requête, Elyria orchestre des scénarios.
 
@@ -45,7 +45,7 @@ Open source. Pour toujours.
 
 ---
 
-## Why Elyria
+## 🇬🇧 Why Elyria
 
 **Request workflows** — The game changer. Simulate end-to-end user journeys, test for vulnerabilities (predictable identifiers, BOLA), and automate complex authorization flows. Where other tools stop at the request, Elyria orchestrates scenarios.
 
