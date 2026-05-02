@@ -33,4 +33,4 @@ jobs:
             source .venv/bin/activate
             pip install -r requirements.txt
             cd app
-            python3 entrypoint.py
+            python3 entrypoint.py &
