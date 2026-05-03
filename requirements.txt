@@ -31,3 +31,4 @@ ollama
 openai
 dotenv
 pyjwt
+pyaml
