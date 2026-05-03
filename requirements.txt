@@ -32,3 +32,4 @@ openai
 dotenv
 pyjwt
 pyyaml
+python-multipart
