@@ -1,6 +1,13 @@
 import json
 import re
+import sys
+from pathlib import Path
 from typing import Optional
+
+# Ensure app/ is importable regardless of CWD
+_APP = Path(__file__).resolve().parent.parent.parent
+if str(_APP) not in sys.path:
+    sys.path.insert(0, str(_APP))
 
 
 
@@ -18,7 +25,12 @@ def _open_file(path: str):
     validate(content)
     return content
 
-
+def validate_wrapper(content : dict):
+    try: 
+        validate(content=content)
+        return True 
+    except Exception:
+        return False 
 
 def validate(content: dict):
     if not content.get("arazzo"):

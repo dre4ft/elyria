@@ -9,12 +9,12 @@ from .collection_mgmt import (
 app = APIRouter(prefix="/api/collections")
 
 
-def get_user_token(request: Request) -> str:
+"""def get_user_token(request: Request) -> str:
     raw_token = getattr(request.state, "token", None)
     token = raw_token["sub"]
     if not token:
         raise HTTPException(status_code=401, detail="Missing token")
-    return token
+    return token"""
 
 
 # ═══════════════════════════════════════════════
@@ -51,14 +51,14 @@ class UpdateRequestBody(BaseModel):
 
 @app.get("")
 def list_collections(request: Request):
-    token = get_user_token(request)
+    token = request.state.token
     tree = get_collection_tree(author_user_id=token)
     return JSONResponse(tree)
 
 
 @app.post("/folder")
 def api_create_folder(body: CreateFolderBody, request: Request):
-    token = get_user_token(request)
+    token = request.state.token
     folder_id = create_folder(
         name=body.name,
         author_user_id=token,
@@ -71,7 +71,7 @@ def api_create_folder(body: CreateFolderBody, request: Request):
 
 @app.delete("/folder/{folder_id}")
 def api_delete_folder(folder_id: str, request: Request):
-    token = get_user_token(request)
+    token = request.state.token
     ok = delete_folder(folder_id, author_user_id=token)
     if ok:
         return JSONResponse({"deleted": True})
@@ -80,7 +80,7 @@ def api_delete_folder(folder_id: str, request: Request):
 
 @app.post("/request")
 def api_create_request(body: CreateRequestBody, request: Request):
-    token = get_user_token(request)
+    token = request.state.token
     saved_id = create_saved_request(
         name=body.name,
         author_user_id=token,
@@ -98,7 +98,7 @@ def api_create_request(body: CreateRequestBody, request: Request):
 
 @app.put("/request/{saved_request_id}")
 def api_update_request(saved_request_id: str, body: UpdateRequestBody, request: Request):
-    token = get_user_token(request)
+    token = request.state.token
     update_data = {k: v for k, v in body.model_dump().items() if v is not None}
     ok = update_saved_request(saved_request_id, author_user_id=token, **update_data)
     if ok:
@@ -108,7 +108,7 @@ def api_update_request(saved_request_id: str, body: UpdateRequestBody, request: 
 
 @app.delete("/request/{saved_request_id}")
 def api_delete_request(saved_request_id: str, request: Request):
-    token = get_user_token(request)
+    token = request.state.token
     ok = delete_saved_request(saved_request_id, author_user_id=token)
     if ok:
         return JSONResponse({"deleted": True})

@@ -26,3 +26,4 @@ build/
 *.bak
 *.tmp
 *.claude/
+*test.*

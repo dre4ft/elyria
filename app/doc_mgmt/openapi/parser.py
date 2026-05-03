@@ -1,6 +1,9 @@
 from pydantic import BaseModel
 import json
+import sys
+from pathlib import Path
 from typing import Optional
+
 
 
 class OpenAPIRequest(BaseModel):
@@ -10,6 +13,12 @@ class OpenAPIRequest(BaseModel):
     headers: Optional[dict] = None
     body: Optional[str] = None
 
+def validate_wrapper(content : dict):
+    try: 
+        validate(content=content)
+        return True 
+    except Exception:
+        return False 
 
 def validate(content: dict):
     if content.get("openapi") and content["openapi"].startswith("3."):

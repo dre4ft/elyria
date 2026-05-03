@@ -188,7 +188,7 @@ def handle_raw(user_id: str, url: str, request: str,is_done_by_ai:bool=False):
         is_done_by_ai=is_done_by_ai
     )
     return request_uuid,resp
-    #return _handle_response(request_uuid, resp, dict)
+
 
 def handle_request(user_id : str, url : str,method :str ,headers:dict=None,query_params:dict =None,body:str=None,json :dict=None,auth :str = None,allow_redirect:bool=False,proxies:dict=None,is_done_by_ai:bool=False):
     
@@ -205,17 +205,11 @@ def handle_request(user_id : str, url : str,method :str ,headers:dict=None,query
                         proxies=proxies)
     add_request(request_uuid=request_uuid,author=author,request=req,response=resp,is_done_by_ai=is_done_by_ai)
     return request_uuid,resp
-    #return _handle_response(request_uuid,resp,dict)  
 
 
 
-def get_auth(request: Request):
-    token = getattr(request.state, "token", None)
 
-    if not token:
-        raise HTTPException(status_code=401, detail="Missing token")
 
-    return token
 
 """
 
@@ -227,7 +221,7 @@ def get_auth(request: Request):
 class RESTRequest(BaseModel):
     method : str
     url : str
-    headers : str = None
+    headers : dict  = None
     body : str = None 
 
 
@@ -248,9 +242,9 @@ class RawRequest(BaseModel):
 """
 
 @app.post("/x-www-form-urlencoded")
-def x_www_form_urlencoded_request(request:WWWFormRequest,auth:str = Depends(get_auth)):
+def x_www_form_urlencoded_request(request:WWWFormRequest,_request:Request):
     
-    token = auth
+    token = _request.state.token
     
     if not request.headers :
         request.headers["Content-Type"] = "application/x-www-form-urlencoded"
@@ -259,17 +253,18 @@ def x_www_form_urlencoded_request(request:WWWFormRequest,auth:str = Depends(get_
     
 
 @app.post("/rest")
-def rest_request(request : RESTRequest,auth:str = Depends(get_auth)):
+def rest_request(request : RESTRequest, _request:Request):
     body = json.loads(request.body) if request.body else None
-    headers = json.loads(request.headers) if request.headers else None
-    token = auth
+    #headers = json.loads(request.headers) if request.headers else None
+    headers = request.headers
+    token = _request.state.token
     req_uuid, resp = handle_request(user_id=token,method=request.method,url=request.url,json=body,headers=headers)                                          
     return _handle_response(req_uuid,resp,dict)
 
 
 @app.post("/raw")
-def send_raw_request(request : RawRequest,auth:str = Depends(get_auth)):
-    token = auth
+def send_raw_request(request : RawRequest,_request:Request):
+    token = _request.state.token
     req_uuid, resp = handle_raw(user_id=token,url=request.url,request=request.request)                                          
     return _handle_response(req_uuid,resp,dict)
     

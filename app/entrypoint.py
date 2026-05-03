@@ -1,11 +1,14 @@
 from fastapi import FastAPI, Request,HTTPException
 from fastapi.responses import JSONResponse,HTMLResponse
 from fastapi.staticfiles import StaticFiles
+
 from request_manager.request_api import app as request_router
 from database.request_log_api import app as data_router
 from database.collection_api import app as collection_router
 from ai_core.ai_api import app as ai_router
 from auth_users.user_api import app as user_router
+from doc_mgmt.document_api import app as document_router
+
 from dotenv import load_dotenv
 import os
 import jwt 
@@ -118,6 +121,7 @@ app.include_router(data_router)
 app.include_router(collection_router)
 app.include_router(ai_router)
 app.include_router(user_router)
+app.include_router(document_router)
 
 
 
