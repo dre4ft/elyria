@@ -128,4 +128,6 @@ app.include_router(document_router)
 
 if __name__ == "__main__":
     import uvicorn 
-    uvicorn.run(app, host=os.getenv("host"), port=int(os.getenv("port")))
+    cert = os.getenv("cert_path")
+    key = os.getenv("key_path")
+    uvicorn.run(app, host=os.getenv("host"), port=int(os.getenv("port")),ssl_certfile=cert,ssl_keyfile=key)
