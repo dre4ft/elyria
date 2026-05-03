@@ -23,7 +23,7 @@ app = APIRouter(prefix="/api/request")
 
 """
 #TODO  ajouter un meilleurs gestion de l'auth 
-def _make_request(url : str,method :str ,headers:dict=None,query_params:dict =None,body:str=None,json :dict=None,auth :str = None,allow_redirect:bool=False,proxies:dict=None)->dict:
+def _make_request(url : str,method :str ,headers:dict=None,query_params:dict =None,body:str=None,_json :dict=None,auth :str = None,allow_redirect:bool=False,proxies:dict=None)->dict:
     if auth:
         if not headers:
             headers = {}
@@ -34,17 +34,17 @@ def _make_request(url : str,method :str ,headers:dict=None,query_params:dict =No
                                data=body,
                                params=query_params,
                                headers=headers,
-                               json=json,
+                               json=_json,
                                allow_redirects=allow_redirect,
                                proxies=proxies)
         
         return {"status_code" : resp.status_code,
                 "url":resp.url,
                 "headers":dict(resp.headers),
-                "body" : resp.text if not resp.text.startswith("{") or resp.text.startswith("[") else  json.loads(resp.text)}
+                "body" : resp.text if not resp.text.startswith("{") or resp.text.startswith("[") else  json.dumps(resp.json())}
     
     except Exception as e:
-        return f"code exception {e}"
+        raise Exception(f"an error as occur during the request")
 
 
 
@@ -190,21 +190,24 @@ def handle_raw(user_id: str, url: str, request: str,is_done_by_ai:bool=False):
     return request_uuid,resp
 
 
-def handle_request(user_id : str, url : str,method :str ,headers:dict=None,query_params:dict =None,body:str=None,json :dict=None,auth :str = None,allow_redirect:bool=False,proxies:dict=None,is_done_by_ai:bool=False):
+def handle_request(user_id : str, url : str,method :str ,headers:dict=None,query_params:dict =None,body:str=None,_json :dict=None,auth :str = None,allow_redirect:bool=False,proxies:dict=None,is_done_by_ai:bool=False):
     
     request_uuid = _generate_request_uuid()
     author = user_id
     req = {"method":method,"headers" : headers,"body":body}
-    resp = _make_request(method=method,
-                        url=url,
-                        body=body,
-                        query_params=query_params,
-                        headers=headers,
-                        json=json,
-                        allow_redirect=allow_redirect,
-                        proxies=proxies)
-    add_request(request_uuid=request_uuid,author=author,request=req,response=resp,is_done_by_ai=is_done_by_ai)
-    return request_uuid,resp
+    try :
+        resp = _make_request(method=method,
+                            url=url,
+                            body=body,
+                            query_params=query_params,
+                            headers=headers,
+                            _json=_json,
+                            allow_redirect=allow_redirect,
+                            proxies=proxies)
+        add_request(request_uuid=request_uuid,author=author,request=req,response=resp,is_done_by_ai=is_done_by_ai)
+        return request_uuid,resp
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"error":str(e)}) 
 
 
 
@@ -255,10 +258,9 @@ def x_www_form_urlencoded_request(request:WWWFormRequest,_request:Request):
 @app.post("/rest")
 def rest_request(request : RESTRequest, _request:Request):
     body = json.loads(request.body) if request.body else None
-    #headers = json.loads(request.headers) if request.headers else None
     headers = request.headers
     token = _request.state.token
-    req_uuid, resp = handle_request(user_id=token,method=request.method,url=request.url,json=body,headers=headers)                                          
+    req_uuid, resp = handle_request(user_id=token,method=request.method,url=request.url,_json=body,headers=headers)                                          
     return _handle_response(req_uuid,resp,dict)
 
 

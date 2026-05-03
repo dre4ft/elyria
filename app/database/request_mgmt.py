@@ -64,11 +64,11 @@ def add_request(request_uuid:str, author:str,  request:dict,response:dict,is_don
         return cursor.lastrowid
 
     except sqlite3.IntegrityError as e:
-        print("Integrity error:", e)
+        print("Integrity error ! :", e)
         return None 
 
     except Exception as e:
-        print("Unexpected error:", e)
+        print("Unexpected error ? :", e)
         return None 
 
     finally:
