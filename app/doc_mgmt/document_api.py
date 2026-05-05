@@ -11,8 +11,8 @@ app = APIRouter(prefix="/api/document")
 
 def _validate_file(file : File):
     if file.filename.endswith(".json") or file.filename.endswith(".yaml") or file.filename.endswith(".yml"):
-        if file.content_type == "application/json" or file.content_type == "application/yaml" or file.content_type == "text/yaml":
-            return file.content_type.split("/")[-1]
+        if file.content_type == "application/json" or file.content_type == "application/yaml" or file.content_type == "text/yaml" or file.content_type == "application/x-yaml":
+            return file.content_type.split("/")[-1][-4:]
 
     raise  HTTPException(status_code=400,detail="invalid file format !")
 
@@ -27,13 +27,14 @@ async def upload(request : Request,file: UploadFile = File(...)):
         elif file_type == "yaml":
             content_as_dict = safe_load(content)
         else :
-            raise  HTTPException(status_code=400,detail="invalid file format")
+            return JSONResponse(status_code=400,content={"detail":"invalid file format"})
         if openapi_parser.validate_wrapper(content_as_dict):
             result = openapi_parser.import_to_db(parsed=openapi_parser.parse_openapi(content=content_as_dict),author_user_id=user_id)
             return JSONResponse(status_code=201, content=result)
         else :
-            raise HTTPException(status_code=400,detail="invalid file format")
-    except Exception:
+            return JSONResponse(status_code=400,content={"detail":"invalid file format"})
+    except Exception as e :
+        print(e)
         raise HTTPException(status_code=500, detail='Something went wrong')
     
  

@@ -7,7 +7,7 @@
 // CONFIG — API Endpoints
 // ─────────────────────────────────────────────
 const API = {
-  structured:    'api/request/rest',              // POST { url, method, headers?, body? }
+  structured:    'api/request',              // POST { url, method, headers?, body? }
   raw:           'api/request/raw',               // POST { url, request }
   getRequest:    'api/requests/byId',        // GET  /:id
   userHistory:   'api/requests/byUserId',    // GET  /:userId?limit=&page=
@@ -18,6 +18,7 @@ const API = {
   updateRequest: 'api/collections/request',   // PUT  /:id { name, method, url, ... }
   deleteRequest: 'api/collections/request',   // DELETE /:id
   deleteFolder:  'api/collections/folder',    // DELETE /:id
+  uploadOpenAPI: 'api/document/openapi',       // POST multipart file upload
 };
 
 // ─────────────────────────────────────────────
@@ -190,6 +191,20 @@ const dom = {
   btnModalCancel: $('#btn-modal-cancel'),
   btnModalOk:     $('#btn-modal-ok'),
 
+  // Document upload modal
+  docModal:         $('#doc-modal'),
+  docDropZone:      $('#doc-drop-zone'),
+  docFileInput:     $('#doc-file-input'),
+  docDropContent:   $('#doc-drop-content'),
+  docFileSelected:  $('#doc-file-selected'),
+  docFileName:      $('#doc-file-name'),
+  docFileSize:      $('#doc-file-size'),
+  docMsg:           $('#doc-msg'),
+  btnDocModalClose: $('#btn-doc-modal-close'),
+  btnDocModalCancel:$('#btn-doc-modal-cancel'),
+  btnDocModalUpload:$('#btn-doc-modal-upload'),
+  btnOpenDocs:      $('#btn-open-docs'),
+
   // Loading
   loadingOverlay: $('#loading-overlay'),
 };
@@ -223,6 +238,7 @@ function init() {
   setupHistory();
   setupCollections();
   setupResizeHandle();
+  setupDocModal();
   setupKeyboardShortcuts();
 
   // Restaurer l'état du builder (ou ajouter des rows vides par défaut)
@@ -1506,6 +1522,159 @@ function setupResizeHandle() {
       document.body.style.userSelect = '';
     }
   });
+}
+
+// ─────────────────────────────────────────────
+// DOCUMENT UPLOAD MODAL
+// ─────────────────────────────────────────────
+let selectedDocFile = null;
+
+function setupDocModal() {
+  // Open modal
+  dom.btnOpenDocs.addEventListener('click', openDocModal);
+
+  // Close buttons
+  dom.btnDocModalClose.addEventListener('click', closeDocModal);
+  dom.btnDocModalCancel.addEventListener('click', closeDocModal);
+
+  // Click outside to close
+  dom.docModal.addEventListener('click', (e) => {
+    if (e.target === dom.docModal) closeDocModal();
+  });
+
+  // File input change
+  dom.docFileInput.addEventListener('change', () => {
+    const file = dom.docFileInput.files[0];
+    if (file) setDocFile(file);
+  });
+
+  // Drag & drop
+  dom.docDropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dom.docDropZone.classList.add('border-emerald-500/50', 'bg-emerald-500/[0.04]');
+  });
+
+  dom.docDropZone.addEventListener('dragleave', () => {
+    dom.docDropZone.classList.remove('border-emerald-500/50', 'bg-emerald-500/[0.04]');
+  });
+
+  dom.docDropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dom.docDropZone.classList.remove('border-emerald-500/50', 'bg-emerald-500/[0.04]');
+    const file = e.dataTransfer.files[0];
+    if (file) setDocFile(file);
+  });
+
+  // Upload button
+  dom.btnDocModalUpload.addEventListener('click', uploadDocument);
+
+  // Escape key to close
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !dom.docModal.classList.contains('hidden')) {
+      closeDocModal();
+    }
+  });
+}
+
+function openDocModal() {
+  resetDocModal();
+  dom.docModal.classList.remove('hidden');
+  dom.docModal.classList.add('flex');
+}
+
+function closeDocModal() {
+  dom.docModal.classList.add('hidden');
+  dom.docModal.classList.remove('flex');
+  resetDocModal();
+}
+
+function resetDocModal() {
+  selectedDocFile = null;
+  dom.docFileInput.value = '';
+  dom.docDropContent.classList.remove('hidden');
+  dom.docFileSelected.classList.add('hidden');
+  dom.docFileName.textContent = '';
+  dom.docFileSize.textContent = '';
+  dom.docMsg.classList.add('hidden');
+  dom.docMsg.innerHTML = '';
+  dom.btnDocModalUpload.disabled = true;
+  dom.docDropZone.classList.remove('border-emerald-500/30');
+}
+
+function setDocFile(file) {
+  const validExts = ['.json', '.yaml', '.yml'];
+  const ext = '.' + file.name.split('.').pop().toLowerCase();
+  if (!validExts.includes(ext)) {
+    showDocMsg(`Format non supporté. Formats acceptés : ${validExts.join(', ')}`, 'error');
+    return;
+  }
+
+  selectedDocFile = file;
+  dom.docDropContent.classList.add('hidden');
+  dom.docFileSelected.classList.remove('hidden');
+  dom.docFileName.textContent = file.name;
+  dom.docFileSize.textContent = formatFileSize(file.size);
+  dom.docMsg.classList.add('hidden');
+  dom.btnDocModalUpload.disabled = false;
+  dom.docDropZone.classList.add('border-emerald-500/30');
+}
+
+async function uploadDocument() {
+  if (!selectedDocFile) return;
+
+  dom.btnDocModalUpload.disabled = true;
+  dom.btnDocModalUpload.innerHTML = `
+    <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
+    Importation…
+  `;
+
+  try {
+    const formData = new FormData();
+    formData.append('file', selectedDocFile);
+
+    const res = await fetch(API.uploadOpenAPI, {
+      method: 'POST',
+      headers: { ...getAuthHeader() },
+      body: formData,
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      showDocMsg(`Spécification importée avec succès — ${data.collection_name || 'collection créée'}`, 'success');
+      loadCollections();
+      // Reset file selection but keep modal open for another upload
+      selectedDocFile = null;
+      dom.docFileInput.value = '';
+      dom.docDropContent.classList.remove('hidden');
+      dom.docFileSelected.classList.add('hidden');
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      showDocMsg(errData.detail || `Erreur ${res.status} lors de l'importation`, 'error');
+    }
+  } catch (err) {
+    showDocMsg(`Erreur réseau : ${err.message}`, 'error');
+  } finally {
+    dom.btnDocModalUpload.disabled = false;
+    dom.btnDocModalUpload.innerHTML = `
+      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/></svg>
+      Importer
+    `;
+  }
+}
+
+function showDocMsg(message, type) {
+  dom.docMsg.classList.remove('hidden');
+  const colors = type === 'error'
+    ? 'bg-red-500/10 border-red-500/20 text-red-400'
+    : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
+  dom.docMsg.className = `mt-3 p-3 rounded-lg border text-xs ${colors}`;
+  dom.docMsg.textContent = message;
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' o';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' Ko';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
 }
 
 // ─────────────────────────────────────────────

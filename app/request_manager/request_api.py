@@ -255,12 +255,12 @@ def x_www_form_urlencoded_request(request:WWWFormRequest,_request:Request):
     return _handle_response(req_uuid,resp,dict)
     
 
-@app.post("/rest")
+@app.post("")
 def rest_request(request : RESTRequest, _request:Request):
     body = json.loads(request.body) if request.body else None
     headers = request.headers
     token = _request.state.token
-    req_uuid, resp = handle_request(user_id=token,method=request.method,url=request.url,_json=body,headers=headers)                                          
+    req_uuid, resp = handle_request(user_id=token,method=request.method,url=request.url,body=body,headers=headers)                                          
     return _handle_response(req_uuid,resp,dict)
 
 

@@ -4,7 +4,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 const API = {
-  structured: '/api/request/rest',
+  structured: '/api/request',
   raw: '/api/request/raw',
   collections: '/api/collections',
 };
