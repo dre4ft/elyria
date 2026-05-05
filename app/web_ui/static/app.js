@@ -82,10 +82,14 @@ function restoreBuilderState() {
     const headers = saved.headers || {};
     const headerEntries = Object.entries(headers);
     if (headerEntries.length > 0) {
-      headerEntries.forEach(([k, v]) => addHeaderRow(k, v));
+      headerEntries.forEach(([k, v]) => addHeaderRow(k, v, true));
     } else {
-      addHeaderRow('', '');
+      addHeaderRow('', '', true);
     }
+
+    // Sync auto Content-Type header
+    if (saved.contentType) dom.bodyContentType.value = saved.contentType;
+    syncContentTypeHeader();
 
     state.activeCollectionId = saved.activeCollectionId || null;
     return true;
@@ -245,7 +249,8 @@ function init() {
   const restored = restoreBuilderState();
   if (!restored) {
     addParamRow('', '', true);
-    addHeaderRow('', '');
+    addHeaderRow('', '', true);
+    syncContentTypeHeader();
   }
 
   // Activer l'auto-sauvegarde du builder
@@ -487,29 +492,74 @@ function updateParamsCount() {
 // ─────────────────────────────────────────────
 // HEADERS KEY-VALUE EDITOR
 // ─────────────────────────────────────────────
+let autoContentTypeRow = null;
+
 function setupHeaders() {
-  dom.btnAddHeader.addEventListener('click', () => addHeaderRow('', ''));
+  dom.btnAddHeader.addEventListener('click', () => addHeaderRow('', '', true));
+
+  // Sync auto Content-Type header when body content type changes
+  dom.bodyContentType.addEventListener('change', syncContentTypeHeader);
+
+  // When user edits the auto Content-Type header value, update the dropdown
+  dom.headersList.addEventListener('input', (e) => {
+    const row = e.target.closest('.header-row');
+    if (!row || !row.classList.contains('header-row-auto')) return;
+    const inputs = row.querySelectorAll('input');
+    const val = inputs[1].value.trim();
+    const ctMap = {
+      'application/json': 'application/json',
+      'text/plain': 'text/plain',
+      'application/xml': 'application/xml',
+      'application/x-www-form-urlencoded': 'application/x-www-form-urlencoded',
+    };
+    if (ctMap[val]) {
+      dom.bodyContentType.value = val;
+    }
+  });
 }
 
-function addHeaderRow(key = '', value = '') {
+function addHeaderRow(key = '', value = '', enabled = true) {
   const row = document.createElement('div');
-  row.className = 'header-row';
+  row.className = 'header-row' + (enabled ? '' : ' is-disabled');
   row.innerHTML = `
+    <button class="btn-toggle-header ${enabled ? 'enabled' : 'disabled'}" title="Activer/Désactiver">
+      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+    </button>
     <input type="text" placeholder="Header name" value="${escapeHtml(key)}" class="flex-1" />
     <input type="text" placeholder="Value" value="${escapeHtml(value)}" class="flex-[2]" />
     <button class="btn-remove-header" title="Supprimer">
       <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
   `;
-  row.querySelector('.btn-remove-header').addEventListener('click', () => {
-    row.remove();
+
+  const toggleBtn = row.querySelector('.btn-toggle-header');
+  toggleBtn.addEventListener('click', () => {
+    const isEnabled = toggleBtn.classList.contains('enabled');
+    toggleBtn.classList.toggle('enabled', !isEnabled);
+    toggleBtn.classList.toggle('disabled', isEnabled);
+    row.classList.toggle('is-disabled', isEnabled);
+    saveBuilderState();
   });
+
+  row.querySelector('.btn-remove-header').addEventListener('click', () => {
+    if (row === autoContentTypeRow) {
+      // Auto row removed by user: mark it as removed, will be recreated on next sync
+      autoContentTypeRow = null;
+    }
+    row.remove();
+    saveBuilderState();
+  });
+
   dom.headersList.appendChild(row);
+  return row;
 }
 
 function getHeaders() {
   const headers = {};
   dom.headersList.querySelectorAll('.header-row').forEach(row => {
+    const toggleBtn = row.querySelector('.btn-toggle-header');
+    const enabled = toggleBtn ? toggleBtn.classList.contains('enabled') : true;
+    if (!enabled) return;
     const inputs = row.querySelectorAll('input');
     const k = inputs[0].value.trim();
     const v = inputs[1].value.trim();
@@ -519,7 +569,30 @@ function getHeaders() {
 }
 
 function clearHeaders() {
+  autoContentTypeRow = null;
   dom.headersList.innerHTML = '';
+}
+
+function syncContentTypeHeader() {
+  const ct = dom.bodyContentType.value;
+
+  // Remove any existing Content-Type header rows (auto or manual)
+  dom.headersList.querySelectorAll('.header-row').forEach(r => {
+    const keyInput = r.querySelectorAll('input')[0];
+    if (keyInput.value.trim().toLowerCase() === 'content-type') {
+      if (r === autoContentTypeRow) autoContentTypeRow = null;
+      r.remove();
+    }
+  });
+
+  // Create new auto header row
+  autoContentTypeRow = addHeaderRow('Content-Type', ct, true);
+  autoContentTypeRow.classList.add('header-row-auto');
+  const keyInput = autoContentTypeRow.querySelectorAll('input')[0];
+  keyInput.readOnly = true;
+  keyInput.classList.add('opacity-60', 'cursor-default');
+
+  saveBuilderState();
 }
 
 // ─────────────────────────────────────────────
@@ -959,12 +1032,20 @@ function loadCollectionRequest(req) {
   // Headers
   clearHeaders();
   const reqHeaders = req.headers || {};
-  const headerEntries = Object.entries(reqHeaders);
-  if (headerEntries.length === 0) {
-    addHeaderRow('', '');
-  } else {
-    headerEntries.forEach(([k, v]) => addHeaderRow(k, v));
+  // Peek Content-Type from loaded headers to set body content type dropdown
+  const ctKey = Object.keys(reqHeaders).find(k => k.toLowerCase() === 'content-type');
+  if (ctKey && reqHeaders[ctKey]) {
+    const ctVal = reqHeaders[ctKey].split(';')[0].trim();
+    const knownCT = ['application/json', 'text/plain', 'application/xml', 'application/x-www-form-urlencoded'];
+    if (knownCT.includes(ctVal)) dom.bodyContentType.value = ctVal;
   }
+  const otherHeaders = Object.entries(reqHeaders).filter(([k]) => k.toLowerCase() !== 'content-type');
+  if (otherHeaders.length === 0) {
+    addHeaderRow('', '', true);
+  } else {
+    otherHeaders.forEach(([k, v]) => addHeaderRow(k, v, true));
+  }
+  syncContentTypeHeader();
 
   // Marquer comme actif et sauvegarder
   state.activeCollectionId = req.id;
@@ -1347,12 +1428,13 @@ async function loadHistoryEntry(entry) {
     // Populate headers
     clearHeaders();
     const reqHeaders = freshEntry.reqHeaders || {};
-    const headerEntries = Object.entries(reqHeaders);
-    if (headerEntries.length === 0) {
-      addHeaderRow('', '');
+    const otherHeaders = Object.entries(reqHeaders).filter(([k]) => k.toLowerCase() !== 'content-type');
+    if (otherHeaders.length === 0) {
+      addHeaderRow('', '', true);
     } else {
-      headerEntries.forEach(([k, v]) => addHeaderRow(k, v));
+      otherHeaders.forEach(([k, v]) => addHeaderRow(k, v, true));
     }
+    syncContentTypeHeader();
   }
 
   // Display response
