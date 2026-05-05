@@ -27,3 +27,4 @@ build/
 *.tmp
 *.claude/
 *test.*
+*.pem

@@ -7,7 +7,7 @@
 // CONFIG — API Endpoints
 // ─────────────────────────────────────────────
 const API = {
-  structured:    'api/request/rest',              // POST { url, method, headers?, body? }
+  structured:    'api/request',              // POST { url, method, headers?, body? }
   raw:           'api/request/raw',               // POST { url, request }
   getRequest:    'api/requests/byId',        // GET  /:id
   userHistory:   'api/requests/byUserId',    // GET  /:userId?limit=&page=
@@ -18,6 +18,7 @@ const API = {
   updateRequest: 'api/collections/request',   // PUT  /:id { name, method, url, ... }
   deleteRequest: 'api/collections/request',   // DELETE /:id
   deleteFolder:  'api/collections/folder',    // DELETE /:id
+  uploadOpenAPI: 'api/document/openapi',       // POST multipart file upload
 };
 
 // ─────────────────────────────────────────────
@@ -81,10 +82,14 @@ function restoreBuilderState() {
     const headers = saved.headers || {};
     const headerEntries = Object.entries(headers);
     if (headerEntries.length > 0) {
-      headerEntries.forEach(([k, v]) => addHeaderRow(k, v));
+      headerEntries.forEach(([k, v]) => addHeaderRow(k, v, true));
     } else {
-      addHeaderRow('', '');
+      addHeaderRow('', '', true);
     }
+
+    // Sync auto Content-Type header
+    if (saved.contentType) dom.bodyContentType.value = saved.contentType;
+    syncContentTypeHeader();
 
     state.activeCollectionId = saved.activeCollectionId || null;
     return true;
@@ -190,6 +195,20 @@ const dom = {
   btnModalCancel: $('#btn-modal-cancel'),
   btnModalOk:     $('#btn-modal-ok'),
 
+  // Document upload modal
+  docModal:         $('#doc-modal'),
+  docDropZone:      $('#doc-drop-zone'),
+  docFileInput:     $('#doc-file-input'),
+  docDropContent:   $('#doc-drop-content'),
+  docFileSelected:  $('#doc-file-selected'),
+  docFileName:      $('#doc-file-name'),
+  docFileSize:      $('#doc-file-size'),
+  docMsg:           $('#doc-msg'),
+  btnDocModalClose: $('#btn-doc-modal-close'),
+  btnDocModalCancel:$('#btn-doc-modal-cancel'),
+  btnDocModalUpload:$('#btn-doc-modal-upload'),
+  btnOpenDocs:      $('#btn-open-docs'),
+
   // Loading
   loadingOverlay: $('#loading-overlay'),
 };
@@ -223,13 +242,15 @@ function init() {
   setupHistory();
   setupCollections();
   setupResizeHandle();
+  setupDocModal();
   setupKeyboardShortcuts();
 
   // Restaurer l'état du builder (ou ajouter des rows vides par défaut)
   const restored = restoreBuilderState();
   if (!restored) {
     addParamRow('', '', true);
-    addHeaderRow('', '');
+    addHeaderRow('', '', true);
+    syncContentTypeHeader();
   }
 
   // Activer l'auto-sauvegarde du builder
@@ -471,29 +492,74 @@ function updateParamsCount() {
 // ─────────────────────────────────────────────
 // HEADERS KEY-VALUE EDITOR
 // ─────────────────────────────────────────────
+let autoContentTypeRow = null;
+
 function setupHeaders() {
-  dom.btnAddHeader.addEventListener('click', () => addHeaderRow('', ''));
+  dom.btnAddHeader.addEventListener('click', () => addHeaderRow('', '', true));
+
+  // Sync auto Content-Type header when body content type changes
+  dom.bodyContentType.addEventListener('change', syncContentTypeHeader);
+
+  // When user edits the auto Content-Type header value, update the dropdown
+  dom.headersList.addEventListener('input', (e) => {
+    const row = e.target.closest('.header-row');
+    if (!row || !row.classList.contains('header-row-auto')) return;
+    const inputs = row.querySelectorAll('input');
+    const val = inputs[1].value.trim();
+    const ctMap = {
+      'application/json': 'application/json',
+      'text/plain': 'text/plain',
+      'application/xml': 'application/xml',
+      'application/x-www-form-urlencoded': 'application/x-www-form-urlencoded',
+    };
+    if (ctMap[val]) {
+      dom.bodyContentType.value = val;
+    }
+  });
 }
 
-function addHeaderRow(key = '', value = '') {
+function addHeaderRow(key = '', value = '', enabled = true) {
   const row = document.createElement('div');
-  row.className = 'header-row';
+  row.className = 'header-row' + (enabled ? '' : ' is-disabled');
   row.innerHTML = `
+    <button class="btn-toggle-header ${enabled ? 'enabled' : 'disabled'}" title="Activer/Désactiver">
+      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+    </button>
     <input type="text" placeholder="Header name" value="${escapeHtml(key)}" class="flex-1" />
     <input type="text" placeholder="Value" value="${escapeHtml(value)}" class="flex-[2]" />
     <button class="btn-remove-header" title="Supprimer">
       <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
   `;
-  row.querySelector('.btn-remove-header').addEventListener('click', () => {
-    row.remove();
+
+  const toggleBtn = row.querySelector('.btn-toggle-header');
+  toggleBtn.addEventListener('click', () => {
+    const isEnabled = toggleBtn.classList.contains('enabled');
+    toggleBtn.classList.toggle('enabled', !isEnabled);
+    toggleBtn.classList.toggle('disabled', isEnabled);
+    row.classList.toggle('is-disabled', isEnabled);
+    saveBuilderState();
   });
+
+  row.querySelector('.btn-remove-header').addEventListener('click', () => {
+    if (row === autoContentTypeRow) {
+      // Auto row removed by user: mark it as removed, will be recreated on next sync
+      autoContentTypeRow = null;
+    }
+    row.remove();
+    saveBuilderState();
+  });
+
   dom.headersList.appendChild(row);
+  return row;
 }
 
 function getHeaders() {
   const headers = {};
   dom.headersList.querySelectorAll('.header-row').forEach(row => {
+    const toggleBtn = row.querySelector('.btn-toggle-header');
+    const enabled = toggleBtn ? toggleBtn.classList.contains('enabled') : true;
+    if (!enabled) return;
     const inputs = row.querySelectorAll('input');
     const k = inputs[0].value.trim();
     const v = inputs[1].value.trim();
@@ -503,11 +569,73 @@ function getHeaders() {
 }
 
 function clearHeaders() {
+  autoContentTypeRow = null;
   dom.headersList.innerHTML = '';
+}
+
+function syncContentTypeHeader() {
+  const ct = dom.bodyContentType.value;
+
+  // Remove any existing Content-Type header rows (auto or manual)
+  dom.headersList.querySelectorAll('.header-row').forEach(r => {
+    const keyInput = r.querySelectorAll('input')[0];
+    if (keyInput.value.trim().toLowerCase() === 'content-type') {
+      if (r === autoContentTypeRow) autoContentTypeRow = null;
+      r.remove();
+    }
+  });
+
+  // Create new auto header row
+  autoContentTypeRow = addHeaderRow('Content-Type', ct, true);
+  autoContentTypeRow.classList.add('header-row-auto');
+  const keyInput = autoContentTypeRow.querySelectorAll('input')[0];
+  keyInput.readOnly = true;
+  keyInput.classList.add('opacity-60', 'cursor-default');
+
+  saveBuilderState();
 }
 
 // ─────────────────────────────────────────────
 // SEND REQUESTS
+// ─────────────────────────────────────────────
+function populateStructuredFromParsed(method, url, headers, body) {
+  dom.reqMethod.value = method;
+  dom.reqUrl.value = url;
+  dom.reqBody.value = body || '';
+
+  clearHeaders();
+  const headerEntries = Object.entries(headers || {});
+  if (headerEntries.length === 0) {
+    addHeaderRow('', '', true);
+  } else {
+    headerEntries.forEach(([k, v]) => addHeaderRow(k, v, true));
+  }
+
+  // Sync Content-Type header if body has content
+  const ctKey = Object.keys(headers || {}).find(k => k.toLowerCase() === 'content-type');
+  if (ctKey && headers[ctKey]) {
+    const ctVal = headers[ctKey].split(';')[0].trim();
+    const knownCT = ['application/json', 'text/plain', 'application/xml', 'application/x-www-form-urlencoded'];
+    if (knownCT.includes(ctVal)) dom.bodyContentType.value = ctVal;
+  }
+
+  clearParams();
+  try {
+    const urlObj = new URL(url);
+    let count = 0;
+    urlObj.searchParams.forEach((v, k) => {
+      addParamRow(k, v, true);
+      count++;
+    });
+    if (count === 0) addParamRow('', '', true);
+  } catch {
+    addParamRow('', '', true);
+  }
+
+  syncContentTypeHeader();
+  saveBuilderState();
+}
+
 // ─────────────────────────────────────────────
 function setupSend() {
   dom.btnSendStruct.addEventListener('click', sendStructured);
@@ -594,25 +722,48 @@ async function sendRaw() {
 
     const responseData = data.response || data;
 
-    // Detect method from raw
-    const methodMatch = rawRequest.match(/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s/i);
-    const method = methodMatch ? methodMatch[1].toUpperCase() : 'RAW';
+    // Parse raw request to extract structured info
+    const parsed = parseRawHttp(request);
+    const method = parsed.method || 'GET';
+    // Build full URL from base URL + parsed path
+    let fullUrl = url;
+    try {
+      const urlObj = new URL(url);
+      fullUrl = urlObj.origin + parsed.path;
+    } catch {
+      // If URL parsing fails, concatenate simply
+      if (!url.endsWith('/') && !parsed.path.startsWith('/')) fullUrl += '/';
+      fullUrl = url.replace(/\/$/, '') + parsed.path;
+    }
 
     const entry = {
       id: data.request_uuid || generateId(),
       method,
-      url,
+      url: fullUrl,
       statusCode: responseData.status_code,
       headers: responseData.headers || {},
       body: responseData.body || '',
       type: 'raw',
-      rawRequest,
+      rawRequest: request,
+      reqHeaders: parsed.headers,
+      reqBody: parsed.body,
+      reqParams: [],
       timestamp: Date.now(),
     };
     addToHistory(entry);
     displayResponse(entry, elapsed);
 
-    syncCollectionRequest({ method, url });
+    // Switch to structured tab and populate with parsed info
+    dom.tabBtns.forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === 'structured');
+    });
+    dom.tabPanels.forEach(p => {
+      p.classList.toggle('hidden', p.id !== 'tab-structured');
+      p.classList.toggle('active', p.id === 'tab-structured');
+    });
+    populateStructuredFromParsed(method, fullUrl, parsed.headers, parsed.body);
+
+    syncCollectionRequest({ method, url: fullUrl, headers: parsed.headers, body: parsed.body });
   } catch (err) {
     displayError(err.message);
   } finally {
@@ -943,12 +1094,20 @@ function loadCollectionRequest(req) {
   // Headers
   clearHeaders();
   const reqHeaders = req.headers || {};
-  const headerEntries = Object.entries(reqHeaders);
-  if (headerEntries.length === 0) {
-    addHeaderRow('', '');
-  } else {
-    headerEntries.forEach(([k, v]) => addHeaderRow(k, v));
+  // Peek Content-Type from loaded headers to set body content type dropdown
+  const ctKey = Object.keys(reqHeaders).find(k => k.toLowerCase() === 'content-type');
+  if (ctKey && reqHeaders[ctKey]) {
+    const ctVal = reqHeaders[ctKey].split(';')[0].trim();
+    const knownCT = ['application/json', 'text/plain', 'application/xml', 'application/x-www-form-urlencoded'];
+    if (knownCT.includes(ctVal)) dom.bodyContentType.value = ctVal;
   }
+  const otherHeaders = Object.entries(reqHeaders).filter(([k]) => k.toLowerCase() !== 'content-type');
+  if (otherHeaders.length === 0) {
+    addHeaderRow('', '', true);
+  } else {
+    otherHeaders.forEach(([k, v]) => addHeaderRow(k, v, true));
+  }
+  syncContentTypeHeader();
 
   // Marquer comme actif et sauvegarder
   state.activeCollectionId = req.id;
@@ -1291,16 +1450,22 @@ async function loadHistoryEntry(entry) {
 
   // Populate the request builder based on type
   if (freshEntry.type === 'raw') {
-    // Switch to raw tab
+    // Now that the parser is operational, display in structured tab
     dom.tabBtns.forEach(b => {
-      b.classList.toggle('active', b.dataset.tab === 'raw');
+      b.classList.toggle('active', b.dataset.tab === 'structured');
     });
     dom.tabPanels.forEach(p => {
-      p.classList.toggle('hidden', p.id !== 'tab-raw');
-      p.classList.toggle('active', p.id === 'tab-raw');
+      p.classList.toggle('hidden', p.id !== 'tab-structured');
+      p.classList.toggle('active', p.id === 'tab-structured');
     });
-    dom.rawUrl.value = freshEntry.url || '';
-    dom.rawRequest.value = freshEntry.rawRequest || '';
+
+    const rawParsed = parseRawHttp(freshEntry.rawRequest || '');
+    const method = freshEntry.method || rawParsed.method || 'GET';
+    const fullUrl = freshEntry.url || '';
+    const reqHeaders = freshEntry.reqHeaders || rawParsed.headers || {};
+    const reqBody = freshEntry.reqBody || rawParsed.body || '';
+
+    populateStructuredFromParsed(method, fullUrl, reqHeaders, reqBody);
   } else {
     // Switch to structured tab
     dom.tabBtns.forEach(b => {
@@ -1331,12 +1496,13 @@ async function loadHistoryEntry(entry) {
     // Populate headers
     clearHeaders();
     const reqHeaders = freshEntry.reqHeaders || {};
-    const headerEntries = Object.entries(reqHeaders);
-    if (headerEntries.length === 0) {
-      addHeaderRow('', '');
+    const otherHeaders = Object.entries(reqHeaders).filter(([k]) => k.toLowerCase() !== 'content-type');
+    if (otherHeaders.length === 0) {
+      addHeaderRow('', '', true);
     } else {
-      headerEntries.forEach(([k, v]) => addHeaderRow(k, v));
+      otherHeaders.forEach(([k, v]) => addHeaderRow(k, v, true));
     }
+    syncContentTypeHeader();
   }
 
   // Display response
@@ -1509,6 +1675,159 @@ function setupResizeHandle() {
 }
 
 // ─────────────────────────────────────────────
+// DOCUMENT UPLOAD MODAL
+// ─────────────────────────────────────────────
+let selectedDocFile = null;
+
+function setupDocModal() {
+  // Open modal
+  dom.btnOpenDocs.addEventListener('click', openDocModal);
+
+  // Close buttons
+  dom.btnDocModalClose.addEventListener('click', closeDocModal);
+  dom.btnDocModalCancel.addEventListener('click', closeDocModal);
+
+  // Click outside to close
+  dom.docModal.addEventListener('click', (e) => {
+    if (e.target === dom.docModal) closeDocModal();
+  });
+
+  // File input change
+  dom.docFileInput.addEventListener('change', () => {
+    const file = dom.docFileInput.files[0];
+    if (file) setDocFile(file);
+  });
+
+  // Drag & drop
+  dom.docDropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dom.docDropZone.classList.add('border-emerald-500/50', 'bg-emerald-500/[0.04]');
+  });
+
+  dom.docDropZone.addEventListener('dragleave', () => {
+    dom.docDropZone.classList.remove('border-emerald-500/50', 'bg-emerald-500/[0.04]');
+  });
+
+  dom.docDropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dom.docDropZone.classList.remove('border-emerald-500/50', 'bg-emerald-500/[0.04]');
+    const file = e.dataTransfer.files[0];
+    if (file) setDocFile(file);
+  });
+
+  // Upload button
+  dom.btnDocModalUpload.addEventListener('click', uploadDocument);
+
+  // Escape key to close
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !dom.docModal.classList.contains('hidden')) {
+      closeDocModal();
+    }
+  });
+}
+
+function openDocModal() {
+  resetDocModal();
+  dom.docModal.classList.remove('hidden');
+  dom.docModal.classList.add('flex');
+}
+
+function closeDocModal() {
+  dom.docModal.classList.add('hidden');
+  dom.docModal.classList.remove('flex');
+  resetDocModal();
+}
+
+function resetDocModal() {
+  selectedDocFile = null;
+  dom.docFileInput.value = '';
+  dom.docDropContent.classList.remove('hidden');
+  dom.docFileSelected.classList.add('hidden');
+  dom.docFileName.textContent = '';
+  dom.docFileSize.textContent = '';
+  dom.docMsg.classList.add('hidden');
+  dom.docMsg.innerHTML = '';
+  dom.btnDocModalUpload.disabled = true;
+  dom.docDropZone.classList.remove('border-emerald-500/30');
+}
+
+function setDocFile(file) {
+  const validExts = ['.json', '.yaml', '.yml'];
+  const ext = '.' + file.name.split('.').pop().toLowerCase();
+  if (!validExts.includes(ext)) {
+    showDocMsg(`Format non supporté. Formats acceptés : ${validExts.join(', ')}`, 'error');
+    return;
+  }
+
+  selectedDocFile = file;
+  dom.docDropContent.classList.add('hidden');
+  dom.docFileSelected.classList.remove('hidden');
+  dom.docFileName.textContent = file.name;
+  dom.docFileSize.textContent = formatFileSize(file.size);
+  dom.docMsg.classList.add('hidden');
+  dom.btnDocModalUpload.disabled = false;
+  dom.docDropZone.classList.add('border-emerald-500/30');
+}
+
+async function uploadDocument() {
+  if (!selectedDocFile) return;
+
+  dom.btnDocModalUpload.disabled = true;
+  dom.btnDocModalUpload.innerHTML = `
+    <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
+    Importation…
+  `;
+
+  try {
+    const formData = new FormData();
+    formData.append('file', selectedDocFile);
+
+    const res = await fetch(API.uploadOpenAPI, {
+      method: 'POST',
+      headers: { ...getAuthHeader() },
+      body: formData,
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      showDocMsg(`Spécification importée avec succès — ${data.collection_name || 'collection créée'}`, 'success');
+      loadCollections();
+      // Reset file selection but keep modal open for another upload
+      selectedDocFile = null;
+      dom.docFileInput.value = '';
+      dom.docDropContent.classList.remove('hidden');
+      dom.docFileSelected.classList.add('hidden');
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      showDocMsg(errData.detail || `Erreur ${res.status} lors de l'importation`, 'error');
+    }
+  } catch (err) {
+    showDocMsg(`Erreur réseau : ${err.message}`, 'error');
+  } finally {
+    dom.btnDocModalUpload.disabled = false;
+    dom.btnDocModalUpload.innerHTML = `
+      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/></svg>
+      Importer
+    `;
+  }
+}
+
+function showDocMsg(message, type) {
+  dom.docMsg.classList.remove('hidden');
+  const colors = type === 'error'
+    ? 'bg-red-500/10 border-red-500/20 text-red-400'
+    : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
+  dom.docMsg.className = `mt-3 p-3 rounded-lg border text-xs ${colors}`;
+  dom.docMsg.textContent = message;
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' o';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' Ko';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
+}
+
+// ─────────────────────────────────────────────
 // KEYBOARD SHORTCUTS
 // ─────────────────────────────────────────────
 function setupKeyboardShortcuts() {
@@ -1621,6 +1940,38 @@ function generateId() {
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
+}
+
+function parseRawHttp(rawText) {
+  // Normalize line endings
+  const normalized = rawText.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+
+  // First line: METHOD /path HTTP/1.1
+  const requestLine = lines[0].trim().split(' ');
+  const method = requestLine[0] || 'GET';
+  const reqPath = requestLine[1] || '/';
+
+  // Parse headers until empty line
+  const headers = {};
+  let bodyStart = 1;
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line === '') {
+      bodyStart = i + 1;
+      break;
+    }
+    const colonIdx = line.indexOf(':');
+    if (colonIdx > 0) {
+      headers[line.substring(0, colonIdx).trim()] = line.substring(colonIdx + 1).trim();
+    }
+    bodyStart = i + 1;
+  }
+
+  // Body is everything after the empty line
+  const body = lines.slice(bodyStart).join('\n').trim();
+
+  return { method, path: reqPath, headers, body };
 }
 
 function safeJsonParse(str) {
