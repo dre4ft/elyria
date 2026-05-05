@@ -598,6 +598,45 @@ function syncContentTypeHeader() {
 // ─────────────────────────────────────────────
 // SEND REQUESTS
 // ─────────────────────────────────────────────
+function populateStructuredFromParsed(method, url, headers, body) {
+  dom.reqMethod.value = method;
+  dom.reqUrl.value = url;
+  dom.reqBody.value = body || '';
+
+  clearHeaders();
+  const headerEntries = Object.entries(headers || {});
+  if (headerEntries.length === 0) {
+    addHeaderRow('', '', true);
+  } else {
+    headerEntries.forEach(([k, v]) => addHeaderRow(k, v, true));
+  }
+
+  // Sync Content-Type header if body has content
+  const ctKey = Object.keys(headers || {}).find(k => k.toLowerCase() === 'content-type');
+  if (ctKey && headers[ctKey]) {
+    const ctVal = headers[ctKey].split(';')[0].trim();
+    const knownCT = ['application/json', 'text/plain', 'application/xml', 'application/x-www-form-urlencoded'];
+    if (knownCT.includes(ctVal)) dom.bodyContentType.value = ctVal;
+  }
+
+  clearParams();
+  try {
+    const urlObj = new URL(url);
+    let count = 0;
+    urlObj.searchParams.forEach((v, k) => {
+      addParamRow(k, v, true);
+      count++;
+    });
+    if (count === 0) addParamRow('', '', true);
+  } catch {
+    addParamRow('', '', true);
+  }
+
+  syncContentTypeHeader();
+  saveBuilderState();
+}
+
+// ─────────────────────────────────────────────
 function setupSend() {
   dom.btnSendStruct.addEventListener('click', sendStructured);
   dom.btnSendRaw.addEventListener('click', sendRaw);
@@ -683,25 +722,48 @@ async function sendRaw() {
 
     const responseData = data.response || data;
 
-    // Detect method from raw
-    const methodMatch = rawRequest.match(/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s/i);
-    const method = methodMatch ? methodMatch[1].toUpperCase() : 'RAW';
+    // Parse raw request to extract structured info
+    const parsed = parseRawHttp(request);
+    const method = parsed.method || 'GET';
+    // Build full URL from base URL + parsed path
+    let fullUrl = url;
+    try {
+      const urlObj = new URL(url);
+      fullUrl = urlObj.origin + parsed.path;
+    } catch {
+      // If URL parsing fails, concatenate simply
+      if (!url.endsWith('/') && !parsed.path.startsWith('/')) fullUrl += '/';
+      fullUrl = url.replace(/\/$/, '') + parsed.path;
+    }
 
     const entry = {
       id: data.request_uuid || generateId(),
       method,
-      url,
+      url: fullUrl,
       statusCode: responseData.status_code,
       headers: responseData.headers || {},
       body: responseData.body || '',
       type: 'raw',
-      rawRequest,
+      rawRequest: request,
+      reqHeaders: parsed.headers,
+      reqBody: parsed.body,
+      reqParams: [],
       timestamp: Date.now(),
     };
     addToHistory(entry);
     displayResponse(entry, elapsed);
 
-    syncCollectionRequest({ method, url });
+    // Switch to structured tab and populate with parsed info
+    dom.tabBtns.forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === 'structured');
+    });
+    dom.tabPanels.forEach(p => {
+      p.classList.toggle('hidden', p.id !== 'tab-structured');
+      p.classList.toggle('active', p.id === 'tab-structured');
+    });
+    populateStructuredFromParsed(method, fullUrl, parsed.headers, parsed.body);
+
+    syncCollectionRequest({ method, url: fullUrl, headers: parsed.headers, body: parsed.body });
   } catch (err) {
     displayError(err.message);
   } finally {
@@ -1388,16 +1450,22 @@ async function loadHistoryEntry(entry) {
 
   // Populate the request builder based on type
   if (freshEntry.type === 'raw') {
-    // Switch to raw tab
+    // Now that the parser is operational, display in structured tab
     dom.tabBtns.forEach(b => {
-      b.classList.toggle('active', b.dataset.tab === 'raw');
+      b.classList.toggle('active', b.dataset.tab === 'structured');
     });
     dom.tabPanels.forEach(p => {
-      p.classList.toggle('hidden', p.id !== 'tab-raw');
-      p.classList.toggle('active', p.id === 'tab-raw');
+      p.classList.toggle('hidden', p.id !== 'tab-structured');
+      p.classList.toggle('active', p.id === 'tab-structured');
     });
-    dom.rawUrl.value = freshEntry.url || '';
-    dom.rawRequest.value = freshEntry.rawRequest || '';
+
+    const rawParsed = parseRawHttp(freshEntry.rawRequest || '');
+    const method = freshEntry.method || rawParsed.method || 'GET';
+    const fullUrl = freshEntry.url || '';
+    const reqHeaders = freshEntry.reqHeaders || rawParsed.headers || {};
+    const reqBody = freshEntry.reqBody || rawParsed.body || '';
+
+    populateStructuredFromParsed(method, fullUrl, reqHeaders, reqBody);
   } else {
     // Switch to structured tab
     dom.tabBtns.forEach(b => {
@@ -1872,6 +1940,38 @@ function generateId() {
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
+}
+
+function parseRawHttp(rawText) {
+  // Normalize line endings
+  const normalized = rawText.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+
+  // First line: METHOD /path HTTP/1.1
+  const requestLine = lines[0].trim().split(' ');
+  const method = requestLine[0] || 'GET';
+  const reqPath = requestLine[1] || '/';
+
+  // Parse headers until empty line
+  const headers = {};
+  let bodyStart = 1;
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line === '') {
+      bodyStart = i + 1;
+      break;
+    }
+    const colonIdx = line.indexOf(':');
+    if (colonIdx > 0) {
+      headers[line.substring(0, colonIdx).trim()] = line.substring(colonIdx + 1).trim();
+    }
+    bodyStart = i + 1;
+  }
+
+  // Body is everything after the empty line
+  const body = lines.slice(bodyStart).join('\n').trim();
+
+  return { method, path: reqPath, headers, body };
 }
 
 function safeJsonParse(str) {
