@@ -89,7 +89,6 @@ Open source. Forever.
 ## TODO
 
 - dockerfile
-- parser pour raw HTTP
 - test bout en bout
 - connecteur pour DB externe
 - stockage local des requêtes le temps du premier envoi
