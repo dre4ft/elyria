@@ -9,14 +9,14 @@ import database.ai_mgmt as ai_mgmt
 
 
 class AIWrapper:
-    def __init__(self, provider_type, url=None, api_key=None, model=None, tools_rounds :int =5):
+    def __init__(self, provider_type, url=None, api_key=None, model=None, tools = tools.get_tools(),tools_rounds :int =5):
         if provider_type == 'ollama':
             self.provider = ollama_provider.OllamaProvider(model=model, host=url)
         elif provider_type == 'openai':
             self.provider = openai_provider.OpenAIProvider(provider_url=url, api_key=api_key, model=model)
         else:
             raise ValueError(f"Unsupported provider type: {provider_type}")
-        self.tools = tools.get_tools()
+        self.tools = tools
         self.rounds = tools_rounds
 
     def chat(self, message: str, user_id: str, conversation_id: str = None):

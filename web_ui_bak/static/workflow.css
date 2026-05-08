@@ -62,6 +62,7 @@
   transition: all 0.15s;
   border: 1px solid transparent;
   user-select: none;
+  margin-left: 1rem;
 }
 .wf-saved-item:hover {
   background: rgba(255,255,255,0.03);
@@ -70,6 +71,50 @@
 .wf-saved-item:active {
   cursor: grabbing;
   transform: scale(0.97);
+}
+
+/* ── Saved Folder Items (in palette) ── */
+.wf-saved-folder {
+  border-radius: 0.25rem;
+  transition: all 0.15s;
+}
+.wf-saved-folder-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.375rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+.wf-saved-folder-header:hover {
+  background: rgba(255,255,255,0.03);
+  border-color: rgba(255,255,255,0.05);
+}
+.wf-saved-folder-chevron {
+  width: 12px;
+  height: 12px;
+  color: #4b5563;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.wf-saved-folder-chevron.open {
+  transform: rotate(90deg);
+}
+.wf-saved-folder-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+.wf-saved-folder-icon.closed { color: #7c3aed; }
+.wf-saved-folder-icon.open { color: #8b5cf6; }
+.wf-saved-folder-children {
+  overflow: hidden;
+  transition: max-height 0.25s ease;
+}
+.wf-saved-folder-children.collapsed {
+  max-height: 0 !important;
 }
 
 /* ── Canvas Nodes ── */
@@ -396,11 +441,58 @@
 }
 
 /* ── Connection lines ── */
+.wf-conn-group {
+  cursor: pointer;
+}
+.wf-conn-group:hover .wf-connection {
+  stroke-width: 3;
+  filter: drop-shadow(0 0 6px rgba(124,58,237,0.3));
+}
+.wf-conn-group:hover .wf-connection.conn-true {
+  filter: drop-shadow(0 0 6px rgba(34,197,94,0.3));
+}
+.wf-conn-group:hover .wf-connection.conn-false {
+  filter: drop-shadow(0 0 6px rgba(239,68,68,0.3));
+}
+.wf-conn-group:hover .wf-connection.conn-body {
+  filter: drop-shadow(0 0 6px rgba(59,130,246,0.3));
+}
+.wf-conn-group:hover .wf-connection.conn-done {
+  filter: drop-shadow(0 0 6px rgba(168,85,247,0.3));
+}
+.wf-connection-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+}
 .wf-connection {
   fill: none;
   stroke: rgba(124,58,237,0.35);
   stroke-width: 2;
   pointer-events: none;
+  transition: stroke-width 0.15s, filter 0.15s;
+}
+.wf-connection.selected {
+  stroke: rgba(124,58,237,0.85);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px rgba(124,58,237,0.4));
+}
+.wf-connection.selected.conn-true {
+  stroke: rgba(34,197,94,0.85);
+  filter: drop-shadow(0 0 8px rgba(34,197,94,0.4));
+}
+.wf-connection.selected.conn-false {
+  stroke: rgba(239,68,68,0.85);
+  filter: drop-shadow(0 0 8px rgba(239,68,68,0.4));
+}
+.wf-connection.selected.conn-body {
+  stroke: rgba(59,130,246,0.85);
+  filter: drop-shadow(0 0 8px rgba(59,130,246,0.4));
+}
+.wf-connection.selected.conn-done {
+  stroke: rgba(168,85,247,0.85);
+  filter: drop-shadow(0 0 8px rgba(168,85,247,0.4));
 }
 .wf-connection.active {
   stroke: rgba(124,58,237,0.7);

@@ -4,7 +4,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 const API = {
-  structured: '/api/request/rest',
+  structured: '/api/request',
   raw: '/api/request/raw',
   collections: '/api/collections',
 };
@@ -27,9 +27,9 @@ const BLOCK_DEFS = {
     ports: { in: ['in'], out: ['out'] },
     fields: [
       { key: 'method', label: 'Méthode', type: 'select', options: ['GET','POST','PUT','PATCH','DELETE'], default: 'GET' },
-      { key: 'url', label: 'URL', type: 'text', placeholder: 'https://api.example.com/...' },
-      { key: 'headers', label: 'Headers (JSON)', type: 'textarea', placeholder: '{ "Authorization": "Bearer {{token}}" }' },
-      { key: 'body', label: 'Body', type: 'textarea', placeholder: '{ "key": "value" }' },
+      { key: 'url', label: 'URL', type: 'text', placeholder: 'https://api.example.com/{{ctx.response.id}}' },
+      { key: 'headers', label: 'Headers (JSON)', type: 'textarea', placeholder: '{ "Authorization": "Bearer {{ctx.response.token}}" }' },
+      { key: 'body', label: 'Body', type: 'textarea', placeholder: '{ "key": "{{ctx.response.value}}" }' },
       { key: 'saveTo', label: 'Sauver réponse dans', type: 'text', placeholder: 'response1', default: 'response' },
     ],
   },
@@ -46,14 +46,15 @@ const BLOCK_DEFS = {
     label: 'Set Data', color: 'cyan', icon: 'database',
     ports: { in: ['in'], out: ['out'] },
     fields: [
-      { key: 'variables', label: 'Variables (JSON)', type: 'textarea', placeholder: '{ "token": "abc123", "userId": 42 }' },
+      { key: 'saveTo', label: 'Nom du dataset', type: 'text', placeholder: 'myData', default: '' },
+      { key: 'variables', label: 'Variables (JSON)', type: 'textarea', placeholder: '{ "token": "{{ctx.response.token}}", "id": {{ctx.response.body.id}} }' },
     ],
   },
   if_else: {
     label: 'If / Else', color: 'amber', icon: 'condition',
     ports: { in: ['in'], out: ['out_true', 'out_false'] },
     fields: [
-      { key: 'condition', label: 'Condition (JS)', type: 'textarea', placeholder: 'ctx.response.statusCode === 200' },
+      { key: 'condition', label: 'Condition (JS)', type: 'textarea', placeholder: 'ctx.response.status_code === 200' },
     ],
   },
   for_loop: {
@@ -76,7 +77,7 @@ const BLOCK_DEFS = {
     ports: { in: ['in'], out: ['out'] },
     fields: [
       { key: 'label', label: 'Nom du test', type: 'text', placeholder: 'Status is 200' },
-      { key: 'expression', label: 'Expression (JS)', type: 'textarea', placeholder: 'ctx.response.statusCode === 200' },
+      { key: 'expression', label: 'Expression (JS)', type: 'textarea', placeholder: 'ctx.response.status_code === 200' },
     ],
   },
 };
@@ -110,6 +111,7 @@ const wf = {
   nodes: [],           // [{ id, type, x, y, data:{}, status:null }]
   connections: [],     // [{ from, fromPort, to, toPort }]
   selectedId: null,
+  selectedConnIdx: null,
   dragging: null,      // { nodeId, offsetX, offsetY }
   connecting: null,    // { fromId, fromPort, startX, startY }
   zoom: 1,
@@ -297,8 +299,8 @@ async function loadSavedRequests(force = false) {
 
   if (!container) return;
 
-  // Clear previous items
-  container.querySelectorAll('.wf-saved-item').forEach(el => el.remove());
+  // Clear previous rendered items (keep loading/empty placeholders)
+  container.querySelectorAll('.wf-saved-folder, .wf-saved-item').forEach(el => el.remove());
 
   try {
     if (loading) loading.classList.remove('hidden');
@@ -310,33 +312,100 @@ async function loadSavedRequests(force = false) {
     const tree = await res.json();
     if (loading) loading.classList.add('hidden');
 
-    // Flatten tree to get all request nodes
-    const requests = [];
-    function walk(nodes) {
-      for (const node of nodes) {
-        if (node.type === 'request') requests.push(node);
-        if (node.type === 'folder' && node.children) walk(node.children);
-      }
-    }
-    walk(tree);
-
-    if (requests.length === 0) {
+    if (!tree || tree.length === 0) {
       if (empty) empty.classList.remove('hidden');
       savedRequestsCache = {};
       return;
     }
 
+    // Index all nodes (folders + requests) by ID
     savedRequestsCache = {};
-    requests.forEach(req => {
-      savedRequestsCache[req.id] = req;
-      const item = renderSavedRequestItem(req);
-      container.appendChild(item);
+    function indexNodes(nodes) {
+      for (const node of nodes) {
+        savedRequestsCache[node.id] = node;
+        if (node.type === 'folder' && node.children) indexNodes(node.children);
+      }
+    }
+    indexNodes(tree);
+
+    // Render tree with folders
+    tree.forEach(node => {
+      container.appendChild(renderSavedTreeNode(node));
     });
   } catch {
     if (loading) loading.classList.add('hidden');
     if (empty) empty.classList.remove('hidden');
     savedRequestsCache = {};
   }
+}
+
+function renderSavedTreeNode(node) {
+  if (node.type === 'folder') {
+    return renderSavedFolderNode(node);
+  }
+  return renderSavedRequestItem(node);
+}
+
+function renderSavedFolderNode(folder) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'wf-saved-folder';
+  wrapper.dataset.id = folder.id;
+
+  const header = document.createElement('div');
+  header.className = 'wf-saved-folder-header';
+  header.innerHTML = `
+    <svg class="wf-saved-folder-chevron ${folder.expanded ? 'open' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+    <svg class="wf-saved-folder-icon ${folder.expanded ? 'open' : 'closed'}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+      ${folder.expanded
+        ? '<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776"/>'
+        : '<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/>'
+      }
+    </svg>
+    <span class="text-[10px] text-gray-300 truncate flex-1 font-medium">${escapeHtml(folder.name)}</span>
+    <span class="text-[9px] text-gray-600 font-mono mr-1">${(folder.children || []).length}</span>
+  `;
+
+  const childrenContainer = document.createElement('div');
+  childrenContainer.className = 'wf-saved-folder-children' + (folder.expanded ? '' : ' collapsed');
+  if (folder.expanded) {
+    childrenContainer.style.maxHeight = 'none';
+  } else {
+    childrenContainer.style.maxHeight = '0';
+  }
+
+  (folder.children || []).forEach(child => {
+    childrenContainer.appendChild(renderSavedTreeNode(child));
+  });
+
+  // Toggle expand/collapse
+  header.addEventListener('click', () => {
+    folder.expanded = !folder.expanded;
+    const chevron = header.querySelector('.wf-saved-folder-chevron');
+    chevron.classList.toggle('open', folder.expanded);
+
+    const folderIcon = header.querySelector('.wf-saved-folder-icon');
+    folderIcon.classList.toggle('open', folder.expanded);
+    folderIcon.classList.toggle('closed', !folder.expanded);
+    folderIcon.innerHTML = folder.expanded
+      ? '<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776"/>'
+      : '<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/>';
+
+    if (folder.expanded) {
+      childrenContainer.classList.remove('collapsed');
+      childrenContainer.style.maxHeight = childrenContainer.scrollHeight + 'px';
+      setTimeout(() => { childrenContainer.style.maxHeight = 'none'; }, 250);
+    } else {
+      childrenContainer.style.maxHeight = childrenContainer.scrollHeight + 'px';
+      requestAnimationFrame(() => {
+        childrenContainer.style.maxHeight = '0';
+        childrenContainer.classList.add('collapsed');
+      });
+    }
+  });
+
+  wrapper.appendChild(header);
+  wrapper.appendChild(childrenContainer);
+  return wrapper;
 }
 
 function renderSavedRequestItem(req) {
@@ -375,7 +444,7 @@ function renderNode(node) {
   let summary = '';
   if (node.type === 'http_request') summary = `${node.data.method || 'GET'} ${truncate(node.data.url, 22)}`;
   else if (node.type === 'raw_request') summary = truncate(node.data.url, 28);
-  else if (node.type === 'set_data') summary = truncate(node.data.variables, 28);
+  else if (node.type === 'set_data') summary = (node.data.saveTo ? `ctx.${node.data.saveTo}` : truncate(node.data.variables, 28));
   else if (node.type === 'if_else') summary = truncate(node.data.condition, 28);
   else if (node.type === 'for_loop') summary = `${node.data.iterations || 5}x — ${node.data.variable || 'i'}`;
   else if (node.type === 'delay') summary = `${node.data.ms || 1000}ms`;
@@ -531,13 +600,18 @@ function setupCanvasInteractions() {
   dom.canvas.addEventListener('mousedown', (e) => {
     if (e.target === dom.canvas) {
       selectNode(null);
+      selectConnection(null);
     }
   });
 
   // Delete on key
   document.addEventListener('keydown', (e) => {
-    if ((e.key === 'Delete' || e.key === 'Backspace') && wf.selectedId && !e.target.closest('input, textarea, select')) {
-      removeNode(wf.selectedId);
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !e.target.closest('input, textarea, select')) {
+      if (wf.selectedConnIdx !== null) {
+        removeConnection(wf.selectedConnIdx);
+      } else if (wf.selectedId) {
+        removeNode(wf.selectedId);
+      }
     }
   });
 }
@@ -547,6 +621,7 @@ function setupCanvasInteractions() {
 // ─────────────────────────────────────────────
 function selectNode(id) {
   wf.selectedId = id;
+  selectConnection(null);
   $$('.wf-node').forEach(el => el.classList.toggle('selected', el.id === `node-${id}`));
   renderConfigPanel(id);
 }
@@ -554,11 +629,66 @@ function selectNode(id) {
 function removeNode(id) {
   wf.nodes = wf.nodes.filter(n => n.id !== id);
   wf.connections = wf.connections.filter(c => c.from !== id && c.to !== id);
+  if (wf.selectedConnIdx !== null && wf.selectedConnIdx >= wf.connections.length) {
+    selectConnection(null);
+  }
   const el = $(`#node-${id}`);
   if (el) el.remove();
   if (wf.selectedId === id) selectNode(null);
   renderConnections();
   updateNodeCount();
+}
+
+function selectConnection(idx) {
+  wf.selectedConnIdx = idx;
+  renderConnections();
+}
+
+function removeConnection(idx) {
+  if (idx === null || idx >= wf.connections.length) return;
+  wf.connections.splice(idx, 1);
+  selectConnection(null);
+  renderConnections();
+}
+
+// ─────────────────────────────────────────────
+// CTX TEMPLATE SNIPPETS
+// ─────────────────────────────────────────────
+function renderCtxSnippets() {
+  const snippets = [
+    { label: 'ctx.response.status_code', desc: 'Code HTTP (number)', expr: '{{ctx.response.status_code}}' },
+    { label: 'ctx.response.body', desc: 'Corps de la réponse (string)', expr: '{{ctx.response.body}}' },
+    { label: 'ctx.response.headers["key"]', desc: 'Header de réponse', expr: '{{ctx.response.headers["Content-Type"]}}' },
+    { label: 'ctx.response.url', desc: 'URL de la réponse', expr: '{{ctx.response.url}}' },
+    { label: 'ctx.dataset.field', desc: 'Champ d\'un dataset nommé', expr: '{{ctx.myData.id}}' },
+    { label: 'ctx.maVariable', desc: 'Variable racine (Set Data sans nom)', expr: '{{ctx.maVariable}}' },
+  ];
+
+  let html = `
+    <div class="wf-config-examples">
+      <div class="wf-config-examples-title">
+        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></svg>
+        ctx — Contexte du workflow
+      </div>
+  `;
+
+  snippets.forEach(s => {
+    html += `<div class="wf-config-example" data-expr="${escapeAttr(s.expr)}"><span class="wf-example-key">${escapeHtml(s.label)}</span> : ${escapeHtml(s.desc)}</div>`;
+  });
+
+  html += `</div>`;
+  return html;
+}
+
+function insertAtCursor(el, text) {
+  if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    el.value = el.value.substring(0, start) + text + el.value.substring(end);
+    el.selectionStart = el.selectionEnd = start + text.length;
+    el.focus();
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -611,6 +741,11 @@ function renderConfigPanel(nodeId) {
 
   dom.configForm.innerHTML = html;
 
+  // Add ctx template snippets for blocks that use expressions
+  if (['http_request', 'raw_request', 'set_data', 'if_else'].includes(node.type)) {
+    dom.configForm.innerHTML += renderCtxSnippets();
+  }
+
   // Add examples for assert block
   if (node.type === 'assert') {
     dom.configForm.innerHTML += `
@@ -631,14 +766,26 @@ function renderConfigPanel(nodeId) {
       </div>
     `;
 
-    // Click an example to fill the expression field
+    // Click an example to fill the expression field (assert) or insert at cursor
     dom.configForm.querySelectorAll('.wf-config-example').forEach(el => {
       el.addEventListener('click', () => {
-        const textarea = dom.configForm.querySelector('[data-field="expression"]');
-        if (textarea) {
-          textarea.value = el.dataset.expr;
-          node.data.expression = el.dataset.expr;
-          refreshNodeDisplay(node);
+        if (node.type === 'assert') {
+          const textarea = dom.configForm.querySelector('[data-field="expression"]');
+          if (textarea) {
+            textarea.value = el.dataset.expr;
+            node.data.expression = el.dataset.expr;
+            refreshNodeDisplay(node);
+          }
+        } else {
+          const active = document.activeElement;
+          if (active && active.closest('#wf-config-form') && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) {
+            insertAtCursor(active, el.dataset.expr);
+            const field = active.dataset.field;
+            if (field) {
+              node.data[field] = active.value;
+              refreshNodeDisplay(node);
+            }
+          }
         }
       });
     });
@@ -669,8 +816,8 @@ function refreshNodeDisplay(node) {
 // CONNECTIONS RENDERING
 // ─────────────────────────────────────────────
 function renderConnections() {
-  let svg = '';
-  wf.connections.forEach(conn => {
+  let html = '';
+  wf.connections.forEach((conn, idx) => {
     const fromEl = $(`#node-${conn.from}`);
     const toEl = $(`#node-${conn.to}`);
     if (!fromEl || !toEl) return;
@@ -697,9 +844,24 @@ function renderConnections() {
     else if (conn.fromPort === 'out_body') cls += ' conn-body';
     else if (conn.fromPort === 'out_done') cls += ' conn-done';
 
-    svg += `<path class="${cls}" d="M${x1},${y1} C${x1},${y1 + cp} ${x2},${y2 - cp} ${x2},${y2}" />`;
+    const selected = idx === wf.selectedConnIdx ? ' selected' : '';
+    const d = `M${x1},${y1} C${x1},${y1 + cp} ${x2},${y2 - cp} ${x2},${y2}`;
+
+    html += `<g class="wf-conn-group" data-conn-idx="${idx}">`;
+    html += `<path class="wf-connection-hit" d="${d}" />`;
+    html += `<path class="${cls}${selected}" d="${d}" />`;
+    html += `</g>`;
   });
-  dom.svgLayer.innerHTML = svg;
+  dom.svgLayer.innerHTML = html;
+
+  // Click handler on connections
+  dom.svgLayer.querySelectorAll('.wf-connection-hit').forEach(hit => {
+    hit.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(hit.parentElement.dataset.connIdx, 10);
+      selectConnection(idx);
+    });
+  });
 }
 
 function renderTempConnection(x1, y1, x2, y2) {
@@ -849,9 +1011,17 @@ async function executeNode(nodeId, ctx) {
 
       case 'set_data': {
         try {
-          const vars = JSON.parse(interpolate(node.data.variables || '{}', ctx));
-          Object.assign(ctx, vars);
-          addLog(`Variables définies : ${Object.keys(vars).join(', ')}`, 'info');
+          const varsStr = interpolate(node.data.variables || '{}', ctx);
+          const vars = JSON.parse(varsStr);
+          const interpolatedVars = interpolateValue(vars, ctx);
+          const saveTo = node.data.saveTo || '';
+          if (saveTo) {
+            ctx[saveTo] = interpolatedVars;
+            addLog(`Dataset "${saveTo}" défini : ${Object.keys(interpolatedVars).join(', ')}`, 'info');
+          } else {
+            Object.assign(ctx, interpolatedVars);
+            addLog(`Variables définies : ${Object.keys(interpolatedVars).join(', ')}`, 'info');
+          }
         } catch (e) {
           throw new Error(`Set Data JSON invalide : ${e.message}`);
         }
@@ -863,7 +1033,15 @@ async function executeNode(nodeId, ctx) {
         const method = node.data.method || 'GET';
         let headers = {};
         try { headers = JSON.parse(interpolate(node.data.headers || '{}', ctx)); } catch {}
-        const body = interpolate(node.data.body || '', ctx);
+        let body = node.data.body || '';
+        try {
+          const parsedBody = JSON.parse(body);
+          const interpolatedBody = interpolateValue(parsedBody, ctx);
+          body = JSON.stringify(interpolatedBody);
+        } catch {
+          // If not JSON, interpolate as string
+          body = interpolate(body, ctx);
+        }
 
         addLog(`${method} ${url}`, 'info');
         const payload = { url, method };
@@ -988,7 +1166,7 @@ function setNodeStatus(id, status) {
 // EXPRESSION EVAL & TEMPLATE
 // ─────────────────────────────────────────────
 function interpolate(str, ctx) {
-  return str.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (_, path) => {
+  return str.replace(/\{\{(ctx\.)?(\w+(?:\.\w+)*)\}\}/g, (_, ctxPrefix, path) => {
     let val = ctx;
     for (const key of path.split('.')) {
       if (val == null) return '';
@@ -996,6 +1174,22 @@ function interpolate(str, ctx) {
     }
     return val != null ? String(val) : '';
   });
+}
+
+function interpolateValue(value, ctx) {
+  if (typeof value === 'string') {
+    return interpolate(value, ctx);
+  } else if (Array.isArray(value)) {
+    return value.map(v => interpolateValue(v, ctx));
+  } else if (value && typeof value === 'object') {
+    const result = {};
+    for (const [k, v] of Object.entries(value)) {
+      result[k] = interpolateValue(v, ctx);
+    }
+    return result;
+  } else {
+    return value;
+  }
 }
 
 function evalExpression(expr, ctx) {
