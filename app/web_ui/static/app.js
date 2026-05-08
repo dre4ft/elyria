@@ -34,85 +34,41 @@ const state = {
   activeCollectionId: null,   // ID de la requête de collection actuellement chargée
 };
 
-// Clé localStorage pour la sauvegarde temporaire du builder
-const BUILDER_STATE_KEY = 'elyria_builder_state';
-
 // ─────────────────────────────────────────────
-// BUILDER STATE PERSISTENCE (localStorage temporaire)
+// BUILDER STATE PERSISTENCE (DB)
 // ─────────────────────────────────────────────
-function saveBuilderState() {
-  const builderState = {
+function getCurrentBuilderState() {
+  return {
     method: dom.reqMethod.value,
     url: dom.reqUrl.value,
     body: dom.reqBody.value,
-    contentType: dom.bodyContentType.value,
-    params: getParams(),
     headers: getHeaders(),
-    activeCollectionId: state.activeCollectionId,
-    savedAt: Date.now(),
   };
-  try {
-    localStorage.setItem(BUILDER_STATE_KEY, JSON.stringify(builderState));
-  } catch {}
 }
 
-function restoreBuilderState() {
-  try {
-    const raw = localStorage.getItem(BUILDER_STATE_KEY);
-    if (!raw) return false;
-    const saved = JSON.parse(raw);
-    if (!saved || typeof saved !== 'object') return false;
-
-    dom.reqMethod.value = saved.method || 'GET';
-    dom.reqUrl.value = saved.url || '';
-    dom.reqBody.value = saved.body || '';
-    if (saved.contentType) dom.bodyContentType.value = saved.contentType;
-
-    // Restaurer les params
-    clearParams();
-    const params = saved.params || [];
-    if (params.length > 0) {
-      params.forEach(p => addParamRow(p.key, p.value, p.enabled !== false));
-    } else {
-      addParamRow('', '', true);
-    }
-
-    // Restaurer les headers
-    clearHeaders();
-    const headers = saved.headers || {};
-    const headerEntries = Object.entries(headers);
-    if (headerEntries.length > 0) {
-      headerEntries.forEach(([k, v]) => addHeaderRow(k, v, true));
-    } else {
-      addHeaderRow('', '', true);
-    }
-
-    // Sync auto Content-Type header
-    if (saved.contentType) dom.bodyContentType.value = saved.contentType;
-    syncContentTypeHeader();
-
-    state.activeCollectionId = saved.activeCollectionId || null;
-    return true;
-  } catch {
-    return false;
+async function saveCurrentRequestToDb() {
+  if (!state.activeCollectionId) {
+    console.log('[save] skipped: no activeCollectionId');
+    return;
   }
-}
-
-function setupBuilderAutoSave() {
-  // Sauvegarder à chaque changement dans le builder
-  dom.reqMethod.addEventListener('change', saveBuilderState);
-  dom.reqUrl.addEventListener('input', saveBuilderState);
-  dom.reqBody.addEventListener('input', saveBuilderState);
-  dom.bodyContentType.addEventListener('change', saveBuilderState);
-
-  // Observer les changements dans les listes params/headers
-  const observer = new MutationObserver(() => saveBuilderState());
-  observer.observe(dom.paramsList, { childList: true, subtree: true, characterData: true });
-  observer.observe(dom.headersList, { childList: true, subtree: true, characterData: true });
-
-  // Sauvegarder aussi quand on tape dans les inputs params/headers
-  dom.paramsList.addEventListener('input', saveBuilderState);
-  dom.headersList.addEventListener('input', saveBuilderState);
+  const data = getCurrentBuilderState();
+  console.log('[save] PUT', state.activeCollectionId, data);
+  try {
+    const res = await fetch(`${API.updateRequest}/${state.activeCollectionId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('[save] failed:', res.status, err);
+    } else {
+      console.log('[save] ok');
+      await loadCollections();
+    }
+  } catch (e) {
+    console.error('[save] error:', e);
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -245,16 +201,22 @@ function init() {
   setupDocModal();
   setupKeyboardShortcuts();
 
-  // Restaurer l'état du builder (ou ajouter des rows vides par défaut)
-  const restored = restoreBuilderState();
-  if (!restored) {
-    addParamRow('', '', true);
-    addHeaderRow('', '', true);
-    syncContentTypeHeader();
-  }
+  // Initialiser le builder avec des rows vides
+  addParamRow('', '', true);
+  addHeaderRow('', '', true);
+  syncContentTypeHeader();
 
-  // Activer l'auto-sauvegarde du builder
-  setupBuilderAutoSave();
+  // Sauvegarder la requête en cours dans la DB avant de quitter la page
+  window.addEventListener('beforeunload', () => {
+    if (!state.activeCollectionId) return;
+    const data = getCurrentBuilderState();
+    fetch(`${API.updateRequest}/${state.activeCollectionId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(data),
+      keepalive: true,
+    });
+  });
 
   // Load collections
   loadCollections();
@@ -538,7 +500,6 @@ function addHeaderRow(key = '', value = '', enabled = true) {
     toggleBtn.classList.toggle('enabled', !isEnabled);
     toggleBtn.classList.toggle('disabled', isEnabled);
     row.classList.toggle('is-disabled', isEnabled);
-    saveBuilderState();
   });
 
   row.querySelector('.btn-remove-header').addEventListener('click', () => {
@@ -547,7 +508,6 @@ function addHeaderRow(key = '', value = '', enabled = true) {
       autoContentTypeRow = null;
     }
     row.remove();
-    saveBuilderState();
   });
 
   dom.headersList.appendChild(row);
@@ -591,8 +551,6 @@ function syncContentTypeHeader() {
   const keyInput = autoContentTypeRow.querySelectorAll('input')[0];
   keyInput.readOnly = true;
   keyInput.classList.add('opacity-60', 'cursor-default');
-
-  saveBuilderState();
 }
 
 // ─────────────────────────────────────────────
@@ -633,7 +591,6 @@ function populateStructuredFromParsed(method, url, headers, body) {
   }
 
   syncContentTypeHeader();
-  saveBuilderState();
 }
 
 // ─────────────────────────────────────────────
@@ -692,7 +649,7 @@ async function sendStructured() {
     displayResponse(entry, elapsed);
 
     // Sync collection request if anything changed
-    syncCollectionRequest({ method, url, headers, body });
+    saveCurrentRequestToDb();
   } catch (err) {
     displayError(err.message);
   } finally {
@@ -763,7 +720,7 @@ async function sendRaw() {
     });
     populateStructuredFromParsed(method, fullUrl, parsed.headers, parsed.body);
 
-    syncCollectionRequest({ method, url: fullUrl, headers: parsed.headers, body: parsed.body });
+    saveCurrentRequestToDb();
   } catch (err) {
     displayError(err.message);
   } finally {
@@ -1072,7 +1029,10 @@ function renderRequestNode(req) {
   return item;
 }
 
-function loadCollectionRequest(req) {
+async function loadCollectionRequest(req) {
+  // Save current request to DB before switching
+  await saveCurrentRequestToDb();
+
   // Switch to structured tab & populate
   dom.tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === 'structured'));
   dom.tabPanels.forEach(p => {
@@ -1109,12 +1069,8 @@ function loadCollectionRequest(req) {
   }
   syncContentTypeHeader();
 
-  // Marquer comme actif et sauvegarder
+  // Marquer comme actif
   state.activeCollectionId = req.id;
-
-  // Save snapshot in localStorage for auto-sync on send
-  saveCollectionSnapshot(req);
-  saveBuilderState();
 
   // Re-render pour mettre à jour l'état actif visuel
   renderCollections();
@@ -1122,75 +1078,6 @@ function loadCollectionRequest(req) {
 
 // ─────────────────────────────────────────────
 // COLLECTION REQUEST AUTO-SYNC (localStorage)
-// ─────────────────────────────────────────────
-
-function saveCollectionSnapshot(req) {
-  const headers = req.headers || {};
-  localStorage.setItem('collectionSnap', JSON.stringify({
-    id: req.id,
-    method: req.method || 'GET',
-    url: req.url || '',
-    headers: typeof headers === 'string' ? safeJsonParse(headers) || {} : headers,
-    body: req.body || '',
-  }));
-}
-
-async function syncCollectionRequest(current) {
-  const raw = localStorage.getItem('collectionSnap');
-  if (!raw) return;
-  const snap = safeJsonParse(raw);
-  if (!snap || !snap.id) return;
-
-  const snapHeaders = sortKeys(snap.headers || {});
-  const currHeaders = sortKeys(current.headers || {});
-
-  const changed = (
-    (current.method && current.method !== snap.method) ||
-    (current.url && current.url !== snap.url) ||
-    (current.headers && JSON.stringify(currHeaders) !== JSON.stringify(snapHeaders)) ||
-    (current.body !== undefined && current.body !== snap.body)
-  );
-
-  if (!changed) return;
-
-  const merged = {
-    method: current.method || snap.method,
-    url: current.url || snap.url,
-    headers: current.headers || snap.headers,
-    body: current.body !== undefined ? current.body : snap.body,
-  };
-
-  const res = await fetch(`${API.updateRequest}/${snap.id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-    body: JSON.stringify(merged),
-  });
-
-  if (res.ok) {
-    // Mettre à jour le snapshot local
-    const updatedSnap = { id: snap.id, ...merged };
-    localStorage.setItem('collectionSnap', JSON.stringify(updatedSnap));
-
-    // Rafraîchir l'arbre des collections depuis le backend
-    await loadCollections();
-
-    // Mettre à jour le champ url dans l'état builder sauvegardé
-    saveBuilderState();
-  }
-}
-
-function sortKeys(obj) {
-  if (!obj || typeof obj !== 'object') return obj;
-  const sorted = {};
-  Object.keys(obj).sort().forEach(k => { sorted[k] = obj[k]; });
-  return sorted;
-}
-
-// Clear snapshot when switching to non-collection request
-function clearCollectionSnapshot() {
-  localStorage.removeItem('collectionSnap');
-}
-
 async function createFolder(name, parentId) {
   if (!name || !name.trim()) return;
 
@@ -1242,8 +1129,6 @@ async function deleteCollectionRequest(id) {
   if (res.ok) {
     if (state.activeCollectionId === id) {
       state.activeCollectionId = null;
-      clearCollectionSnapshot();
-      saveBuilderState();
     }
     loadCollections();
   }
@@ -1261,10 +1146,6 @@ async function renameRequest(req) {
 
   if (res.ok) {
     await loadCollections();
-    if (state.activeCollectionId === req.id) {
-      saveCollectionSnapshot({ ...req, name: newName.trim() });
-      saveBuilderState();
-    }
   }
 }
 
@@ -1415,7 +1296,8 @@ function renderHistory() {
 }
 
 async function loadHistoryEntry(entry) {
-  clearCollectionSnapshot();
+  // Save current collection request before switching to history
+  await saveCurrentRequestToDb();
   state.activeCollectionId = null;
   state.currentRequestId = entry.id;
   updateChatContext();
