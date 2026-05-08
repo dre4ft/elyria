@@ -21,7 +21,7 @@ app = FastAPI()
 
 @app.middleware("http")
 async def check_authorization(request: Request, call_next):
-    public_routes = ["/", "/login", "/app", "/workflow", "/api/user/login", "/api/user/create"]
+    public_routes = ["/", "/login", "/app", "/workflow", "/doc", "/api/doc", "/api/user/login", "/api/user/create"]
     auth = request.headers.get("authorization")
     if request.url.path in public_routes or request.url.path.startswith("/static/"):
         return await call_next(request)
@@ -108,6 +108,23 @@ async def serve_index():
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Frontend file not found")
+
+@app.get("/doc")
+async def serve_doc():
+    try:
+        with open("web_ui/doc.html", "r") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Frontend file not found")
+
+@app.get("/api/doc")
+async def get_doc(lang: str = "fr"):
+    filename = "guide-utilisateur-en.md" if lang == "en" else "guide-utilisateur.md"
+    try:
+        with open(f"../doc/{filename}", "r") as f:
+            return JSONResponse(content={"content": f.read(), "lang": lang})
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Documentation file not found")
 
 
 
