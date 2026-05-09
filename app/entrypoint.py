@@ -9,6 +9,7 @@ from ai_core.ai_api import app as ai_router
 from auth_users.user_api import app as user_router
 from doc_mgmt.document_api import app as document_router
 from pentest.campaign_api import app as pentest_router
+from database.workflow_graph_api import app as workflow_graph_router
 
 from dotenv import load_dotenv
 import os
@@ -149,6 +150,7 @@ app.include_router(ai_router)
 app.include_router(user_router)
 app.include_router(document_router)
 app.include_router(pentest_router)
+app.include_router(workflow_graph_router)
 
 
 
