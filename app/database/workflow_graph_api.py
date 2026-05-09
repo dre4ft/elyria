@@ -42,6 +42,7 @@ async def api_save_workflow(request: Request):
         graph=graph,
         user_id=_get_user(request),
         description=body.get("description", ""),
+        team_id=body.get("team_id", ""),
     )
     return {"workflow_id": wf_id}
 
@@ -54,7 +55,6 @@ async def api_list_workflows(request: Request, team_id: str = ""):
         wfs = list_workflows(team_id=team_id)
     else:
         wfs = list_workflows(user_id=_get_user(request), team_id="__followed__")
-    return wfs
     return wfs
 
 
@@ -77,6 +77,7 @@ async def api_update_workflow(workflow_id: str, request: Request):
         name=body.get("name", wf["name"]),
         graph=body.get("graph", wf["graph"]),
         description=body.get("description", wf.get("description", "")),
+        team_id=body.get("team_id", wf.get("team_id", "")),
     )
     return {"status": "updated"}
 

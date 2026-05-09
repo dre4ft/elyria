@@ -174,6 +174,11 @@ async def validate_request(team_id: str, target_user_id: str, request: Request):
 def list_followed(request: Request):
     uid = _uid(request)
     c = _conn()
+    # Return teams the user follows, but also auto-include teams they belong to
+    member_teams = c.execute("SELECT team_id FROM team_users WHERE user_id=?", (uid,)).fetchall()
+    for mt in member_teams:
+        c.execute("INSERT OR IGNORE INTO user_followed_teams (user_id,team_id) VALUES(?,?)", (uid, mt["team_id"]))
+    c.commit()
     rows = c.execute("SELECT t.*, (SELECT COUNT(*) FROM team_users WHERE team_id=t.team_id) as member_count FROM teams t JOIN user_followed_teams f ON t.team_id=f.team_id WHERE f.user_id=?", (uid,)).fetchall()
     c.close()
     return [dict(r) for r in rows]

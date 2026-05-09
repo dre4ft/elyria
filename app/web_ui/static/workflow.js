@@ -186,7 +186,8 @@ function init() {
   setupToolbar();
   setupSavedRequests();
   setupWorkflowCRUD();
-  const wfTf = document.getElementById('btn-wf-team-filter'); if(wfTf) wfTf.addEventListener('click', toggleWfTeamFilter);
+  loadWfTeamFilter();
+  loadWfSaveTeams();
   loadSavedRequests();
   loadSavedWorkflows();
   updateNodeCount();
@@ -287,39 +288,43 @@ function addNode(type, x, y) {
 // SAVED WORKFLOWS IN PALETTE (sub-workflow blocks)
 // ─────────────────────────────────────────────
 let wfTeamFilter = '';
-let wfTeamName = '';
-async function toggleWfTeamFilter() {
-  const dd = document.getElementById('wf-team-dd'); if(!dd) return;
-  if(!dd.classList.contains('hidden')) { dd.classList.add('hidden'); return; }
-  dd.classList.remove('hidden'); dd.innerHTML = '<div class="px-3 py-2 text-[10px] text-gray-500">...</div>';
-  try {
-    const r = await fetch('/api/user/followed-teams', {headers:{...getAuthHeader()}});
-    const teams = r.ok ? await r.json() : [];
-    dd.innerHTML = '';
-    [['__personal__', 'Personnel'], ['', 'Tout'], ...teams.map(t=>[t.team_id, t.name])].forEach(([id, name]) => {
-      const btn = document.createElement('button');
-      btn.className = 'w-full text-left px-3 py-2 text-[11px] hover:bg-white/[0.05] transition-all ' + (wfTeamFilter===id?'text-primary-light bg-primary/10':'text-gray-300');
-      btn.textContent = name; btn.onclick = () => { wfTeamFilter=id; wfTeamName=id?name:''; updateWfIndicator(); dd.classList.add('hidden'); loadSavedWorkflows(); };
-      dd.appendChild(btn);
-    });
-  } catch { dd.classList.add('hidden'); }
+function loadWfSaveTeams() {
+  const sel = document.getElementById('wf-save-team'); if(!sel) return;
+  // Keep the default "Perso" option, add separator
+  fetch('/api/teams', {headers:{...getAuthHeader()}}).then(r => {
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(teams => {
+    if(!teams.length) return;
+    // Remove any previously loaded team options (keep the first default one)
+    while(sel.options.length > 1) sel.remove(1);
+    teams.forEach(t => { sel.innerHTML += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; });
+  }).catch(e => { console.error('loadWfSaveTeams:', e); });
 }
 
-function updateWfIndicator() {
-  const dot = document.getElementById('wf-team-indicator'); if(!dot) return;
-  if(wfTeamFilter) { dot.classList.remove('hidden'); dot.classList.add('bg-primary-light'); dot.title = 'Team: '+wfTeamName; }
-  else { dot.classList.add('hidden'); dot.classList.remove('bg-primary-light'); }
+function loadWfTeamFilter() {
+  const sel = document.getElementById('wf-team-filter-select'); if(!sel) return;
+  sel.innerHTML = '<option value="">Tout</option><option value="__personal__">Personnel</option>';
+  sel.value = wfTeamFilter;
+  sel.onchange = () => { wfTeamFilter = sel.value; loadSavedWorkflows(); loadSavedRequests(); };
+  fetch('/api/user/followed-teams', {headers:{...getAuthHeader()}}).then(r => r.json()).then(teams => {
+    teams.forEach(t => { sel.innerHTML += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; });
+    sel.value = wfTeamFilter;
+  }).catch(() => {});
 }
 
 async function loadSavedWorkflows() {
   const container = document.getElementById('wf-saved-workflows');
+  const empty = document.getElementById('wf-saved-workflows-empty');
   if (!container) return;
-  container.querySelectorAll('.wf-palette-item[data-workflow-id]').forEach(el => el.remove());
+  container.innerHTML = '';
+  if (empty) empty.classList.add('hidden');
   try {
     const qs = wfTeamFilter ? `?team_id=${wfTeamFilter}` : '';
     const res = await fetch('/api/workflows' + qs, { headers: { ...getAuthHeader() } });
-    if (!res.ok) return;
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const workflows = await res.json();
+    if (!workflows.length) { if (empty) empty.classList.remove('hidden'); return; }
     workflows.forEach(wf => {
       const item = document.createElement('div');
       item.className = 'wf-palette-item';
@@ -327,15 +332,13 @@ async function loadSavedWorkflows() {
       item.dataset.workflowId = wf.workflow_id;
       item.dataset.workflowName = wf.name;
       item.draggable = true;
-      item.innerHTML = `
-        <div class="wf-palette-icon" style="background:rgba(217,70,239,0.12);color:#e879f9">
-          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z"/></svg>
-        </div>
-        <div><div class="wf-palette-label">${escapeHtml(wf.name)}</div><div class="wf-palette-desc">Workflow sauvegardé</div></div>
-      `;
+      item.innerHTML = `<div class="wf-palette-icon" style="background:rgba(217,70,239,0.12);color:#e879f9"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z"/></svg></div><div><div class="wf-palette-label">${escapeHtml(wf.name)}</div><div class="wf-palette-desc">Workflow sauvegardé</div></div>`;
       container.appendChild(item);
     });
-  } catch {}
+  } catch (e) {
+    console.error('loadSavedWorkflows:', e);
+    if (empty) empty.classList.remove('hidden');
+  }
 }
 
 // SAVED REQUEST → NODE
@@ -437,7 +440,8 @@ function loadGraph(graph) {
 async function saveWorkflow() {
   const name = dom.wfName.value.trim() || 'Sans titre';
   const graph = getGraph();
-  const payload = { name, graph };
+  const teamId = document.getElementById('wf-save-team')?.value || '';
+  const payload = { name, graph, team_id: teamId };
   const url = savedWorkflowId
     ? `/api/workflows/${savedWorkflowId}`
     : '/api/workflows';
@@ -453,6 +457,9 @@ async function saveWorkflow() {
       savedWorkflowId = data.workflow_id;
     }
     await loadSavedWorkflows();
+    loadWfSaveTeams(); // refresh team dropdown too
+  } else {
+    console.error('saveWorkflow failed:', res.status);
   }
 }
 
@@ -495,6 +502,9 @@ async function openLoadModal() {
           loadGraph(data.graph);
           savedWorkflowId = data.workflow_id;
           dom.wfName.value = data.name;
+          // Set team selector to match loaded workflow
+          const teamSel = document.getElementById('wf-save-team');
+          if (teamSel && data.team_id) teamSel.value = data.team_id;
           dom.loadModal.classList.add('hidden');
           dom.loadModal.classList.remove('flex');
         }
@@ -562,7 +572,8 @@ async function loadSavedRequests(force = false) {
     tree.forEach(node => {
       container.appendChild(renderSavedTreeNode(node));
     });
-  } catch {
+  } catch (e) {
+    console.error('loadSavedRequests:', e);
     if (loading) loading.classList.add('hidden');
     if (empty) empty.classList.remove('hidden');
     savedRequestsCache = {};

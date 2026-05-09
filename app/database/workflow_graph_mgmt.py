@@ -32,21 +32,27 @@ def init_db():
             description TEXT DEFAULT '',
             graph TEXT NOT NULL DEFAULT '{}',
             user_id TEXT DEFAULT '',
+            team_id TEXT DEFAULT '',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Migration for existing tables that lack team_id
+    try:
+        conn.execute("ALTER TABLE workflow_graphs ADD COLUMN team_id TEXT DEFAULT ''")
+    except:
+        pass
     conn.commit()
     conn.close()
 
 
-def save_workflow(name, graph, user_id="", description=""):
+def save_workflow(name, graph, user_id="", description="", team_id=""):
     conn = _connect()
     wf_id = str(uuid.uuid4())
     now = _now()
     conn.execute(
-        "INSERT INTO workflow_graphs (workflow_id, name, description, graph, user_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
-        (wf_id, name, description, json.dumps(graph), user_id, now, now),
+        "INSERT INTO workflow_graphs (workflow_id, name, description, graph, user_id, team_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+        (wf_id, name, description, json.dumps(graph), user_id, team_id, now, now),
     )
     conn.commit()
     conn.close()
@@ -70,11 +76,11 @@ def list_workflows(user_id=None, team_id=""):
         rows = conn.execute("SELECT * FROM workflow_graphs WHERE team_id=? ORDER BY updated_at DESC", (team_id,)).fetchall()
     elif user_id:
         rows = conn.execute(
-            "SELECT workflow_id, name, description, user_id, created_at, updated_at FROM workflow_graphs WHERE user_id=? OR user_id='' ORDER BY updated_at DESC",
+            "SELECT * FROM workflow_graphs WHERE user_id=? OR user_id='' ORDER BY updated_at DESC",
             (user_id,),
         ).fetchall()
     else:
-        rows = conn.execute("SELECT workflow_id, name, description, user_id, created_at, updated_at FROM workflow_graphs ORDER BY updated_at DESC").fetchall()
+        rows = conn.execute("SELECT * FROM workflow_graphs ORDER BY updated_at DESC").fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -90,12 +96,12 @@ def get_workflow(workflow_id):
     return None
 
 
-def update_workflow(workflow_id, name, graph, description=""):
+def update_workflow(workflow_id, name, graph, description="", team_id=""):
     conn = _connect()
     now = _now()
     conn.execute(
-        "UPDATE workflow_graphs SET name=?, graph=?, description=?, updated_at=? WHERE workflow_id=?",
-        (name, json.dumps(graph), description, now, workflow_id),
+        "UPDATE workflow_graphs SET name=?, graph=?, description=?, team_id=?, updated_at=? WHERE workflow_id=?",
+        (name, json.dumps(graph), description, team_id, now, workflow_id),
     )
     conn.commit()
     conn.close()
