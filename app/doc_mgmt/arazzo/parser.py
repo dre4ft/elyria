@@ -283,27 +283,115 @@ def parse_arazzo(arazzo_content: dict,
 
 
 
-def import_to_db(parsed_workflows: list[dict], author_user_id: str) -> list[str]:
-    from database import workflow_mgmt
+def _arazzo_steps_to_graph(steps: list[dict]) -> dict:
+    """Convert Arazzo workflow steps into an Elyria workflow graph (nodes + connections).
+
+    Each Arazzo step becomes an HTTP Request node. Steps are chained sequentially.
+    Captures are mapped to the saveTo field. Conditions become Assert nodes.
+    """
+    import json as _json
+
+    nodes = []
+    connections = []
+
+    # Start node
+    nodes.append({"id": "start", "type": "start", "x": 50, "y": 50, "data": {}})
+
+    prev_id = "start"
+    for i, step in enumerate(steps):
+        step_id = f"step_{i}"
+
+        # Build HTTP Request node
+        headers = step.get("headers")
+        headers_str = _json.dumps(headers) if headers else ""
+        save_to = step.get("name", f"response_{i}")
+
+        nodes.append({
+            "id": step_id,
+            "type": "http_request",
+            "x": 50 + (i + 1) * 280,
+            "y": 50,
+            "data": {
+                "method": step.get("method", "GET"),
+                "url": step.get("url", ""),
+                "headers": headers_str,
+                "body": step.get("body") or "",
+                "saveTo": save_to,
+            },
+        })
+
+        connections.append({
+            "from": prev_id, "fromPort": "out",
+            "to": step_id, "toPort": "in",
+        })
+
+        prev_id = step_id
+
+        # If step has a condition, insert an Assert node after the request
+        condition = step.get("condition")
+        if condition:
+            assert_id = f"assert_{i}"
+            # Translate Arazzo runtime expression to ctx syntax
+            cond_expr = _translate_condition(condition, save_to)
+            nodes.append({
+                "id": assert_id,
+                "type": "assert",
+                "x": 50 + (i + 1) * 280 + 200,
+                "y": 200,
+                "data": {
+                    "label": f"Assert: {step.get('name', 'step')}",
+                    "expression": cond_expr,
+                },
+            })
+            connections.append({
+                "from": step_id, "fromPort": "out",
+                "to": assert_id, "toPort": "in",
+            })
+            prev_id = assert_id
+
+    return {"nodes": nodes, "connections": connections}
+
+
+def _translate_condition(condition: str, response_key: str) -> str:
+    """Translate an Arazzo condition to an Elyria ctx expression.
+
+    Arazzo: $statusCode == 200
+    Elyria:  ctx.{response_key}.status_code === 200
+
+    Arazzo: $response.body#/token != undefined
+    Elyria:  JSON.parse(ctx.{response_key}.body).token !== undefined
+    """
+    expr = condition
+    # $statusCode → ctx.{key}.status_code
+    expr = expr.replace("$statusCode", f"ctx.{response_key}.status_code")
+    # $response.header.X → ctx.{key}.headers["X"]
+    expr = re.sub(r'\$response\.header\.(\S+)', lambda m: f'ctx.{response_key}.headers["{m.group(1)}"]', expr)
+    # $response.body#/path → JSON.parse(ctx.{key}.body).path
+    expr = re.sub(r'\$response\.body#/(\S+)', lambda m: f"JSON.parse(ctx.{response_key}.body).{m.group(1).replace('/', '.')}", expr)
+    # $response.body → ctx.{key}.body (fallback)
+    expr = expr.replace("$response.body", f"ctx.{response_key}.body")
+    return expr
+
+
+def import_to_db(parsed_workflows: list[dict], author_user_id: str) -> dict:
+    """Import Arazzo workflows into the new workflow graph storage.
+    Returns {"workflow_ids": [...], "collection_name": ...}
+    """
+    from database.workflow_graph_mgmt import save_workflow
 
     wf_ids = []
     for wf in parsed_workflows:
-        wf_id = workflow_mgmt.create_workflow(
-            name=wf["name"],
-            author_user_id=author_user_id,
-            description=wf.get("description"),
+        graph = _arazzo_steps_to_graph(wf.get("steps", []))
+        wf_id = save_workflow(
+            name=wf.get("name", "Unnamed Workflow"),
+            graph=graph,
+            user_id=author_user_id,
+            description=wf.get("description", ""),
         )
         if wf_id:
             wf_ids.append(wf_id)
-            for step in wf["steps"]:
-                workflow_mgmt.create_step(
-                    workflow_id=wf_id,
-                    name=step["name"],
-                    method=step.get("method", "GET"),
-                    url=step.get("url", ""),
-                    headers=step.get("headers"),
-                    body=step.get("body"),
-                    captures=step.get("captures"),
-                    condition=step.get("condition"),
-                )
-    return wf_ids
+
+    return {
+        "workflow_ids": wf_ids,
+        "collection_name": f"Arazzo Import ({len(wf_ids)} workflows)",
+    }

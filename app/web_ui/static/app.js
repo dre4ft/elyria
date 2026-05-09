@@ -789,6 +789,7 @@ function displayError(message) {
 // COLLECTIONS (Directory)
 // ─────────────────────────────────────────────
 function setupCollections() {
+  loadTeamFilterSelect();
   dom.btnNewFolder.addEventListener('click', () => showCreateModal('Créer un dossier', 'Nom du dossier', createFolder));
   dom.btnNewRequest.addEventListener('click', () => showCreateModal('Créer une requête', 'Nom de la requête', createCollectionRequest));
   dom.btnCreateFirst.addEventListener('click', () => showCreateModal('Créer un dossier', 'Nom du dossier', createFolder));
@@ -827,7 +828,8 @@ async function loadCollections() {
   collectExpanded(state.collections);
 
   try {
-    const res = await fetch(API.collections, { headers: { ...getAuthHeader() } });
+    const qs = currentTeamFilter && currentTeamFilter !== '__personal__' ? `?team_id=${currentTeamFilter}` : (currentTeamFilter === '__personal__' ? '?team_id=__personal__' : '');
+    const res = await fetch(API.collections + qs, { headers: { ...getAuthHeader() } });
     if (res.ok) {
       state.collections = await res.json();
       // Restaurer l'état expanded
@@ -1080,11 +1082,12 @@ async function loadCollectionRequest(req) {
 // COLLECTION REQUEST AUTO-SYNC (localStorage)
 async function createFolder(name, parentId) {
   if (!name || !name.trim()) return;
+  const teamId = ($('#modal-team')||{}).value || '';
 
   const res = await fetch(API.createFolder, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-    body: JSON.stringify({ name: name.trim(), parentId }),
+    body: JSON.stringify({ name: name.trim(), parentId, team_id: teamId }),
   });
 
   if (res.ok) {
@@ -1094,15 +1097,14 @@ async function createFolder(name, parentId) {
 
 async function createCollectionRequest(name, folderId) {
   if (!name || !name.trim()) return;
+  const teamId = ($('#modal-team')||{}).value || '';
 
   const res = await fetch(API.createRequest, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
     body: JSON.stringify({
-      name: name.trim(),
-      method: 'GET',
-      url: '',
-      folderId,
+      name: name.trim(), method: 'GET', url: '',
+      folderId, team_id: teamId,
     }),
   });
 
@@ -1164,11 +1166,19 @@ async function renameFolder(folder) {
   }
 }
 
-function showCreateModal(title, placeholder, callback) {
+async function showCreateModal(title, placeholder, callback) {
   dom.modalTitle.textContent = title;
   dom.modalInput.placeholder = placeholder;
   dom.modalInput.value = '';
   dom.btnModalOk.callback = callback;
+  // Populate team dropdown
+  const teamSel = $('#modal-team');
+  if(teamSel) { teamSel.innerHTML = '<option value="">👤 Personnel</option>';
+    try {
+      const r = await fetch('/api/teams', {headers:{...getAuthHeader()}});
+      const teams = r.ok ? await r.json() : [];
+      teams.forEach(t => { teamSel.innerHTML += `<option value="${t.team_id}">👥 ${escapeHtml(t.name)}</option>`; });
+    } catch {} }
   dom.createModal.classList.remove('hidden');
   dom.createModal.classList.add('flex');
   dom.modalInput.focus();
@@ -1877,8 +1887,23 @@ shakeStyle.textContent = `
 }`;
 document.head.appendChild(shakeStyle);
 
+// ── Team filter (native <select>, no positioning issues) ──
+let currentTeamFilter = '';
+function loadTeamFilterSelect() {
+  const sel = $('#team-filter-select'); if(!sel) { console.log('team-filter-select not found'); return; }
+  sel.innerHTML = '<option value="">Tout</option><option value="__personal__">Personnel</option>';
+  sel.value = currentTeamFilter;
+  sel.onchange = () => { currentTeamFilter = sel.value; loadCollections(); };
+  fetch('/api/user/followed-teams', {headers:{...getAuthHeader()}}).then(r => {
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(teams => {
+    if(teams.length) { teams.forEach(t => { sel.innerHTML += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; }); }
+    sel.value = currentTeamFilter;
+  }).catch(e => { console.log('Team filter load error:', e); });
+}
+
 // ─────────────────────────────────────────────
 // START
 // ─────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', init);
 init();

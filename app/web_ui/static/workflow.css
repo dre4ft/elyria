@@ -556,3 +556,16 @@
   color: #22d3ee;
   font-weight: 600;
 }
+
+/* ── Load Modal Items ── */
+.wf-load-item {
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+.wf-load-item:hover {
+  background: rgba(255,255,255,0.03);
+  border-color: rgba(255,255,255,0.06);
+}

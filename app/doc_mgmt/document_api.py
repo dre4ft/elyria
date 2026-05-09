@@ -17,8 +17,8 @@ def _validate_file(file : File):
     raise  HTTPException(status_code=400,detail="invalid file format !")
 
 @app.post("/openapi")
-async def upload(request : Request,file: UploadFile = File(...)):
-    user_id = request.state.token 
+async def upload(request : Request, file: UploadFile = File(...)):
+    user_id = request.state.token
     file_type = _validate_file(file)
     try:
         content = file.file.read()
@@ -26,15 +26,29 @@ async def upload(request : Request,file: UploadFile = File(...)):
             content_as_dict = json.loads(content)
         elif file_type == "yaml":
             content_as_dict = safe_load(content)
-        else :
-            return JSONResponse(status_code=400,content={"detail":"invalid file format"})
+        else:
+            return JSONResponse(status_code=400, content={"detail": "invalid file format"})
+
+        # Route to OpenAPI parser
         if openapi_parser.validate_wrapper(content_as_dict):
-            result = openapi_parser.import_to_db(parsed=openapi_parser.parse_openapi(content=content_as_dict),author_user_id=user_id)
+            result = openapi_parser.import_to_db(
+                parsed=openapi_parser.parse_openapi(content=content_as_dict),
+                author_user_id=user_id,
+            )
             return JSONResponse(status_code=201, content=result)
-        else :
-            return JSONResponse(status_code=400,content={"detail":"invalid file format"})
-    except Exception as e :
+
+        # Route to Arazzo parser
+        if arazzo_parser.validate_wrapper(content_as_dict):
+            parsed = arazzo_parser.parse_arazzo(content_as_dict)
+            result = arazzo_parser.import_to_db(
+                parsed_workflows=parsed,
+                author_user_id=user_id,
+            )
+            return JSONResponse(status_code=201, content=result)
+
+        return JSONResponse(status_code=400, content={"detail": "Unrecognized format — not OpenAPI or Arazzo"})
+    except Exception as e:
         print(e)
-        raise HTTPException(status_code=500, detail='Something went wrong')
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)[:200]}")
     
  

@@ -161,12 +161,12 @@ def _extract_body(operation: dict, content: dict) -> tuple:
     return {}, None
 
 
-def parse_openapi(content: dict) -> dict:
+def parse_openapi(content: dict, server_url: str) -> dict:
     validate(content)
 
     info = content.get("info", {})
     title = info.get("title", "OpenAPI Collection")
-    base_url = content["servers"][0]["url"] if content.get("servers") else "http://INSERT-YOUR-HOST"
+    base_url = content["servers"][0]["url"] if content.get("servers") else (server_url if server_url else "http://INSERT-YOUR-HOST")
 
     tagged: dict[str, list[OpenAPIRequest]] = {}
     untagged: list[OpenAPIRequest] = []

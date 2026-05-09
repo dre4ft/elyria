@@ -80,6 +80,14 @@ const BLOCK_DEFS = {
       { key: 'expression', label: 'Expression (JS)', type: 'textarea', placeholder: 'ctx.response.status_code === 200' },
     ],
   },
+  sub_workflow: {
+    label: 'Sub-Workflow', color: 'fuchsia', icon: 'send',
+    ports: { in: ['in'], out: ['out'] },
+    fields: [
+      { key: 'workflowId', label: 'Workflow ID', type: 'text', placeholder: 'uuid du workflow' },
+      { key: 'workflowName', label: 'Nom', type: 'text', placeholder: 'Nom affiché' },
+    ],
+  },
 };
 
 const COLOR_MAP = {
@@ -91,6 +99,7 @@ const COLOR_MAP = {
   blue:    { bg: 'rgba(59,130,246,0.12)',  text: '#60a5fa',  border: 'rgba(59,130,246,0.3)' },
   purple:  { bg: 'rgba(168,85,247,0.12)', text: '#a78bfa',  border: 'rgba(168,85,247,0.3)' },
   emerald: { bg: 'rgba(16,185,129,0.12)', text: '#34d399',  border: 'rgba(16,185,129,0.3)' },
+  fuchsia: { bg: 'rgba(217,70,239,0.12)', text: '#e879f9',  border: 'rgba(217,70,239,0.3)' },
 };
 
 const ICON_SVG = {
@@ -145,6 +154,12 @@ const dom = {
   btnZoomIn:     $('#btn-zoom-in'),
   btnZoomOut:    $('#btn-zoom-out'),
   btnZoomFit:    $('#btn-zoom-fit'),
+  btnSave:       $('#btn-save-workflow'),
+  btnLoad:       $('#btn-load-workflow'),
+  wfName:        $('#wf-name'),
+  loadModal:     $('#wf-load-modal'),
+  loadList:      $('#wf-load-list'),
+  loadCancel:    $('#btn-load-cancel'),
 };
 
 // ─────────────────────────────────────────────
@@ -170,7 +185,11 @@ function init() {
   setupCanvasInteractions();
   setupToolbar();
   setupSavedRequests();
+  setupWorkflowCRUD();
+  loadWfTeamFilter();
+  loadWfSaveTeams();
   loadSavedRequests();
+  loadSavedWorkflows();
   updateNodeCount();
 }
 
@@ -203,7 +222,10 @@ function setupPaletteDrag() {
     if (item.dataset.blockType) {
       e.dataTransfer.setData('block-type', item.dataset.blockType);
     }
-
+    if (item.dataset.workflowId) {
+      e.dataTransfer.setData('workflow-id', item.dataset.workflowId);
+      e.dataTransfer.setData('workflow-name', item.dataset.workflowName || '');
+    }
     if (item.dataset.savedId) {
       e.dataTransfer.setData('saved-id', item.dataset.savedId);
     }
@@ -229,6 +251,11 @@ function setupPaletteDrag() {
     }
 
     const type = e.dataTransfer.getData('block-type');
+    if (type === 'sub_workflow') {
+      const wfId = e.dataTransfer.getData('workflow-id');
+      const wfName = e.dataTransfer.getData('workflow-name');
+      if (wfId) { addSubWorkflowNode(wfId, wfName, x, y); return; }
+    }
     if (!type || !BLOCK_DEFS[type]) return;
     addNode(type, x, y);
   });
@@ -257,8 +284,80 @@ function addNode(type, x, y) {
 }
 
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// SAVED WORKFLOWS IN PALETTE (sub-workflow blocks)
+// ─────────────────────────────────────────────
+let wfTeamFilter = '';
+function loadWfSaveTeams() {
+  const sel = document.getElementById('wf-save-team'); if(!sel) return;
+  // Keep the default "Perso" option, add separator
+  fetch('/api/teams', {headers:{...getAuthHeader()}}).then(r => {
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(teams => {
+    if(!teams.length) return;
+    // Remove any previously loaded team options (keep the first default one)
+    while(sel.options.length > 1) sel.remove(1);
+    teams.forEach(t => { sel.innerHTML += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; });
+  }).catch(e => { console.error('loadWfSaveTeams:', e); });
+}
+
+function loadWfTeamFilter() {
+  const sel = document.getElementById('wf-team-filter-select'); if(!sel) return;
+  sel.innerHTML = '<option value="">Tout</option><option value="__personal__">Personnel</option>';
+  sel.value = wfTeamFilter;
+  sel.onchange = () => { wfTeamFilter = sel.value; loadSavedWorkflows(); loadSavedRequests(); };
+  fetch('/api/user/followed-teams', {headers:{...getAuthHeader()}}).then(r => r.json()).then(teams => {
+    teams.forEach(t => { sel.innerHTML += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; });
+    sel.value = wfTeamFilter;
+  }).catch(() => {});
+}
+
+async function loadSavedWorkflows() {
+  const container = document.getElementById('wf-saved-workflows');
+  const empty = document.getElementById('wf-saved-workflows-empty');
+  if (!container) return;
+  container.innerHTML = '';
+  if (empty) empty.classList.add('hidden');
+  try {
+    const qs = wfTeamFilter ? `?team_id=${wfTeamFilter}` : '';
+    const res = await fetch('/api/workflows' + qs, { headers: { ...getAuthHeader() } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const workflows = await res.json();
+    if (!workflows.length) { if (empty) empty.classList.remove('hidden'); return; }
+    workflows.forEach(wf => {
+      const item = document.createElement('div');
+      item.className = 'wf-palette-item';
+      item.dataset.blockType = 'sub_workflow';
+      item.dataset.workflowId = wf.workflow_id;
+      item.dataset.workflowName = wf.name;
+      item.draggable = true;
+      item.innerHTML = `<div class="wf-palette-icon" style="background:rgba(217,70,239,0.12);color:#e879f9"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z"/></svg></div><div><div class="wf-palette-label">${escapeHtml(wf.name)}</div><div class="wf-palette-desc">Workflow sauvegardé</div></div>`;
+      container.appendChild(item);
+    });
+  } catch (e) {
+    console.error('loadSavedWorkflows:', e);
+    if (empty) empty.classList.remove('hidden');
+  }
+}
+
 // SAVED REQUEST → NODE
 // ─────────────────────────────────────────────
+function addSubWorkflowNode(wfId, wfName, x, y) {
+  const node = {
+    id: 'n' + (wf.nextId++),
+    type: 'sub_workflow',
+    x: Math.round(x / 24) * 24,
+    y: Math.round(y / 24) * 24,
+    data: { workflowId: wfId, workflowName: wfName || wfId.substring(0, 8) },
+    status: null,
+  };
+  wf.nodes.push(node);
+  renderNode(node);
+  selectNode(node.id);
+  updateNodeCount();
+}
+
 function addSavedRequestNode(req, x, y) {
   const data = {
     method: req.method || 'GET',
@@ -283,6 +382,147 @@ function addSavedRequestNode(req, x, y) {
 }
 
 // ─────────────────────────────────────────────
+// WORKFLOW CRUD (SAVE / LOAD / DELETE)
+// ─────────────────────────────────────────────
+let savedWorkflowId = null;
+
+function setupWorkflowCRUD() {
+  dom.btnSave.addEventListener('click', () => saveWorkflow());
+  dom.btnLoad.addEventListener('click', () => openLoadModal());
+  dom.loadCancel.addEventListener('click', () => {
+    dom.loadModal.classList.add('hidden');
+    dom.loadModal.classList.remove('flex');
+  });
+  dom.loadModal.addEventListener('click', (e) => {
+    if (e.target === dom.loadModal) {
+      dom.loadModal.classList.add('hidden');
+      dom.loadModal.classList.remove('flex');
+    }
+  });
+}
+
+function getGraph() {
+  return {
+    nodes: wf.nodes.map(n => ({ id: n.id, type: n.type, x: n.x, y: n.y, data: n.data })),
+    connections: wf.connections.map(c => ({ from: c.from, fromPort: c.fromPort, to: c.to, toPort: c.toPort })),
+  };
+}
+
+function loadGraph(graph) {
+  clearCanvasSilent();
+  wf.nextId = 1;
+  const idMap = {};
+  (graph.nodes || []).forEach(n => {
+    const newNode = {
+      id: 'n' + (wf.nextId++),
+      type: n.type,
+      x: n.x, y: n.y,
+      data: { ...n.data },
+      status: null,
+    };
+    idMap[n.id] = newNode.id;
+    newNode._origId = n.id;
+    wf.nodes.push(newNode);
+    renderNode(newNode);
+  });
+  (graph.connections || []).forEach(c => {
+    wf.connections.push({
+      from: idMap[c.from] || c.from,
+      fromPort: c.fromPort,
+      to: idMap[c.to] || c.to,
+      toPort: c.toPort,
+    });
+  });
+  renderConnections();
+  updateNodeCount();
+}
+
+async function saveWorkflow() {
+  const name = dom.wfName.value.trim() || 'Sans titre';
+  const graph = getGraph();
+  const teamId = document.getElementById('wf-save-team')?.value || '';
+  const payload = { name, graph, team_id: teamId };
+  const url = savedWorkflowId
+    ? `/api/workflows/${savedWorkflowId}`
+    : '/api/workflows';
+  const method = savedWorkflowId ? 'PUT' : 'POST';
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify(payload),
+  });
+  if (res.ok) {
+    const data = await res.json();
+    if (!savedWorkflowId && data.workflow_id) {
+      savedWorkflowId = data.workflow_id;
+    }
+    await loadSavedWorkflows();
+    loadWfSaveTeams(); // refresh team dropdown too
+  } else {
+    console.error('saveWorkflow failed:', res.status);
+  }
+}
+
+async function openLoadModal() {
+  dom.loadModal.classList.remove('hidden');
+  dom.loadModal.classList.add('flex');
+  dom.loadList.innerHTML = '<div class="text-xs text-gray-600 text-center py-8">Chargement...</div>';
+  try {
+    const res = await fetch('/api/workflows', { headers: { ...getAuthHeader() } });
+    if (!res.ok) throw new Error('Failed');
+    const workflows = await res.json();
+    dom.loadList.innerHTML = '';
+    if (workflows.length === 0) {
+      dom.loadList.innerHTML = '<div class="text-xs text-gray-600 text-center py-8">Aucun workflow sauvegardé</div>';
+      return;
+    }
+    workflows.forEach(wf => {
+      const item = document.createElement('div');
+      item.className = 'wf-load-item';
+      item.innerHTML = `
+        <div class="flex items-center justify-between">
+          <div class="flex-1 min-w-0">
+            <div class="text-xs text-gray-300 font-medium truncate">${escapeHtml(wf.name)}</div>
+            <div class="text-[9px] text-gray-600">${(wf.updated_at || wf.created_at || '').substring(0, 16)}</div>
+          </div>
+          <div class="flex items-center gap-1 ml-2">
+            <button class="load-btn w-6 h-6 rounded hover:bg-accent/15 flex items-center justify-center text-gray-500 hover:text-accent-light" title="Charger">
+              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+            </button>
+            <button class="delete-wf-btn w-6 h-6 rounded hover:bg-red-500/15 flex items-center justify-center text-gray-500 hover:text-red-400" title="Supprimer">
+              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+            </button>
+          </div>
+        </div>
+      `;
+      item.querySelector('.load-btn').addEventListener('click', async () => {
+        const res = await fetch(`/api/workflows/${wf.workflow_id}`, { headers: { ...getAuthHeader() } });
+        if (res.ok) {
+          const data = await res.json();
+          loadGraph(data.graph);
+          savedWorkflowId = data.workflow_id;
+          dom.wfName.value = data.name;
+          // Set team selector to match loaded workflow
+          const teamSel = document.getElementById('wf-save-team');
+          if (teamSel && data.team_id) teamSel.value = data.team_id;
+          dom.loadModal.classList.add('hidden');
+          dom.loadModal.classList.remove('flex');
+        }
+      });
+      item.querySelector('.delete-wf-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Supprimer "${wf.name}" ?`)) return;
+        await fetch(`/api/workflows/${wf.workflow_id}`, { method: 'DELETE', headers: { ...getAuthHeader() } });
+        if (savedWorkflowId === wf.workflow_id) { savedWorkflowId = null; dom.wfName.value = 'Mon workflow de test'; }
+        openLoadModal();
+      });
+      dom.loadList.appendChild(item);
+    });
+  } catch (e) {
+    dom.loadList.innerHTML = '<div class="text-xs text-red-400 text-center py-8">Erreur de chargement</div>';
+  }
+}
+
 // LOAD SAVED REQUESTS FROM COLLECTIONS
 // ─────────────────────────────────────────────
 function setupSavedRequests() {
@@ -332,7 +572,8 @@ async function loadSavedRequests(force = false) {
     tree.forEach(node => {
       container.appendChild(renderSavedTreeNode(node));
     });
-  } catch {
+  } catch (e) {
+    console.error('loadSavedRequests:', e);
     if (loading) loading.classList.add('hidden');
     if (empty) empty.classList.remove('hidden');
     savedRequestsCache = {};
@@ -449,6 +690,7 @@ function renderNode(node) {
   else if (node.type === 'for_loop') summary = `${node.data.iterations || 5}x — ${node.data.variable || 'i'}`;
   else if (node.type === 'delay') summary = `${node.data.ms || 1000}ms`;
   else if (node.type === 'assert') summary = truncate(node.data.label || node.data.expression, 28);
+  else if (node.type === 'sub_workflow') summary = node.data.workflowName || node.data.workflowId;
 
   el.innerHTML = `
     <button class="wf-node-delete" data-delete="${node.id}">
@@ -902,9 +1144,14 @@ function setZoom(z) {
 function clearCanvas() {
   if (wf.nodes.length === 0) return;
   if (!confirm('Supprimer tous les blocs ?')) return;
+  clearCanvasSilent();
+}
+
+function clearCanvasSilent() {
   wf.nodes = [];
   wf.connections = [];
   wf.selectedId = null;
+  wf.selectedConnIdx = null;
   dom.canvas.querySelectorAll('.wf-node').forEach(el => el.remove());
   dom.svgLayer.innerHTML = '';
   selectNode(null);
@@ -1008,6 +1255,35 @@ async function executeNode(nodeId, ctx) {
     switch (node.type) {
       case 'start':
         break;
+
+      case 'sub_workflow': {
+        const wfId = node.data.workflowId;
+        if (!wfId) throw new Error('Sub-workflow: no workflowId configured');
+        addLog(`▶ Sub-Workflow: ${node.data.workflowName || wfId}`, 'step');
+        const swf = await fetch(`/api/workflows/${wfId}`, { headers: { ...getAuthHeader() } });
+        if (!swf.ok) throw new Error(`Sub-workflow not found: ${wfId}`);
+        const swfData = await swf.json();
+        const graph = swfData.graph;
+        // Execute sub-graph inline with shared ctx
+        const subNodes = graph.nodes || [];
+        const subConns = graph.connections || [];
+        const startNode = subNodes.find(n => n.type === 'start');
+        if (!startNode) throw new Error('Sub-workflow has no Start block');
+        // Build lookup: orig id → real node data
+        const subNodeMap = {};
+        subNodes.forEach(n => { subNodeMap[n.id] = n; });
+        // Find start's outgoing connection
+        const nextConn = subConns.find(c => c.from === startNode.id && c.fromPort === 'out');
+        if (nextConn) {
+          const nextNode = subNodeMap[nextConn.to];
+          if (nextNode) {
+            // Execute sub-workflow nodes sequentially following the graph
+            await executeSubWorkflowNode(nextNode, subNodeMap, subConns, ctx);
+          }
+        }
+        addLog(`✓ Sub-Workflow terminé`, 'success');
+        break;
+      }
 
       case 'set_data': {
         try {
@@ -1147,6 +1423,62 @@ async function executeNode(nodeId, ctx) {
   } catch (err) {
     setNodeStatus(node.id, 'error');
     throw err;
+  }
+}
+
+async function executeSubWorkflowNode(nodeData, nodeMap, connections, ctx) {
+  // Execute a node from a sub-workflow graph using the same logic as executeNode
+  // nodeData: { id, type, data: {...} }
+  const type = nodeData.type;
+  const data = nodeData.data || {};
+  if (runAbort) return;
+  if (type === 'start') return; // skip start in sub-execution
+
+  addLog(`  [sub] ▶ ${BLOCK_DEFS[type]?.label || type}`, 'info');
+
+  let nextPort = 'out';
+
+  // Simplified execution — handles the main block types
+  if (type === 'http_request') {
+    const url = interpolate(data.url || '', ctx);
+    const method = data.method || 'GET';
+    let headers = {};
+    try { headers = JSON.parse(interpolate(data.headers || '{}', ctx)); } catch {}
+    let body = data.body || '';
+    const payload = { url, method };
+    if (Object.keys(headers).length) payload.headers = headers;
+    if (body) payload.body = body;
+    const res = await fetch(API.structured, { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeader() }, body: JSON.stringify(payload) });
+    const respData = await res.json();
+    const responseData = respData.response || respData;
+    ctx[data.saveTo || 'response'] = responseData;
+  } else if (type === 'set_data') {
+    try {
+      const varsStr = interpolate(data.variables || '{}', ctx);
+      const vars = JSON.parse(varsStr);
+      const saveTo = data.saveTo || '';
+      if (saveTo) { ctx[saveTo] = vars; } else { Object.assign(ctx, vars); }
+    } catch {}
+  } else if (type === 'if_else') {
+    const expr = interpolate(data.condition || 'true', ctx);
+    let result = true;
+    try { result = evalExpression(expr, ctx); } catch {}
+    nextPort = result ? 'out_true' : 'out_false';
+  } else if (type === 'delay') {
+    const ms = parseInt(interpolate(data.ms || '1000', ctx), 10);
+    await sleep(ms);
+  } else if (type === 'assert') {
+    const expr = interpolate(data.expression || 'true', ctx);
+    let result = true;
+    try { result = evalExpression(expr, ctx); } catch {}
+    if (!result) throw new Error(`Sub-workflow assertion failed: ${data.label || expr}`);
+  }
+
+  // Follow connections
+  const nextConns = connections.filter(c => c.from === nodeData.id && c.fromPort === nextPort);
+  for (const conn of nextConns) {
+    const nextNode = nodeMap[conn.to];
+    if (nextNode) await executeSubWorkflowNode(nextNode, nodeMap, connections, ctx);
   }
 }
 

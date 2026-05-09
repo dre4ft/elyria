@@ -8,6 +8,10 @@ from database.collection_api import app as collection_router
 from ai_core.ai_api import app as ai_router
 from auth_users.user_api import app as user_router
 from doc_mgmt.document_api import app as document_router
+from pentest.campaign_api import app as pentest_router
+from database.workflow_graph_api import app as workflow_graph_router
+from database.proxy_api import app as proxy_router
+from database.teams_api import app as teams_router
 
 from dotenv import load_dotenv
 import os
@@ -21,7 +25,7 @@ app = FastAPI()
 
 @app.middleware("http")
 async def check_authorization(request: Request, call_next):
-    public_routes = ["/", "/login", "/app", "/workflow", "/doc", "/api/doc", "/api/user/login", "/api/user/create"]
+    public_routes = ["/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/api/doc", "/api/user/login", "/api/user/create"]
     auth = request.headers.get("authorization")
     if request.url.path in public_routes or request.url.path.startswith("/static/"):
         return await call_next(request)
@@ -109,6 +113,22 @@ async def serve_index():
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Frontend file not found")
 
+@app.get("/hub")
+async def serve_hub():
+    try:
+        with open("web_ui/hub.html", "r") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Frontend file not found")
+
+@app.get("/pentest")
+async def serve_pentest():
+    try:
+        with open("web_ui/pentest.html", "r") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Frontend file not found")
+
 @app.get("/doc")
 async def serve_doc():
     try:
@@ -139,6 +159,10 @@ app.include_router(collection_router)
 app.include_router(ai_router)
 app.include_router(user_router)
 app.include_router(document_router)
+app.include_router(pentest_router)
+app.include_router(workflow_graph_router)
+app.include_router(proxy_router)
+app.include_router(teams_router)
 
 
 

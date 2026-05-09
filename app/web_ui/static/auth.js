@@ -122,12 +122,11 @@ async function loginUser(username, digest) {
   return { success: true, token: data.token, user: _user };
 }
 
-async function registerUser(username, digest, teams) {
-  teams = teams || [];
+async function registerUser(username, digest) {
   var res = await fetch(AUTH_API.register, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: username, digest: digest, teams: teams }),
+    body: JSON.stringify({ username: username, digest: digest }),
   });
   if (!res.ok) {
     var data = await res.json().catch(function() { return {}; });

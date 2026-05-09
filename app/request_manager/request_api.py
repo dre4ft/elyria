@@ -1,6 +1,7 @@
 import requests
 from requests import exceptions
 import json
+import sqlite3
 from fastapi import APIRouter,Header,Depends,Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
@@ -10,6 +11,27 @@ from typing import Literal, List,Optional
 from database.request_mgmt import add_request
 import ssl
 import socket
+
+def _get_proxy_from_request(request: Request) -> dict:
+    """XOR-decrypt proxy URL from JWT claim 'pry'."""
+    try:
+        payload = getattr(request.state, "token", None)
+        if not payload: return None
+        proxy_xor = payload.get("pry") if isinstance(payload, dict) else None
+        if not proxy_xor: return None
+        import os, base64
+        xor_key = os.getenv("PROXY_XOR_KEY", "elyria-proxy-k")
+        encrypted = base64.urlsafe_b64decode(proxy_xor)
+        key_bytes = xor_key.encode()
+        result = bytearray(len(encrypted))
+        for i in range(len(encrypted)):
+            result[i] = encrypted[i] ^ key_bytes[i % len(key_bytes)]
+        url = bytes(result).rstrip(b'\x00').decode()
+        if url:
+            return {"http": url, "https": url}
+    except Exception:
+        pass
+    return None
 
 app = APIRouter(prefix="/api/request")
 
@@ -299,7 +321,8 @@ def x_www_form_urlencoded_request(request:WWWFormRequest,_request:Request):
     
     if not request.headers :
         request.headers["Content-Type"] = "application/x-www-form-urlencoded"
-    req_uuid, resp =  handle_request(user_id=token,url=request.url,method=request.method,headers= request.headers,query_params=request.query_params)
+    proxies = _get_proxy_from_request(_request)
+    req_uuid, resp =  handle_request(user_id=token,url=request.url,method=request.method,headers= request.headers,query_params=request.query_params,proxies=proxies)
     return _handle_response(req_uuid,resp,dict)
     
 
@@ -308,7 +331,8 @@ def rest_request(request : RESTRequest, _request:Request):
     body = json.loads(request.body) if request.body else None
     headers = request.headers
     token = _request.state.token
-    req_uuid, resp = handle_request(user_id=token,method=request.method,url=request.url,body=body,headers=headers)                                          
+    proxies = _get_proxy_from_request(_request)
+    req_uuid, resp = handle_request(user_id=token,method=request.method,url=request.url,body=body,headers=headers,proxies=proxies)
     return _handle_response(req_uuid,resp,dict)
 
 

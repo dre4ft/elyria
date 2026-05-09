@@ -28,36 +28,6 @@ CREATE TABLE IF NOT EXISTS keys (
 )
 """
 
-INIT_WORKFLOWS = """
-CREATE TABLE IF NOT EXISTS workflows (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    workflow_id TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT,
-    author_user_id TEXT NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL
-)
-"""
-
-INIT_WORKFLOW_STEPS = """
-CREATE TABLE IF NOT EXISTS workflow_steps (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    step_id TEXT UNIQUE NOT NULL,
-    workflow_id TEXT NOT NULL,
-    saved_request_id TEXT,
-    name TEXT NOT NULL,
-    method TEXT,
-    url TEXT,
-    headers TEXT,
-    body TEXT,
-    step_order INTEGER NOT NULL DEFAULT 0,
-    captures TEXT,
-    condition TEXT
-)
-"""
-
-
 INIT_USER = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,8 +130,6 @@ def init_db():
         cursor.execute(INIT_FOLDERS)
         cursor.execute(INIT_SAVED_REQUESTS)
         cursor.execute(INIT_KEYS)
-        cursor.execute(INIT_WORKFLOWS)
-        cursor.execute(INIT_WORKFLOW_STEPS)
         conn.commit()
         conn.close()
 

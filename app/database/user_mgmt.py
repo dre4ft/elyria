@@ -15,6 +15,16 @@ def add_user(user_id: str, hashed_digest: str, salt: str, username: str, teams: 
     finally:
         conn.close()
 
+def get_user_teams(user_id: str) -> str:
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT teams FROM users WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        return row[0] if row and row[0] else ""
+    finally:
+        conn.close()
+
 def get_user_by_id(user_id: str):
     conn = connect()
     cursor = conn.cursor()

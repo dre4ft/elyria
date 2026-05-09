@@ -5,8 +5,19 @@ from .collection_mgmt import (
     create_folder, delete_folder, get_collection_tree,
     create_saved_request, update_saved_request, delete_saved_request
 )
+import sqlite3
 
 app = APIRouter(prefix="/api/collections")
+
+def _get_user(r: Request): return getattr(r.state, "token", "anonymous")
+
+def _get_followed_team_ids(user_id: str) -> list:
+    try:
+        conn = sqlite3.connect("database.db")
+        rows = conn.execute("SELECT team_id FROM user_followed_teams WHERE user_id=?", (user_id,)).fetchall()
+        conn.close()
+        return [r[0] for r in rows]
+    except: return []
 
 
 """def get_user_token(request: Request) -> str:
@@ -24,6 +35,7 @@ app = APIRouter(prefix="/api/collections")
 class CreateFolderBody(BaseModel):
     name: str
     parentId: str = None
+    team_id: str = ""
 
 
 class CreateRequestBody(BaseModel):
@@ -31,6 +43,7 @@ class CreateRequestBody(BaseModel):
     method: str = "GET"
     url: str = ""
     folderId: str = None
+    team_id: str = ""
     headers: dict = None
     body: str = None
     isDoneByAI: bool = False
@@ -50,9 +63,15 @@ class UpdateRequestBody(BaseModel):
 # ═══════════════════════════════════════════════
 
 @app.get("")
-def list_collections(request: Request):
-    token = request.state.token
-    tree = get_collection_tree(author_user_id=token)
+def list_collections(request: Request, team_id: str = ""):
+    user_id = request.state.token
+    if team_id == "__personal__":
+        team_ids = None  # personal only
+    elif team_id:
+        team_ids = [team_id]
+    else:
+        team_ids = _get_followed_team_ids(user_id)
+    tree = get_collection_tree(author_user_id=user_id, team_ids=team_ids)
     return JSONResponse(tree)
 
 
@@ -62,7 +81,8 @@ def api_create_folder(body: CreateFolderBody, request: Request):
     folder_id = create_folder(
         name=body.name,
         author_user_id=token,
-        parent_id=body.parentId
+        parent_id=body.parentId,
+        team_id=body.team_id,
     )
     if folder_id:
         return JSONResponse({"folder_id": folder_id, "name": body.name}, status_code=201)
@@ -81,6 +101,16 @@ def api_delete_folder(folder_id: str, request: Request):
 @app.post("/request")
 def api_create_request(body: CreateRequestBody, request: Request):
     token = request.state.token
+    # Inherit team_id from parent folder if not explicitly set
+    team_id = body.team_id
+    if not team_id and body.folderId:
+        try:
+            import sqlite3
+            conn = sqlite3.connect("database.db")
+            row = conn.execute("SELECT team_id FROM folders WHERE folder_id=?", (body.folderId,)).fetchone()
+            conn.close()
+            if row and row[0]: team_id = row[0]
+        except: pass
     saved_id = create_saved_request(
         name=body.name,
         author_user_id=token,
@@ -89,7 +119,8 @@ def api_create_request(body: CreateRequestBody, request: Request):
         url=body.url,
         headers=body.headers,
         body=body.body,
-        is_done_by_ai=body.isDoneByAI
+        is_done_by_ai=body.isDoneByAI,
+        team_id=team_id,
     )
     if saved_id:
         return JSONResponse({"saved_request_id": saved_id, "name": body.name}, status_code=201)
