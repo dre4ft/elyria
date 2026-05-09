@@ -53,17 +53,28 @@ def save_workflow(name, graph, user_id="", description=""):
     return wf_id
 
 
-def list_workflows(user_id=None):
+def list_workflows(user_id=None, team_id=""):
     conn = _connect()
-    if user_id:
+    if team_id == "__followed__":
+        # Personal + followed teams
+        import sqlite3 as _sq
+        tc = _sq.connect(DB_PATH)
+        followed = [r[0] for r in tc.execute("SELECT team_id FROM user_followed_teams WHERE user_id=?", (user_id,)).fetchall()]
+        tc.close()
+        if followed:
+            ph = ",".join("?" * len(followed))
+            rows = conn.execute(f"SELECT * FROM workflow_graphs WHERE user_id=? OR user_id='' OR team_id IN ({ph}) ORDER BY updated_at DESC", [user_id] + followed).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM workflow_graphs WHERE user_id=? OR user_id='' ORDER BY updated_at DESC", (user_id,)).fetchall()
+    elif team_id:
+        rows = conn.execute("SELECT * FROM workflow_graphs WHERE team_id=? ORDER BY updated_at DESC", (team_id,)).fetchall()
+    elif user_id:
         rows = conn.execute(
             "SELECT workflow_id, name, description, user_id, created_at, updated_at FROM workflow_graphs WHERE user_id=? OR user_id='' ORDER BY updated_at DESC",
             (user_id,),
         ).fetchall()
     else:
-        rows = conn.execute(
-            "SELECT workflow_id, name, description, user_id, created_at, updated_at FROM workflow_graphs ORDER BY updated_at DESC"
-        ).fetchall()
+        rows = conn.execute("SELECT workflow_id, name, description, user_id, created_at, updated_at FROM workflow_graphs ORDER BY updated_at DESC").fetchall()
     conn.close()
     return [dict(r) for r in rows]
 

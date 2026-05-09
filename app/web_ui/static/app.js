@@ -789,6 +789,7 @@ function displayError(message) {
 // COLLECTIONS (Directory)
 // ─────────────────────────────────────────────
 function setupCollections() {
+  const tfBtn = $('#btn-team-filter'); if(tfBtn) tfBtn.addEventListener('click', toggleTeamFilter);
   dom.btnNewFolder.addEventListener('click', () => showCreateModal('Créer un dossier', 'Nom du dossier', createFolder));
   dom.btnNewRequest.addEventListener('click', () => showCreateModal('Créer une requête', 'Nom de la requête', createCollectionRequest));
   dom.btnCreateFirst.addEventListener('click', () => showCreateModal('Créer un dossier', 'Nom du dossier', createFolder));
@@ -827,7 +828,8 @@ async function loadCollections() {
   collectExpanded(state.collections);
 
   try {
-    const res = await fetch(API.collections, { headers: { ...getAuthHeader() } });
+    const qs = currentTeamFilter && currentTeamFilter !== '__personal__' ? `?team_id=${currentTeamFilter}` : (currentTeamFilter === '__personal__' ? '?team_id=__personal__' : '');
+    const res = await fetch(API.collections + qs, { headers: { ...getAuthHeader() } });
     if (res.ok) {
       state.collections = await res.json();
       // Restaurer l'état expanded
@@ -1080,11 +1082,12 @@ async function loadCollectionRequest(req) {
 // COLLECTION REQUEST AUTO-SYNC (localStorage)
 async function createFolder(name, parentId) {
   if (!name || !name.trim()) return;
+  const teamId = ($('#modal-team')||{}).value || '';
 
   const res = await fetch(API.createFolder, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-    body: JSON.stringify({ name: name.trim(), parentId }),
+    body: JSON.stringify({ name: name.trim(), parentId, team_id: teamId }),
   });
 
   if (res.ok) {
@@ -1094,15 +1097,14 @@ async function createFolder(name, parentId) {
 
 async function createCollectionRequest(name, folderId) {
   if (!name || !name.trim()) return;
+  const teamId = ($('#modal-team')||{}).value || '';
 
   const res = await fetch(API.createRequest, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
     body: JSON.stringify({
-      name: name.trim(),
-      method: 'GET',
-      url: '',
-      folderId,
+      name: name.trim(), method: 'GET', url: '',
+      folderId, team_id: teamId,
     }),
   });
 
@@ -1164,11 +1166,19 @@ async function renameFolder(folder) {
   }
 }
 
-function showCreateModal(title, placeholder, callback) {
+async function showCreateModal(title, placeholder, callback) {
   dom.modalTitle.textContent = title;
   dom.modalInput.placeholder = placeholder;
   dom.modalInput.value = '';
   dom.btnModalOk.callback = callback;
+  // Populate team dropdown
+  const teamSel = $('#modal-team');
+  if(teamSel) { teamSel.innerHTML = '<option value="">👤 Personnel</option>';
+    try {
+      const r = await fetch('/api/teams', {headers:{...getAuthHeader()}});
+      const teams = r.ok ? await r.json() : [];
+      teams.forEach(t => { teamSel.innerHTML += `<option value="${t.team_id}">👥 ${escapeHtml(t.name)}</option>`; });
+    } catch {} }
   dom.createModal.classList.remove('hidden');
   dom.createModal.classList.add('flex');
   dom.modalInput.focus();
@@ -1877,8 +1887,43 @@ shakeStyle.textContent = `
 }`;
 document.head.appendChild(shakeStyle);
 
+// ── Team filter for collections ──
+let currentTeamFilter = '';
+let currentTeamName = '';
+async function toggleTeamFilter() {
+  const dd = $('#team-filter-dd'); if(!dd) return;
+  if(!dd.classList.contains('hidden')) { dd.classList.add('hidden'); return; }
+  dd.classList.remove('hidden'); dd.innerHTML = '<div class="px-3 py-2 text-[10px] text-gray-500">Chargement...</div>';
+  try {
+    const r = await fetch('/api/user/followed-teams', {headers:{...getAuthHeader()}});
+    const teams = r.ok ? await r.json() : [];
+    dd.innerHTML = '';
+    const personal = document.createElement('button');
+    personal.className = 'w-full text-left px-3 py-2 text-[11px] hover:bg-white/[0.05] transition-all ' + (currentTeamFilter==='__personal__' ? 'text-primary-light bg-primary/10' : 'text-gray-300');
+    personal.textContent = 'Personnel uniquement'; personal.onclick = () => { currentTeamFilter='__personal__'; currentTeamName=''; updateTeamIndicator(); dd.classList.add('hidden'); loadCollections(); };
+    dd.appendChild(personal);
+    const all = document.createElement('button');
+    all.className = 'w-full text-left px-3 py-2 text-[11px] hover:bg-white/[0.05] transition-all ' + (!currentTeamFilter ? 'text-primary-light bg-primary/10' : 'text-gray-300');
+    all.textContent = 'Tout (perso + suivi)'; all.onclick = () => { currentTeamFilter=''; currentTeamName=''; updateTeamIndicator(); dd.classList.add('hidden'); loadCollections(); };
+    dd.appendChild(all);
+    teams.forEach(t => {
+      const btn = document.createElement('button');
+      btn.className = 'w-full text-left px-3 py-2 text-[11px] hover:bg-white/[0.05] transition-all flex items-center gap-2 ' + (currentTeamFilter===t.team_id ? 'text-primary-light bg-primary/10' : 'text-gray-300');
+      btn.innerHTML = `<span class="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-[8px] font-bold text-primary-light">${escapeHtml(t.name).substring(0,1).toUpperCase()}</span>${escapeHtml(t.name)}`;
+      btn.onclick = () => { currentTeamFilter=t.team_id; currentTeamName=t.name; updateTeamIndicator(); dd.classList.add('hidden'); loadCollections(); };
+      dd.appendChild(btn);
+    });
+  } catch { dd.classList.add('hidden'); }
+  setTimeout(() => { document.addEventListener('click', function c(e){ if(!dd.contains(e.target)&&e.target!==$('#btn-team-filter')&&!$('#btn-team-filter').contains(e.target)){ dd.classList.add('hidden'); document.removeEventListener('click',c); } }); }, 50);
+}
+
+function updateTeamIndicator() {
+  const dot = $('#team-indicator'); if(!dot) return;
+  if(currentTeamFilter) { dot.classList.remove('hidden'); dot.classList.add('bg-primary-light'); dot.title = 'Team: '+currentTeamName; }
+  else { dot.classList.add('hidden'); dot.classList.remove('bg-primary-light'); }
+}
+
 // ─────────────────────────────────────────────
 // START
 // ─────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', init);
 init();

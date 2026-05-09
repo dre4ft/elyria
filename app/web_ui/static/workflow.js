@@ -186,6 +186,7 @@ function init() {
   setupToolbar();
   setupSavedRequests();
   setupWorkflowCRUD();
+  const wfTf = document.getElementById('btn-wf-team-filter'); if(wfTf) wfTf.addEventListener('click', toggleWfTeamFilter);
   loadSavedRequests();
   loadSavedWorkflows();
   updateNodeCount();
@@ -285,12 +286,38 @@ function addNode(type, x, y) {
 // ─────────────────────────────────────────────
 // SAVED WORKFLOWS IN PALETTE (sub-workflow blocks)
 // ─────────────────────────────────────────────
+let wfTeamFilter = '';
+let wfTeamName = '';
+async function toggleWfTeamFilter() {
+  const dd = document.getElementById('wf-team-dd'); if(!dd) return;
+  if(!dd.classList.contains('hidden')) { dd.classList.add('hidden'); return; }
+  dd.classList.remove('hidden'); dd.innerHTML = '<div class="px-3 py-2 text-[10px] text-gray-500">...</div>';
+  try {
+    const r = await fetch('/api/user/followed-teams', {headers:{...getAuthHeader()}});
+    const teams = r.ok ? await r.json() : [];
+    dd.innerHTML = '';
+    [['__personal__', 'Personnel'], ['', 'Tout'], ...teams.map(t=>[t.team_id, t.name])].forEach(([id, name]) => {
+      const btn = document.createElement('button');
+      btn.className = 'w-full text-left px-3 py-2 text-[11px] hover:bg-white/[0.05] transition-all ' + (wfTeamFilter===id?'text-primary-light bg-primary/10':'text-gray-300');
+      btn.textContent = name; btn.onclick = () => { wfTeamFilter=id; wfTeamName=id?name:''; updateWfIndicator(); dd.classList.add('hidden'); loadSavedWorkflows(); };
+      dd.appendChild(btn);
+    });
+  } catch { dd.classList.add('hidden'); }
+}
+
+function updateWfIndicator() {
+  const dot = document.getElementById('wf-team-indicator'); if(!dot) return;
+  if(wfTeamFilter) { dot.classList.remove('hidden'); dot.classList.add('bg-primary-light'); dot.title = 'Team: '+wfTeamName; }
+  else { dot.classList.add('hidden'); dot.classList.remove('bg-primary-light'); }
+}
+
 async function loadSavedWorkflows() {
   const container = document.getElementById('wf-saved-workflows');
   if (!container) return;
   container.querySelectorAll('.wf-palette-item[data-workflow-id]').forEach(el => el.remove());
   try {
-    const res = await fetch('/api/workflows', { headers: { ...getAuthHeader() } });
+    const qs = wfTeamFilter ? `?team_id=${wfTeamFilter}` : '';
+    const res = await fetch('/api/workflows' + qs, { headers: { ...getAuthHeader() } });
     if (!res.ok) return;
     const workflows = await res.json();
     workflows.forEach(wf => {

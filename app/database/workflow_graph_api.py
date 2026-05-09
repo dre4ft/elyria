@@ -47,8 +47,15 @@ async def api_save_workflow(request: Request):
 
 
 @app.get("")
-async def api_list_workflows(request: Request):
-    return list_workflows(user_id=_get_user(request))
+async def api_list_workflows(request: Request, team_id: str = ""):
+    if team_id == "__personal__":
+        wfs = list_workflows(user_id=_get_user(request))
+    elif team_id:
+        wfs = list_workflows(team_id=team_id)
+    else:
+        wfs = list_workflows(user_id=_get_user(request), team_id="__followed__")
+    return wfs
+    return wfs
 
 
 @app.get("/{workflow_id}")

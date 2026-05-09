@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Elyria — Hub</title>
+  <script src="https://cdn.tailwindcss.com"></script><script>tailwind.config={theme:{extend:{colors:{base:{900:'#0a0f1c',800:'#0f1629',700:'#141c35',600:'#1a2340',500:'#212b4a'},primary:{DEFAULT:'#7c3aed',light:'#8b5cf6',dark:'#6d28d9'},accent:{DEFAULT:'#06b6d4',light:'#22d3ee',dark:'#0891b2'}}}}};</script>
+  <link rel="stylesheet" href="static/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body class="h-full bg-base-900 text-gray-200 font-['Inter',sans-serif] overflow-hidden">
+
+<!-- ══════ TOP BAR ══════ -->
+<header class="h-12 bg-base-800 border-b border-white/5 flex items-center justify-between px-5 shrink-0 z-50">
+  <div class="flex items-center gap-3">
+    <a href="/app" class="flex items-center gap-3 no-underline"><div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center"><svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div><span class="text-sm font-semibold tracking-wide text-white">Ely<span class="text-primary-light">ria</span></span></a>
+    <div class="w-px h-5 bg-white/10"></div>
+    <div class="flex items-center gap-1.5">
+      <svg class="w-4 h-4 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
+      <span class="text-xs font-semibold text-primary-light">Hub</span>
+    </div>
+  </div>
+  <div class="flex items-center gap-2">
+    <span id="hub-username" class="text-[10px] text-gray-500 font-medium"></span>
+    <button onclick="logout()" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-red-500/10 border border-white/5 hover:border-red-500/30 text-gray-500 hover:text-red-400 text-xs font-medium transition-all flex items-center gap-1.5"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/></svg> Déconnexion</button>
+  </div>
+</header>
+
+<!-- ══════ MAIN LAYOUT ══════ -->
+<div class="flex h-[calc(100vh-3rem)]">
+  <aside class="w-52 bg-base-800 border-r border-white/5 p-4 flex flex-col gap-4 shrink-0">
+    <div><div class="text-[10px] uppercase tracking-widest text-gray-500 mb-3">Navigation</div>
+      <a href="/app" class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-400 hover:text-gray-200 hover:bg-white/[0.03] transition-all"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>Client API</a>
+      <a href="/workflow" class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-400 hover:text-gray-200 hover:bg-white/[0.03] transition-all"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z"/></svg>Workflows</a>
+      <a href="/pentest" class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-400 hover:text-gray-200 hover:bg-white/[0.03] transition-all"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>Red Team</a>
+      <a href="/doc" class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-400 hover:text-gray-200 hover:bg-white/[0.03] transition-all"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>Documentation</a>
+    </div>
+    <div class="flex-1"></div>
+    <div id="proxy-status" class="px-3 py-2 rounded-lg bg-base-700/50 border border-white/5 text-[10px] text-gray-500">🔌 No proxy</div>
+  </aside>
+
+  <main class="flex-1 overflow-y-auto p-6 scrollbar-thin space-y-6">
+    <div class="flex items-center justify-between">
+      <div><h1 class="text-lg font-bold text-white">Hub</h1><p class="text-[10px] text-gray-500 mt-0.5">Teams, proxies et paramètres</p></div>
+      <button onclick="refreshHub()" class="h-7 px-3 rounded-lg bg-base-700 hover:bg-base-600 border border-white/5 text-xs text-gray-400 hover:text-gray-200 transition-all flex items-center gap-1.5"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>Rafraîchir</button>
+    </div>
+
+    <!-- ═══ TEAMS ═══ -->
+    <section class="rounded-2xl bg-base-800 border border-white/5 overflow-hidden">
+      <div class="px-5 py-3 border-b border-white/5 flex items-center justify-between">
+        <div><h2 class="text-sm font-semibold text-white">Teams</h2><p class="text-[10px] text-gray-500 mt-0.5">Collaborez et partagez vos ressources</p></div>
+        <div class="flex gap-2">
+          <input id="join-team-id" type="text" class="h-7 px-3 rounded-lg bg-base-700 border border-white/8 text-[11px] font-mono text-gray-300 focus:outline-none focus:border-primary/40 w-48" placeholder="Team ID..." />
+          <button onclick="joinTeam()" class="h-7 px-3 rounded-lg bg-accent/10 hover:bg-accent/20 border border-accent/20 hover:border-accent/40 text-[11px] font-medium text-accent-light transition-all">Rejoindre</button>
+          <button onclick="createTeam()" class="h-7 px-3 rounded-lg bg-primary/10 hover:bg-primary/20 border border-primary/20 hover:border-primary/40 text-[11px] font-medium text-primary-light transition-all flex items-center gap-1"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>Céer</button>
+        </div>
+      </div>
+      <div id="teams-container" class="p-4 space-y-2"><div class="text-xs text-gray-600 text-center py-12">Aucune team pour l'instant.</div></div>
+    </section>
+
+    <!-- ═══ FOLLOWED TEAMS ═══ -->
+    <section class="rounded-2xl bg-base-800 border border-white/5 overflow-hidden">
+      <div class="px-5 py-3 border-b border-white/5"><h2 class="text-sm font-semibold text-white">Teams suivies</h2><p class="text-[10px] text-gray-500 mt-0.5">Apparaissent dans vos collections, workflows et pentest</p></div>
+      <div id="followed-container" class="p-4 space-y-2"><div class="text-xs text-gray-600 text-center py-8">Chargement...</div></div>
+    </section>
+
+    <!-- ═══ PROXIES ═══ -->
+    <section class="rounded-2xl bg-base-800 border border-white/5 overflow-hidden">
+      <div class="px-5 py-3 border-b border-white/5 flex items-center justify-between">
+        <div><h2 class="text-sm font-semibold text-white">Proxies</h2><p class="text-[10px] text-gray-500 mt-0.5">Configurez vos proxies HTTP</p></div>
+        <div class="flex gap-2">
+          <input id="proxy-name" type="text" class="h-7 px-3 rounded-lg bg-base-700 border border-white/8 text-[11px] text-gray-300 focus:outline-none focus:border-accent/40 w-28" placeholder="Nom" />
+          <input id="proxy-url" type="text" class="h-7 px-3 rounded-lg bg-base-700 border border-white/8 text-[11px] font-mono text-gray-300 focus:outline-none focus:border-accent/40 w-52" placeholder="http://proxy:8080" />
+          <button onclick="addProxy()" class="h-7 px-3 rounded-lg bg-accent/10 hover:bg-accent/20 border border-accent/20 hover:border-accent/40 text-[11px] font-medium text-accent-light transition-all flex items-center gap-1"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>Ajouter</button>
+        </div>
+      </div>
+      <div id="proxies-container" class="p-4 space-y-1"></div>
+    </section>
+  </main>
+</div>
+
+<script src="static/auth.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => { const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; };
+const U = { hub:'/api/user/hub', teams:'/api/teams', join:(tid)=>`/api/teams/${tid}/join`, validate:(tid,uid)=>`/api/teams/${tid}/validate/${uid}`, proxies:'/api/proxies', fav:'/api/user/proxy-favorite', followed:'/api/user/followed-teams' };
+
+async function refreshHub() {
+  const u = getUser(); if(u) $('#hub-username').textContent = u.username||u.userId;
+  const r = await fetch(U.hub, {headers:{...getAuthHeader()}}); if(!r.ok) return;
+  const d = await r.json();
+  renderTeams(d.teams||[]);
+  renderProxies(d.proxies||[], d.favorite_proxy_id);
+  loadFollowed();
+  // Update proxy status in sidebar
+  if(d.favorite_proxy_id && d.proxies) {
+    const fav = d.proxies.find(p=>p.proxy_id===d.favorite_proxy_id);
+    $('#proxy-status').innerHTML = fav ? `🟢 ${esc(fav.name||fav.url)}` : '🔌 No proxy';
+  }
+}
+
+function renderTeams(teams) {
+  const c = $('#teams-container');
+  if(!teams.length){ c.innerHTML='<div class="text-xs text-gray-600 text-center py-12">Aucune team. Créez-en une ou rejoignez-en une avec son ID.</div>'; return; }
+  c.innerHTML = teams.map(t => {
+    const m = (t.members||[]).join(', ');
+    const pend = (t.pending||[]).map(p=>`<div class="flex items-center justify-between py-2 px-3 rounded-lg bg-base-900/40 text-[11px]">
+      <span class="text-gray-400 font-mono">${esc(p.user_id)}</span><span class="text-[10px] text-gray-500">${p.validators.length}/${p.needed} validations</span>
+      <button onclick="validateRequest('${t.team_id}','${p.user_id}')" class="text-[10px] px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20 transition-all">Valider</button></div>`).join('');
+    return `<div class="team-entry rounded-xl border border-white/5 bg-base-700/20 hover:border-white/10 transition-all">
+      <div class="flex items-center justify-between p-3 cursor-pointer" onclick="this.parentElement.classList.toggle('expanded')">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-[10px] font-bold text-primary-light">${esc(t.name).substring(0,2).toUpperCase()}</div>
+          <div class="min-w-0"><div class="text-xs text-gray-200 font-semibold">${esc(t.name)}</div><div class="flex items-center gap-1.5 mt-0.5"><span class="text-[10px] text-gray-400 font-mono select-all">${esc(t.team_id)}</span><button onclick="event.stopPropagation();copyToClipboard('${esc(t.team_id)}')" class="w-4 h-4 rounded hover:bg-accent/20 flex items-center justify-center text-gray-600 hover:text-accent-light transition-all flex-shrink-0" title="Copier l'ID"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg></button></div></div>
+        </div>
+        <div class="flex items-center gap-3"><span class="text-[10px] text-gray-500">${t.member_count} membre${t.member_count>1?'s':''}</span>
+          <svg class="w-3 h-3 text-gray-600 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg></div></div>
+      <div class="hidden px-3 pb-3 border-t border-white/5">
+        <div class="py-2 text-[11px] text-gray-500">Membres : <span class="text-gray-300 font-mono">${esc(m)}</span></div>
+        ${pend?`<div class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mt-3 mb-2">Demandes en attente</div>${pend}`:'<div class="text-[11px] text-gray-600 mt-2">Aucune demande en attente.</div>'}
+      </div></div>`;
+  }).join('');
+}
+
+async function loadFollowed() {
+  const c = $('#followed-container');
+  const [fr, hr] = await Promise.all([fetch(U.followed,{headers:{...getAuthHeader()}}), fetch(U.hub,{headers:{...getAuthHeader()}})]);
+  if(!fr.ok){ c.innerHTML='<div class="text-xs text-gray-600 text-center py-8">Erreur.</div>'; return; }
+  const followed = await fr.json(); const hubData = hr.ok?await hr.json():{teams:[]};
+  const followedIds = followed.map(t=>t.team_id);
+  const nf = (hubData.teams||[]).filter(t=>!followedIds.includes(t.team_id));
+  let h='';
+  if(followed.length) h+='<div class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2">Suivies</div>'+followed.map(t=>`<div class="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-base-700/20 hover:border-white/10 transition-all">
+    <div class="flex items-center gap-3"><div class="w-7 h-7 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center text-[9px] font-bold text-accent-light">${esc(t.name).substring(0,2).toUpperCase()}</div>
+      <div><span class="text-xs text-gray-300 font-medium">${esc(t.name)}</span><span class="text-[10px] text-gray-500 ml-2">${t.member_count} membres</span></div></div>
+    <button onclick="unfollow('${t.team_id}')" class="h-6 px-2 rounded-md text-[10px] text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all">Ne plus suivre</button></div>`).join('');
+  if(nf.length) h+='<div class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-2 mt-4">Disponibles</div>'+nf.map(t=>`<div class="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-base-700/20 hover:border-white/10 transition-all">
+    <div class="flex items-center gap-3"><div class="w-7 h-7 rounded-lg bg-base-600 border border-white/5 flex items-center justify-center text-[9px] font-bold text-gray-400">${esc(t.name).substring(0,2).toUpperCase()}</div>
+      <div><span class="text-xs text-gray-400 font-medium">${esc(t.name)}</span><span class="text-[10px] text-gray-500 ml-2">${t.member_count} membres</span></div></div>
+    <button onclick="follow('${t.team_id}')" class="h-6 px-3 rounded-md text-[10px] font-medium text-accent-light bg-accent/10 border border-accent/20 hover:bg-accent/20 transition-all">Suivre</button></div>`).join('');
+  c.innerHTML = h||'<div class="text-xs text-gray-600 text-center py-8">Rejoignez une team pour pouvoir la suivre.</div>';
+}
+
+function renderProxies(proxies, favId) {
+  const c = $('#proxies-container');
+  c.innerHTML = proxies.length ? proxies.map(p=>`<div class="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-base-700/20 hover:border-white/10 transition-all">
+    <div class="flex items-center gap-3 flex-1 min-w-0"><div class="w-7 h-7 rounded-lg ${favId===p.proxy_id?'bg-green-500/10 border-green-500/20 text-green-400':'bg-base-600 border-white/5 text-gray-400'} border flex items-center justify-center text-[9px] font-bold">${favId===p.proxy_id?'★':'P'}</div>
+      <div class="min-w-0"><div class="text-xs text-gray-300 truncate">${esc(p.name||p.url)}</div><div class="text-[10px] text-gray-600 font-mono truncate">${esc(p.url)}</div></div></div>
+    <div class="flex gap-1 ml-2">
+      <button onclick="setFav('${p.proxy_id}')" class="h-6 px-2 rounded-md text-[10px] ${favId===p.proxy_id?'bg-green-500/15 text-green-400 border border-green-500/20':'bg-base-700 text-gray-500 border border-white/5 hover:text-green-400 hover:bg-green-500/10'} transition-all">${favId===p.proxy_id?'★ Favori':'☆'}</button>
+      <button onclick="delProxy('${p.proxy_id}')" class="h-6 w-6 rounded-md bg-base-700 border border-white/5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all flex items-center justify-center"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button></div></div>`).join('') : '<div class="text-xs text-gray-600 text-center py-8">Aucun proxy. Ajoutez-en un ci-dessus.</div>';
+}
+
+async function createTeam(){ const n=prompt('Nom de la team :'); if(!n)return; await fetch(U.teams,{method:'POST',headers:{'Content-Type':'application/json',...getAuthHeader()},body:JSON.stringify({name:n})}); refreshHub(); }
+async function joinTeam(){ const tid=$('#join-team-id').value.trim(); if(!tid)return; await fetch(U.join(tid),{method:'POST',headers:{...getAuthHeader()}}); $('#join-team-id').value=''; alert('Demande envoyée (silencieuse). Vous serez notifié si accepté.'); refreshHub(); }
+async function validateRequest(tid,uid){ await fetch(U.validate(tid,uid),{method:'POST',headers:{...getAuthHeader()}}); refreshHub(); }
+async function follow(tid){ await fetch(U.followed+'/'+tid,{method:'POST',headers:{...getAuthHeader()}}); loadFollowed(); }
+async function unfollow(tid){ await fetch(U.followed+'/'+tid,{method:'DELETE',headers:{...getAuthHeader()}}); loadFollowed(); }
+async function addProxy(){ const n=$('#proxy-name').value.trim(),u=$('#proxy-url').value.trim(); if(!u)return; await fetch(U.proxies,{method:'POST',headers:{'Content-Type':'application/json',...getAuthHeader()},body:JSON.stringify({name:n,url:u})}); $('#proxy-name').value=''; $('#proxy-url').value=''; refreshHub(); }
+async function delProxy(id){ await fetch(U.proxies+'/'+id,{method:'DELETE',headers:{...getAuthHeader()}}); refreshHub(); }
+async function setFav(id){ await fetch(U.fav,{method:'PUT',headers:{'Content-Type':'application/json',...getAuthHeader()},body:JSON.stringify({proxy_id:id})}); refreshHub(); }
+function copyToClipboard(text){ navigator.clipboard.writeText(text).then(()=>{ /* silent */ }).catch(()=>{}); }
+
+document.addEventListener('DOMContentLoaded', refreshHub);
+const st=document.createElement('style'); st.textContent='.team-entry .hidden{display:none}.team-entry.expanded .hidden{display:block}.team-entry.expanded svg{transform:rotate(180deg)}'; document.head.appendChild(st);
+</script>
+</body>
+</html>

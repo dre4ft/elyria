@@ -12,15 +12,15 @@ def _generate_collection_id(prefix: str) -> str:
 # FOLDERS
 # ═══════════════════════════════════════════════
 
-def create_folder(name: str, author_user_id: str, parent_id: str = None):
+def create_folder(name: str, author_user_id: str, parent_id: str = None, team_id: str = ""):
     conn = None
     try:
         conn = connect()
         cursor = conn.cursor()
         folder_id = _generate_collection_id("f")
         cursor.execute(
-            "INSERT INTO folders (folder_id, name, parent_id, author_user_id, created_at) VALUES (?, ?, ?, ?, ?)",
-            (folder_id, name, parent_id, author_user_id, datetime.now())
+            "INSERT INTO folders (folder_id, name, parent_id, author_user_id, team_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (folder_id, name, parent_id, author_user_id, team_id, datetime.now())
         )
         conn.commit()
         return folder_id
@@ -115,7 +115,7 @@ def get_request_by_id(saved_request_id: str):
 def create_saved_request(name: str, author_user_id: str, folder_id: str = None,
                          method: str = "GET", url: str = "",
                          headers: dict = None, body: str = None,
-                         is_done_by_ai: bool = False):
+                         is_done_by_ai: bool = False, team_id: str = ""):
     conn = None
     try:
         conn = connect()
@@ -131,9 +131,9 @@ def create_saved_request(name: str, author_user_id: str, folder_id: str = None,
         now = datetime.now()
         cursor.execute(
             """INSERT INTO saved_requests
-               (saved_request_id, name, folder_id, method, url, headers, body, body_is_json, is_done_by_ai, author_user_id, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (saved_id, name, folder_id, method.upper(), url, headers_str, body_str, body_is_json, is_done_by_ai, author_user_id, now, now)
+               (saved_request_id, name, folder_id, method, url, headers, body, body_is_json, is_done_by_ai, author_user_id, team_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (saved_id, name, folder_id, method.upper(), url, headers_str, body_str, body_is_json, is_done_by_ai, author_user_id, team_id or "", now, now)
         )
         conn.commit()
         return saved_id
@@ -226,9 +226,26 @@ def delete_saved_request(saved_request_id: str, author_user_id: str):
 # TREE BUILDER  (for GET /api/collections)
 # ═══════════════════════════════════════════════
 
-def get_collection_tree(author_user_id: str):
+def get_collection_tree(author_user_id: str, team_ids: list = None):
     folders = get_folders_by_user(author_user_id)
     saved = get_saved_requests_by_user(author_user_id)
+    # If team_ids is None: personal only. If empty list: no teams. If list: include those teams.
+    if team_ids is not None and team_ids:
+        for tid in team_ids:
+            try:
+                conn = connect()
+                tfolders = conn.execute("SELECT * FROM folders WHERE team_id=?", (tid,)).fetchall()
+                # Get requests inside team folders AND requests with team_id set directly
+                folder_ids = [f["folder_id"] for f in tfolders]
+                tsaved = conn.execute("SELECT * FROM saved_requests WHERE team_id=?", (tid,)).fetchall()
+                if folder_ids:
+                    placeholders = ",".join("?" * len(folder_ids))
+                    tsaved += conn.execute(f"SELECT * FROM saved_requests WHERE folder_id IN ({placeholders})", folder_ids).fetchall()
+                conn.close()
+                folders.extend([dict(r) for r in tfolders])
+                saved.extend([dict(r) for r in tsaved])
+            except Exception as e:
+                print(f"Team tree load error for {tid}: {e}")
 
     folder_map = {}
     for f in folders:
