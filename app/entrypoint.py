@@ -173,4 +173,5 @@ if __name__ == "__main__":
     import uvicorn 
     cert = os.getenv("cert_path")
     key = os.getenv("key_path")
-    uvicorn.run(app, host=os.getenv("host"), port=int(os.getenv("port")),ssl_certfile=cert,ssl_keyfile=key)
+    uvicorn.run("entrypoint:app", host=os.getenv("host"), port=int(os.getenv("port")),
+                ssl_certfile=cert, ssl_keyfile=key, reload=True)

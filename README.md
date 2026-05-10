@@ -18,20 +18,51 @@
 
 ## Déploiement
 
-Local, on-prem, ou dans votre cloud. Un seul binaire, pas de dépendances externes.
+### Méthode 1 — Git clone + Uvicorn (recommandé pour le dev)
+
+```bash
+git clone https://github.com/dreaft/elyria.git
+cd elyria
+pip install -r requirements.txt
+cd app
+python entrypoint.py
+```
+
+L'application démarre sur `https://127.0.0.1:8000`. Le hot-reload est activé — les modifications Python sont prises en compte sans redémarrage.
+
+**Prérequis** : Python 3.12+, pip.
+
+**Configuration** : créez un fichier `app/.env` :
+```
+host=127.0.0.1
+port=8000
+cert_path=cert.pem
+key_path=key.pem
+deepseek=sk-votre-cle-api
+```
+
+### Méthode 2 — Docker
+
+```bash
+git clone https://github.com/dreaft/elyria.git
+cd elyria
+docker compose up --build
+```
+
+L'application est accessible sur `http://localhost:8000`.
+
+**Connexion aux APIs locales (Ollama / LM Studio)** : dans le Hub > AI Agent, utilisez `http://host.docker.internal:11434` pour Ollama et `http://host.docker.internal:1234/v1` pour LM Studio. `host.docker.internal` résout vers l'IP de la machine hôte depuis le conteneur.
 
 ### Léger et rapide — taillé pour le local-first
-
-Elyria est conçu pour démarrer **instantanément** sur n'importe quelle machine. Pas de container, pas d'orchestrateur, pas de stack lourde.
 
 - **SQLite** embarqué — zéro infra, un fichier
 - **Tout en Python** — `pip install` et c'est parti
 - **Moins de 100 Mo** de mémoire au repos
 - **Hot-reload** des templates et du code en développement
 
-Tourne sur un **MacBook M5 Pro 24 Go** avec des modèles locaux type **OpenAI/GPT-OSS-20B** via LM Studio sans aucun problème. L'inférence locale couvre à la fois les phases de scan (flash + pro) et l'assistant IA — pas besoin de carte graphique externe.
+Tourne sur un **MacBook M5 Pro 24 Go** avec des modèles locaux type **OpenAI/GPT-OSS-20B** via LM Studio sans aucun problème. L'inférence locale couvre à la fois les phases de scan (flash + pro) et l'assistant IA.
 
-Testé également avec un **Raspberry Pi 4 (carte SD 64 Go)** servant de serveur d'inférence distant : le modèle tourne sur le Pi, Elyria s'y connecte via l'API OpenAI-compatible. Les performances restent fluides pour l'assistant IA et les phases de scan.
+Testé également avec un **Raspberry Pi 4 (carte SD 64 Go)** servant de serveur d'inférence distant : le modèle tourne sur le Pi, Elyria s'y connecte via l'API OpenAI-compatible.
 
 ## Providers IA supportés
 
@@ -77,7 +108,40 @@ Open source. Pour toujours.
 
 ## Deployment
 
-Local, on-prem, or in your cloud. Single binary, no external dependencies.
+### Method 1 — Git clone + Uvicorn (recommended for dev)
+
+```bash
+git clone https://github.com/dreaft/elyria.git
+cd elyria
+pip install -r requirements.txt
+cd app
+python entrypoint.py
+```
+
+The app starts on `https://127.0.0.1:8000`. Hot-reload is enabled — Python changes are picked up without restart.
+
+**Requirements**: Python 3.12+, pip.
+
+**Configuration**: create an `app/.env` file:
+```
+host=127.0.0.1
+port=8000
+cert_path=cert.pem
+key_path=key.pem
+deepseek=sk-your-api-key
+```
+
+### Method 2 — Docker
+
+```bash
+git clone https://github.com/dreaft/elyria.git
+cd elyria
+docker compose up --build
+```
+
+The app is available at `http://localhost:8000`.
+
+**Connecting to local APIs (Ollama / LM Studio)**: in Hub > AI Agent, use `http://host.docker.internal:11434` for Ollama and `http://host.docker.internal:1234/v1` for LM Studio. `host.docker.internal` resolves to the host machine's IP from inside the container.
 
 ### Lightweight & fast — built for local-first
 
