@@ -19,9 +19,9 @@ def get_user_teams(user_id: str) -> str:
     conn = connect()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT teams FROM users WHERE user_id = ?", (user_id,))
-        row = cursor.fetchone()
-        return row[0] if row and row[0] else ""
+        cursor.execute("SELECT team_id FROM team_users WHERE user_id = ?", (user_id,))
+        rows = cursor.fetchall()
+        return ",".join(row["team_id"] for row in rows) if rows else ""
     finally:
         conn.close()
 

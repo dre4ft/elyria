@@ -88,6 +88,63 @@ const BLOCK_DEFS = {
       { key: 'workflowName', label: 'Nom', type: 'text', placeholder: 'Nom affiché' },
     ],
   },
+  // ── Red Team blocks ──
+  fuzz_params: {
+    label: 'Fuzz Params', color: 'red', icon: 'fuzz',
+    desc: 'Fuzze les parametres d\'URL avec des valeurs multiples et les paths avec une wordlist personnalisable. Chaque combinaison genere une requete distincte. Les resultats (statut HTTP + apercu du body) sont stockes dans ctx.{saveTo}.',
+    ports: { in: ['in'], out: ['out'] },
+    fields: [
+      { key: 'url', label: 'URL cible a fuzzer', type: 'text', placeholder: 'https://api.target.com/users?role=admin' },
+      { key: 'method', label: 'Methode HTTP', type: 'select', options: ['GET','POST','PUT','PATCH'], default: 'GET' },
+      { key: 'params', label: 'Parametres et valeurs (JSON)', type: 'textarea', placeholder: '{\n  "id": [1, 2, 3, 100, 999],\n  "role": ["admin", "superadmin", "user"],\n  "debug": [true, false]\n}', rows: 4 },
+      { key: 'wordlist', label: 'Wordlist de paths (1 par ligne)', type: 'textarea', placeholder: '../\nadmin\nconfig\n.env\n/api/v2\n/api/internal\n/backup\n/console', rows: 3 },
+      { key: 'saveTo', label: 'Variable de sortie', type: 'text', placeholder: 'fuzzResults', default: 'fuzz' },
+    ],
+  },
+  bola_test: {
+    label: 'BOLA Test', color: 'orange', icon: 'bola',
+    desc: 'Teste les vulnerabilites IDOR (Insecure Direct Object Reference) en substituant {{id}} dans l\'URL par chaque ID de la liste. Si la requete renvoie HTTP 200, la ressource est accessible sans autorisation → branche VULN. Sinon → branche SAFE.',
+    ports: { in: ['in'], out: ['out_vuln', 'out_safe'] },
+    fields: [
+      { key: 'url', label: 'URL avec placeholder {{id}}', type: 'text', placeholder: 'https://api.target.com/users/{{id}}/profile' },
+      { key: 'method', label: 'Methode HTTP', type: 'select', options: ['GET','POST','PUT','DELETE'], default: 'GET' },
+      { key: 'idList', label: 'Liste d\'IDs a tester (JSON)', type: 'textarea', placeholder: '[\n  "user-1",\n  "user-2",\n  "user-3",\n  "admin-1",\n  "0",\n  "99999"\n]', rows: 4 },
+      { key: 'saveTo', label: 'Variable de sortie', type: 'text', placeholder: 'bolaResults', default: 'bola' },
+    ],
+  },
+  jwt_analyze: {
+    label: 'JWT Analyze', color: 'pink', icon: 'jwt',
+    desc: 'Decode un JWT (Base64) sans verifier la signature. Stocke dans ctx.{saveTo} : {header, payload, algorithm, isWeakAlg, expired, expiresAt, issuedAt, hasSensitiveClaims}. Ex: si token avec alg=HS256 et exp depassee → ctx.jwt = {algorithm:"HS256", isWeakAlg:true, expired:true, expiresAt:"2024-01-01T00:00:00.000Z", hasSensitiveClaims:["password"]}.',
+    ports: { in: ['in'], out: ['out'] },
+    fields: [
+      { key: 'token', label: 'Token JWT a analyser', type: 'text', placeholder: '{{ctx.login.response.access_token}} — utiliser une variable de contexte' },
+      { key: 'saveTo', label: 'Variable de sortie', type: 'text', placeholder: 'jwtData', default: 'jwt' },
+    ],
+  },
+  response_diff: {
+    label: 'Response Diff', color: 'lime', icon: 'diff',
+    desc: 'Compare les reponses de deux requetes identiques avec des headers/auth differents. Utile pour detecter des differences de comportement selon le niveau de privilege (ex: user vs admin). Si les reponses different → branche DIFF, sinon → SAME.',
+    ports: { in: ['in'], out: ['out_diff', 'out_same'] },
+    fields: [
+      { key: 'url', label: 'URL a tester', type: 'text', placeholder: 'https://api.target.com/admin/dashboard' },
+      { key: 'method', label: 'Methode HTTP', type: 'select', options: ['GET','POST'], default: 'GET' },
+      { key: 'headersA', label: 'Headers requete A (JSON)', type: 'textarea', placeholder: '{\n  "Authorization": "Bearer {{ctx.userA.token}}",\n  "X-Role": "user"\n}', rows: 2 },
+      { key: 'headersB', label: 'Headers requete B (JSON)', type: 'textarea', placeholder: '{\n  "Authorization": "Bearer {{ctx.admin.token}}",\n  "X-Role": "admin"\n}', rows: 2 },
+      { key: 'saveTo', label: 'Variable de sortie', type: 'text', placeholder: 'diffResult', default: 'diff' },
+    ],
+  },
+  extract_replay: {
+    label: 'Extract & Replay', color: 'sky', icon: 'extract',
+    desc: 'Extrait une valeur d\'une reponse precedente via expression reguliere, puis la reinjecte dans une nouvelle requete. Ideal pour enchainer : login → extraire le token → acceder a une ressource protegee. La valeur extraite remplace {{extracted}} dans l\'URL.',
+    ports: { in: ['in'], out: ['out'] },
+    fields: [
+      { key: 'source', label: 'Source des donnees', type: 'text', placeholder: 'ctx.login.body — la variable contenant la reponse a parser', default: 'ctx.response.body' },
+      { key: 'extractRegex', label: 'Regex d\'extraction (capture group 1)', type: 'text', placeholder: '"access_token"\\s*:\\s*"([^"]+)"' },
+      { key: 'url', label: 'URL ou rejouer la valeur', type: 'text', placeholder: 'https://api.target.com/admin?token={{extracted}}' },
+      { key: 'method', label: 'Methode HTTP', type: 'select', options: ['GET','POST','PUT'], default: 'GET' },
+      { key: 'saveTo', label: 'Variable de sortie', type: 'text', placeholder: 'replayResult', default: 'replay' },
+    ],
+  },
 };
 
 const COLOR_MAP = {
@@ -100,6 +157,11 @@ const COLOR_MAP = {
   purple:  { bg: 'rgba(168,85,247,0.12)', text: '#a78bfa',  border: 'rgba(168,85,247,0.3)' },
   emerald: { bg: 'rgba(16,185,129,0.12)', text: '#34d399',  border: 'rgba(16,185,129,0.3)' },
   fuchsia: { bg: 'rgba(217,70,239,0.12)', text: '#e879f9',  border: 'rgba(217,70,239,0.3)' },
+  red:     { bg: 'rgba(239,68,68,0.12)',   text: '#f87171',  border: 'rgba(239,68,68,0.3)' },
+  orange:  { bg: 'rgba(249,115,22,0.12)', text: '#fb923c',  border: 'rgba(249,115,22,0.3)' },
+  pink:    { bg: 'rgba(236,72,153,0.12)',  text: '#f472b6',  border: 'rgba(236,72,153,0.3)' },
+  lime:    { bg: 'rgba(132,204,22,0.12)',  text: '#a3e635',  border: 'rgba(132,204,22,0.3)' },
+  sky:     { bg: 'rgba(14,165,233,0.12)',  text: '#38bdf8',  border: 'rgba(14,165,233,0.3)' },
 };
 
 const ICON_SVG = {
@@ -111,6 +173,11 @@ const ICON_SVG = {
   loop:      '<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3"/>',
   clock:     '<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/>',
   check:     '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 016 0z"/>',
+  fuzz:      '<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3"/><circle cx="12" cy="12" r="1.5" fill="currentColor" opacity=".5"/>',
+  bola:      '<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 7.5l15 0M4.5 12h15M4.5 16.5h15" stroke-width="1" opacity=".3"/>',
+  jwt:       '<path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/><circle cx="12" cy="16.5" r="1.5" fill="currentColor"/>',
+  diff:      '<path stroke-linecap="round" stroke-linejoin="round" d="M3 3v2.25M3 3h2.25M3 3L7 7M3 21v-2.25M3 21h2.25M3 21l4-4M21 3h-2.25M21 3v2.25M21 3l-4 4M21 21h-2.25M21 21v-2.25M21 21l-4-4M12 5v14"/>',
+  extract:   '<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/><path stroke-linecap="round" stroke-linejoin="round" d="M16 5l-3 3m0 0l3 3" stroke-width="1.5" opacity=".4"/>',
 };
 
 // ─────────────────────────────────────────────
@@ -747,6 +814,10 @@ function createPort(dir, portName, nodeId) {
     if (portName === 'out') cls += ' port-out';
     else if (portName === 'out_true') cls += ' port-out-true';
     else if (portName === 'out_false') cls += ' port-out-false';
+    else if (portName === 'out_vuln') cls += ' port-out-vuln';
+    else if (portName === 'out_safe') cls += ' port-out-safe';
+    else if (portName === 'out_diff') cls += ' port-out-diff';
+    else if (portName === 'out_same') cls += ' port-out-same';
     else if (portName === 'out_body') cls += ' port-out-body';
     else if (portName === 'out_done') cls += ' port-out-done';
   }
@@ -951,7 +1022,7 @@ function renderConfigPanel(nodeId) {
   dom.configForm.classList.remove('hidden');
 
   let html = `
-    <div class="flex items-center gap-2 mb-4 pb-3 border-b border-white/5">
+    <div class="flex items-center gap-2 mb-3 pb-3 border-b border-white/5">
       <div class="wf-node-icon" style="background:${colors.bg};color:${colors.text}">
         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">${ICON_SVG[def.icon]}</svg>
       </div>
@@ -960,6 +1031,7 @@ function renderConfigPanel(nodeId) {
         <div class="text-[10px] text-gray-600 font-mono">${node.id}</div>
       </div>
     </div>
+    ${def.desc ? `<div class="text-[10px] text-gray-500 leading-relaxed mb-3 pb-3 border-b border-white/5">${def.desc}</div>` : ''}
   `;
 
   def.fields.forEach(f => {
@@ -970,7 +1042,8 @@ function renderConfigPanel(nodeId) {
     if (f.type === 'text') {
       html += `<input class="wf-config-input" data-field="${f.key}" value="${escapeAttr(val)}" placeholder="${f.placeholder || ''}" />`;
     } else if (f.type === 'textarea') {
-      html += `<textarea class="wf-config-textarea" data-field="${f.key}" placeholder="${f.placeholder || ''}" rows="3">${escapeHtml(val)}</textarea>`;
+      const rows = f.rows || 2;
+      html += `<textarea class="wf-config-textarea" data-field="${f.key}" placeholder="${f.placeholder || ''}" rows="${rows}">${escapeHtml(val)}</textarea>`;
     } else if (f.type === 'select') {
       html += `<select class="wf-config-select" data-field="${f.key}">`;
       (f.options || []).forEach(opt => {
@@ -1402,6 +1475,127 @@ async function executeNode(nodeId, ctx) {
           addLog(`✗ ${label}`, 'error');
           setNodeStatus(node.id, 'error');
           throw new Error(`Assertion échouée : ${label}`);
+        }
+        break;
+      }
+
+      case 'fuzz_params': {
+        const url = interpolate(node.data.url || '', ctx);
+        const method = node.data.method || 'GET';
+        const params = node.data.params || '{}';
+        const wordlist = (node.data.wordlist || '').split('\n').filter(l => l.trim());
+        let paramMap = {};
+        try { paramMap = JSON.parse(interpolate(params, ctx)); } catch {}
+        const allResults = [];
+        for (const [key, values] of Object.entries(paramMap)) {
+          for (const val of (Array.isArray(values) ? values : [values])) {
+            const fuzzUrl = url.includes('?') ? url + `&${key}=${encodeURIComponent(val)}` : url + `?${key}=${encodeURIComponent(val)}`;
+            const res = await fetch(API.structured, { method:'POST', headers:{'Content-Type':'application/json',...getAuthHeader()}, body:JSON.stringify({url:fuzzUrl, method}) });
+            const data = await res.json();
+            allResults.push({param:key, value:val, status:data.response?.status_code, body:data.response?.body?.substring(0,200)});
+            addLog(`Fuzz ${method} ${key}=${val} → ${data.response?.status_code||'?'}`, 'info');
+          }
+        }
+        // Also fuzz wordlist paths
+        for (const word of wordlist) {
+          const base = url.replace(/\/$/, '');
+          const pathUrl = base + (word.startsWith('/') ? word : '/' + word);
+          const res = await fetch(API.structured, { method:'POST', headers:{'Content-Type':'application/json',...getAuthHeader()}, body:JSON.stringify({url:pathUrl, method}) });
+          const data = await res.json();
+          allResults.push({word, status:data.response?.status_code, body:data.response?.body?.substring(0,200)});
+        }
+        ctx[node.data.saveTo || 'fuzz'] = allResults;
+        addLog(`Fuzzing terminé : ${allResults.length} requêtes`, 'success');
+        break;
+      }
+
+      case 'bola_test': {
+        const urlTpl = interpolate(node.data.url || '', ctx);
+        const method = node.data.method || 'GET';
+        let ids = [];
+        try { ids = JSON.parse(interpolate(node.data.idList || '[]', ctx)); } catch {}
+        const results = [];
+        for (const id of ids) {
+          const testUrl = urlTpl.replace(/\{\{id\}\}/g, id).replace(/\{\{ID\}\}/g, id);
+          const res = await fetch(API.structured, { method:'POST', headers:{'Content-Type':'application/json',...getAuthHeader()}, body:JSON.stringify({url:testUrl, method}) });
+          const data = await res.json();
+          const sc = data.response?.status_code || 0;
+          results.push({id, status:sc, body:data.response?.body?.substring(0,300)});
+          const isVuln = sc === 200;
+          addLog(`BOLA {{id}}=${id} → ${sc} ${isVuln ? '(VULN)' : ''}`, isVuln ? 'error' : 'info');
+        }
+        ctx[node.data.saveTo || 'bola'] = results;
+        const hasVuln = results.some(r => r.status === 200);
+        nextPort = hasVuln ? 'out_vuln' : 'out_safe';
+        break;
+      }
+
+      case 'jwt_analyze': {
+        const token = interpolate(node.data.token || '', ctx);
+        const parts = token.split('.');
+        if (parts.length !== 3) { addLog('JWT malformé', 'error'); break; }
+        const decode = (p) => { try { return JSON.parse(atob(p.replace(/-/g,'+').replace(/_/g,'/'))); } catch { return null; } };
+        const header = decode(parts[0]);
+        const payload = decode(parts[1]);
+        const now = Math.floor(Date.now()/1000);
+        const analysis = {
+          header, payload,
+          expired: payload?.exp ? payload.exp < now : null,
+          issuedAt: payload?.iat ? new Date(payload.iat*1000).toISOString() : null,
+          expiresAt: payload?.exp ? new Date(payload.exp*1000).toISOString() : null,
+          algorithm: header?.alg || 'unknown',
+          isWeakAlg: ['none','HS256'].includes(header?.alg),
+          hasSensitiveClaims: payload ? Object.keys(payload).filter(k => ['password','ssn','secret','credit'].some(s => k.toLowerCase().includes(s))) : [],
+        };
+        ctx[node.data.saveTo || 'jwt'] = analysis;
+        addLog(`JWT: alg=${analysis.algorithm}, exp=${analysis.expiresAt||'none'}${analysis.isWeakAlg?' (WEAK)':''}`, analysis.isWeakAlg||analysis.expired?'warn':'success');
+        break;
+      }
+
+      case 'response_diff': {
+        const url = interpolate(node.data.url || '', ctx);
+        const method = node.data.method || 'GET';
+        let headersA = {}, headersB = {};
+        try { headersA = JSON.parse(interpolate(node.data.headersA || '{}', ctx)); } catch {}
+        try { headersB = JSON.parse(interpolate(node.data.headersB || '{}', ctx)); } catch {}
+        const [resA, resB] = await Promise.all([
+          fetch(API.structured, { method:'POST', headers:{'Content-Type':'application/json',...getAuthHeader()}, body:JSON.stringify({url, method, headers:headersA}) }),
+          fetch(API.structured, { method:'POST', headers:{'Content-Type':'application/json',...getAuthHeader()}, body:JSON.stringify({url, method, headers:headersB}) }),
+        ]);
+        const [dataA, dataB] = await Promise.all([resA.json(), resB.json()]);
+        const diff = {
+          statusA: dataA.response?.status_code, statusB: dataB.response?.status_code,
+          bodyLengthA: dataA.response?.body?.length, bodyLengthB: dataB.response?.body?.length,
+          sameStatus: dataA.response?.status_code === dataB.response?.status_code,
+          sameBody: dataA.response?.body === dataB.response?.body,
+        };
+        ctx[node.data.saveTo || 'diff'] = diff;
+        addLog(`Diff: status ${diff.statusA} vs ${diff.statusB}, body ${diff.sameBody?'identical':'DIFFERS'}`, diff.sameBody&&diff.sameStatus?'info':'warn');
+        nextPort = (diff.sameBody && diff.sameStatus) ? 'out_same' : 'out_diff';
+        break;
+      }
+
+      case 'extract_replay': {
+        const source = node.data.source || 'ctx.response.body';
+        const regex = node.data.extractRegex || '';
+        const url = interpolate(node.data.url || '', ctx);
+        const method = node.data.method || 'GET';
+        let sourceVal = ctx;
+        for (const k of source.replace('ctx.', '').split('.')) { if (sourceVal) sourceVal = sourceVal[k]; }
+        sourceVal = typeof sourceVal === 'string' ? sourceVal : JSON.stringify(sourceVal||'');
+        let extracted = null;
+        if (regex) {
+          const m = sourceVal.match(new RegExp(regex));
+          extracted = m ? m[1] || m[0] : null;
+        }
+        if (extracted) {
+          const replayUrl = url.replace(/\{\{extracted\}\}/g, extracted);
+          const res = await fetch(API.structured, { method:'POST', headers:{'Content-Type':'application/json',...getAuthHeader()}, body:JSON.stringify({url:replayUrl, method}) });
+          const data = await res.json();
+          ctx[node.data.saveTo || 'replay'] = {extracted, url:replayUrl, response:data.response};
+          addLog(`Extract "${extracted}" → ${method} ${replayUrl} → ${data.response?.status_code||'?'}`, 'success');
+        } else {
+          addLog('Extract: aucun match regex', 'warn');
         }
         break;
       }

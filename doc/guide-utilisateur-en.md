@@ -21,7 +21,16 @@
    - [Blocks](#91--blocks)
    - [Context (ctx)](#92--context-ctx)
    - [Execution](#93--execution)
-10. [Keyboard Shortcuts](#10--keyboard-shortcuts)
+10. [The Hub](#10--the-hub)
+   - [Teams](#101--teams)
+   - [Proxy](#102--proxy)
+   - [AI Agent](#103--ai-agent)
+11. [Red Team / Pentest](#11--red-team--pentest)
+   - [Scan Profiles](#111--scan-profiles)
+   - [Campaigns](#112--campaigns)
+   - [Findings and Logs](#113--findings-and-logs)
+   - [Report](#114--report)
+12. [Keyboard Shortcuts](#12--keyboard-shortcuts)
 
 ---
 
@@ -342,7 +351,77 @@ You can **stop** execution at any time with the Stop button.
 
 ---
 
-## 10. Keyboard Shortcuts
+## 10. The Hub
+
+The Hub (accessible via the user icon in the header) centralizes your account and resource management.
+
+### 10.1. Teams
+
+- **Create a team**: click "Creer", give it a name. You're automatically a member.
+- **Join a team**: enter a Team ID and click "Rejoindre". A request is sent to members.
+- **Validate a request**: expand the team to see pending requests. Validation requires 80% member approval.
+- **Follow/Unfollow**: followed teams appear in your collection, workflow and pentest filters.
+- **Copy ID**: click the copy icon next to the Team ID.
+
+### 10.2. Proxy
+
+Configure HTTP proxies for request forwarding.
+
+- **Add**: name + URL (e.g., `http://proxy:8080`).
+- **Set as favorite**: the favorite proxy is injected into your requests when active.
+- **Delete**: X icon on each proxy.
+
+### 10.3. AI Agent
+
+Manage your LLM providers for AI chat and pentest AI scanning.
+
+- **Two independent slots**:
+  - **Flash Model**: used for fast exploration (parallel request batches)
+  - **Pro Model**: used for deep analysis and the main AI chat
+- **Each slot can use a different provider** (e.g., Flash on local Ollama, Pro on DeepSeek cloud)
+- **Supported providers**: OpenAI/DeepSeek, LM Studio (local), Ollama (local)
+- **List models**: after configuring the URL, click "Lister" to see available models
+- **Set as default**: only one provider per slot can be the default
+- **Security**: API keys are never returned to the frontend (masked `****`). You can replace them but not read them.
+
+## 11. Red Team / Pentest
+
+The Red Team module (accessible via header or `/pentest`) scans your APIs with the OWASP API Top 10 engine.
+
+### 11.1. Scan Profiles
+
+- **Create a profile**: "+" button in the "Scan Profiles" sidebar
+- **Configure**: target URL, authentication (Bearer, headers), OpenAPI spec, ID list (for BOLA), existing collection, team
+- **AI tab**: set the number of exploration rounds (1-50, default 15) and analysis rounds (1-25, default 5)
+- **Edit**: pencil icon on the profile
+- **Delete**: X icon on the profile
+
+### 11.2. Campaigns
+
+- **Launch a scan**: select a profile, click "Lancer le scan". A campaign is created.
+- **Progress**: progress bar with color gradient (red → orange → purple)
+- **Stop**: Stop button during the scan
+- **Delete**: X icon on each campaign (full purge: findings, logs, campaign)
+- **Refresh**: Refresh button in the header or automatic every 60s
+
+### 11.3. Findings and Logs
+
+- **Dashboard**: severity counters (Critical, High, Medium, Low, Info)
+- **Findings**: each vulnerability shows title, severity, description, remediation, CWE/CVSS
+- **Request/Response details**: click a finding to see Request/Response tabs (URL, headers, body)
+- **AI Analysis**: AI agent findings include a short 3-sentence analysis
+- **Logs**: history of all requests sent during the scan, with request/response details on click
+- **Severity filter**: dropdown in the Findings tab
+- **Refresh**: Refresh buttons in each tab
+
+### 11.4. Report
+
+- **Markdown Report**: available in the Report tab
+- **Quick navigation**: sticky table of contents with main sections
+- **Download**: Report button in the header to export as .md
+- **Appendices**: request/response details for each finding
+
+## 12. Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|

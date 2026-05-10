@@ -10,9 +10,11 @@
 
 **IA Copilot intégré** — Un agent IA qui crée vos collections à partir d'une simple description, exécute vos tests et analyse les résultats. Pas de configuration, pas d'add-on.
 
+**Red Team / Pentest** — Scannez vos APIs avec le moteur OWASP API Top 10. Scanner déterministe + IA deep scan en 2 phases (exploration flash, analyse pro). ID lists pour tests BOLA, collections pour fuzzing. Rapports Markdown professionnels avec annexe requêtes/réponses.
+
 **Raw requests** — Forgez vos requêtes HTTP from scratch. Testez les edge cases et le comportement de votre stack face à des requêtes malformées.
 
-**Collections collaboratives** — Vos équipes travaillent sur des collections partagées. Versioning Git sur la roadmap.
+**Collections collaboratives** — Vos équipes travaillent sur des collections partagées. Support multi-teams avec permissions et filtrage.
 
 ## Déploiement
 
@@ -23,7 +25,10 @@ Local, on-prem, ou dans votre cloud. Un seul binaire, pas de dépendances extern
 | Local | Remote |
 |-------|--------|
 | Ollama | Anthropic |
-| LM Studio (en cours) | OpenAI |
+| LM Studio | OpenAI |
+| **Multi-provider** | DeepSeek |
+
+**Configuration multi-provider** — Hub > AI Agent. Définissez indépendamment vos modèles Flash (exploration rapide) et Pro (analyse profonde). Chaque slot peut utiliser un provider différent (ex: Flash sur Ollama local, Pro sur DeepSeek cloud). Support complet du function calling et du mode texte pour les modèles sans support natif des tools.
 
 ## Base de données
 
@@ -37,7 +42,7 @@ Importez vos specs et collections existantes. Pas de lock-in.
 - Specifications Arazzo → workflows de test
 - Import Postman, Bruno, captures réseau
 
-## SaaS (Bientot)
+## SaaS (Bientôt)
 
 Une offre hébergée en France arrive bientôt. Zéro déploiement, zéro maintenance.
 
@@ -51,9 +56,11 @@ Open source. Pour toujours.
 
 **Built-in AI Copilot** — An AI agent that creates collections from a description, runs your tests, and analyzes results. No setup, no add-on.
 
+**Red Team / Pentest** — Scan your APIs with the OWASP API Top 10 engine. Deterministic scanner + AI deep scan in 2 phases (flash exploration, pro analysis). ID lists for BOLA testing, collections for fuzzing. Professional Markdown reports with request/response appendix.
+
 **Raw requests** — Forge HTTP requests from scratch. Test edge cases and how your stack handles malformed input.
 
-**Collaborative collections** — Teams work on shared collections. Git versioning on the roadmap.
+**Collaborative collections** — Teams work on shared collections. Multi-team support with permissions and filtering.
 
 ## Deployment
 
@@ -64,7 +71,10 @@ Local, on-prem, or in your cloud. Single binary, no external dependencies.
 | Local | Remote |
 |-------|--------|
 | Ollama | Anthropic |
-| LM Studio (in progress) | OpenAI |
+| LM Studio | OpenAI |
+| **Multi-provider** | DeepSeek |
+
+**Multi-provider configuration** — Hub > AI Agent. Independently define your Flash (fast exploration) and Pro (deep analysis) models. Each slot can use a different provider (e.g., Flash on local Ollama, Pro on DeepSeek cloud). Full function calling and text mode support for models without native tool support.
 
 ## Database
 
@@ -78,7 +88,7 @@ Import your existing specs and collections. No lock-in.
 - Arazzo specs → test workflows
 - Import Postman, Bruno, network captures
 
-## SaaS (comming Soon)
+## SaaS (coming Soon)
 
 A France-hosted offering is coming soon. Zero deployment, zero maintenance.
 
