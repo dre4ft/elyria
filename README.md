@@ -62,7 +62,7 @@ L'application est accessible sur `http://localhost:8000`.
 
 Tourne sur un **MacBook M5 Pro 24 Go** avec des modèles locaux type **OpenAI/GPT-OSS-20B** via LM Studio sans aucun problème. L'inférence locale couvre à la fois les phases de scan (flash + pro) et l'assistant IA.
 
-Testé également avec un **Raspberry Pi 4 (carte SD 64 Go)** servant de serveur d'inférence distant : le modèle tourne sur le Pi, Elyria s'y connecte via l'API OpenAI-compatible.
+Testé également avec un **Raspberry Pi 4 (carte SD 64 Go)** servant l'application et utilisant les API standars des provider d'AI 
 
 ## Providers IA supportés
 
@@ -154,7 +154,7 @@ Elyria is designed to start **instantly** on any machine. No containers, no orch
 
 Runs smoothly on an **M5 Pro MacBook with 24 GB RAM** using local models like **OpenAI/GPT-OSS-20B** via LM Studio. Local inference covers both scan phases (flash + pro) and the AI assistant — no external GPU required.
 
-Also tested with a **Raspberry Pi 4 (64 GB SD card)** acting as a remote inference server: the model runs on the Pi, and Elyria connects via its OpenAI-compatible API. Performance stays smooth for the AI assistant and scan phases alike.
+Also tested with a **Raspberry Pi 4 (64 GB SD card)** hosting the server and calling regular AI provider api 
 
 ## Supported AI providers
 
