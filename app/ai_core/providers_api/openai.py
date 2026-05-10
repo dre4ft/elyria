@@ -18,9 +18,11 @@ class OpenAIProvider:
             "model": self.model,
             "messages": messages,
             "stream": False,
-            "reasoning_effort": "high",
-            "extra_body": {"thinking": {"type": "enabled"}}
         }
+        # DeepSeek-specific: enable reasoning
+        if self.url and "deepseek" in self.url:
+            params["reasoning_effort"] = "high"
+            params["extra_body"] = {"thinking": {"type": "enabled"}}
         if tools:
             params["tools"] = tools
 

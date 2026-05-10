@@ -3,35 +3,45 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from .ai_wrapper import AIWrapper
 from database import ai_mgmt
-import os 
+import os
 from dotenv import load_dotenv
 load_dotenv()
 
-api_key = os.getenv("deepseek")
-#api_key = os.getenv("nvidia_integrate")
+
+def _init_provider_from_db():
+    from database.ai_config_mgmt import get_default_config
+    cfg = get_default_config("pro")
+    if cfg:
+        url = cfg["base_url"] or "https://api.deepseek.com"
+        api_key = cfg.get("api_key", "")
+        if cfg["provider_type"] == "lmstudio":
+            url = url.rstrip("/").replace("/api/v1", "/v1")
+            if not url.endswith("/v1"):
+                url = url.rstrip("/") + "/v1"
+            if not api_key:
+                api_key = "not-needed"
+        # Fallback to env if config has no key
+        if not api_key:
+            api_key = os.getenv("deepseek") or os.getenv("deepseek_api_key", "")
+        return AIWrapper(
+            provider_type=cfg["provider_type"],
+            url=url,
+            api_key=api_key,
+            model=cfg["model"] or "deepseek-v4-flash",
+        )
+    # Fallback to env
+    api_key = os.getenv("deepseek") or os.getenv("deepseek_api_key", "")
+    return AIWrapper(
+        provider_type='openai',
+        url='https://api.deepseek.com',
+        api_key=api_key,
+        model='deepseek-v4-flash',
+    )
 
 
 app = APIRouter(prefix="/api/chat")
 
-"""
-
-TODO:
-make provider dynamic (ollama, openai, etc.) based on user/team settings
-
-"""
-
-"""AI_PROVIDER = AIWrapper(
-    provider_type='openai',
-    url='https://integrate.api.nvidia.com/v1',
-    api_key=api_key,
-    model='deepseek-ai/deepseek-v4-pro')"""
-
-
-AI_PROVIDER = AIWrapper(
-    provider_type='openai',
-    url='https://api.deepseek.com',
-    api_key=api_key,
-    model='deepseek-v4-flash')
+AI_PROVIDER = _init_provider_from_db()
 
 
 
@@ -90,7 +100,7 @@ async def update_model(update_request: UpdateModelRequest):
 
 @app.get("/providers")
 async def get_providers():
-    return JSONResponse(content={"providers": ["openai", "ollama"]})
+    return JSONResponse(content={"providers": ["openai", "ollama", "lmstudio"]})
 
 @app.post("/init_provider")
 async def init_provider(init_request: InitProviderRequest):
@@ -115,7 +125,7 @@ def get_provider_config():
 
 @app.post("")
 async def chat_endpoint(request: Request, chat_request: ChatRequest):
-    user_id = request.state.token["sub"]
+    user_id = request.state.token
     try:
         response = AI_PROVIDER.chat(
             message=chat_request.message,
@@ -124,6 +134,9 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
         )
         return JSONResponse(content=response)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        print(f"[CHAT ERROR] {type(e).__name__}: {e}", flush=True)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e)[:200])
 
 
