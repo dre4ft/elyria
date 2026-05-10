@@ -125,7 +125,7 @@ async def serve_hub():
 @app.get("/pentest")
 async def serve_pentest():
     try:
-        with open("web_ui/pentest.html", "r") as f:
+        with open("web_ui/redteam.html", "r") as f:
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Frontend file not found")
