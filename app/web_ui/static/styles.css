@@ -1,6 +1,125 @@
 /* ═══════════════════════════════════════════════
-   ReqVault — Custom Styles
+   Elyria — Unified Design System
    ═══════════════════════════════════════════════ */
+
+:root {
+  --color-bg-900: #0a0f1c;
+  --color-bg-800: #0f1629;
+  --color-bg-700: #141c35;
+  --color-bg-600: #1a2340;
+  --color-primary: #7c3aed;
+  --color-primary-light: #8b5cf6;
+  --color-accent: #06b6d4;
+  --color-accent-light: #22d3ee;
+  --color-danger: #ef4444;
+  --color-success: #22c55e;
+  --transition-fast: 150ms ease;
+  --transition-base: 200ms ease;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+/* ── Unified Button Base ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.btn-primary { background: linear-gradient(135deg, #7c3aed, #6d28d9); color: #fff; box-shadow: 0 2px 8px rgba(124,58,237,0.25); }
+.btn-primary:hover { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+.btn-danger { background: linear-gradient(135deg, #dc2626, #b91c1c); color: #fff; }
+.btn-danger:hover { background: linear-gradient(135deg, #ef4444, #dc2626); }
+.btn-success { background: linear-gradient(135deg, #16a34a, #15803d); color: #fff; }
+.btn-success:hover { background: linear-gradient(135deg, #22c55e, #16a34a); }
+.btn-ghost { background: var(--color-bg-700); color: #6b7280; border-color: rgba(255,255,255,0.05); }
+.btn-ghost:hover { background: rgba(255,255,255,0.04); color: #d1d5db; border-color: rgba(255,255,255,0.1); }
+
+/* ── Unified Input ── */
+.input {
+  height: 2rem;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-700);
+  border: 1px solid rgba(255,255,255,0.06);
+  font-size: 0.75rem;
+  color: #d1d5db;
+  transition: all var(--transition-base);
+  outline: none;
+}
+.input:focus { border-color: rgba(124,58,237,0.4); box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
+.input::placeholder { color: #4b5563; }
+.input-mono { font-family: 'JetBrains Mono', monospace; }
+
+/* ── Unified Select ── */
+.select {
+  height: 2rem;
+  padding: 0 0.5rem;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-700);
+  border: 1px solid rgba(255,255,255,0.06);
+  font-size: 0.7rem;
+  color: #9ca3af;
+  outline: none;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+.select:focus { border-color: rgba(124,58,237,0.4); }
+
+/* ── Section Card ── */
+.section-card {
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-800);
+  border: 1px solid rgba(255,255,255,0.05);
+  overflow: hidden;
+}
+.section-card-header {
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ── List Item (sidebar) ── */
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  border: 1px solid transparent;
+}
+.list-item:hover { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.05); }
+.list-item.active { background: rgba(124,58,237,0.08); border-color: rgba(124,58,237,0.2); }
+
+/* ── Header Nav Buttons ── */
+.header-nav-btn {
+  height: 1.75rem;
+  padding: 0 0.625rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.688rem;
+  color: #6b7280;
+  transition: all var(--transition-base);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+}
+.header-nav-btn:hover { color: #d1d5db; background: rgba(255,255,255,0.03); }
 
 /* ── Scrollbar ── */
 .scrollbar-thin::-webkit-scrollbar {
@@ -430,6 +549,11 @@ textarea {
   height: 14px;
   flex-shrink: 0;
 }
+
+/* ── Log Row Expand ── */
+.log-row.log-expanded .log-detail { display: block; }
+.log-row.log-expanded .expand-icon { transform: rotate(180deg); }
+.log-row .expand-icon { transition: transform 0.2s ease; }
 .collection-folder-header .folder-icon.closed {
   color: #7c3aed;
 }
@@ -522,4 +646,52 @@ textarea {
 *:focus-visible {
   outline: 2px solid rgba(124, 58, 237, 0.5);
   outline-offset: 2px;
+}
+
+/* ── Unified modal tab ── */
+.modal-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: var(--radius-md);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #6b7280;
+  transition: all var(--transition-base);
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: transparent;
+}
+.modal-tab:hover { color: #d1d5db; background: rgba(255,255,255,0.03); }
+.modal-tab.active { color: #f87171; background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.15); }
+
+/* ── Context menu item ── */
+.ctx-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+.ctx-menu-item:hover { background: rgba(255,255,255,0.04); color: #e5e7eb; }
+.ctx-menu-item.danger:hover { background: rgba(239,68,68,0.1); color: #f87171; }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+/* ── Section divider ── */
+.section-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.05);
+  margin: 0;
 }

@@ -12,7 +12,8 @@ class AIWrapper:
     def __init__(self, provider_type, url=None, api_key=None, model=None, tools = tools.get_tools(),tools_rounds :int =5):
         if provider_type == 'ollama':
             self.provider = ollama_provider.OllamaProvider(model=model, host=url)
-        elif provider_type == 'openai':
+        elif provider_type in ('openai', 'lmstudio'):
+            # LM Studio exposes an OpenAI-compatible API
             self.provider = openai_provider.OpenAIProvider(provider_url=url, api_key=api_key, model=model)
         else:
             raise ValueError(f"Unsupported provider type: {provider_type}")

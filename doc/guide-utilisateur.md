@@ -21,7 +21,16 @@
    - [Les briques](#91--les-briques)
    - [Le contexte (ctx)](#92--le-contexte-ctx)
    - [Exécution](#93--exécution)
-10. [Raccourcis clavier](#10--raccourcis-clavier)
+10. [Le Hub](#10--le-hub)
+   - [Teams](#101--teams)
+   - [Proxy](#102--proxy)
+   - [Agent IA](#103--agent-ia)
+11. [Red Team / Pentest](#11--red-team--pentest)
+   - [Profils de scan](#111--profils-de-scan)
+   - [Campagnes](#112--campagnes)
+   - [Findings et Logs](#113--findings-et-logs)
+   - [Rapport](#114--rapport)
+12. [Raccourcis clavier](#12--raccourcis-clavier)
 
 ---
 
@@ -342,7 +351,77 @@ Vous pouvez **arrêter** l'exécution à tout moment avec le bouton Stop.
 
 ---
 
-## 10. Raccourcis clavier
+## 10. Le Hub
+
+Le Hub (accessible via l'icône utilisateur dans le header) centralise la gestion de votre compte et de vos ressources.
+
+### 10.1. Teams
+
+- **Créer une team** : bouton "Créer", donnez un nom. Vous êtes automatiquement membre.
+- **Rejoindre une team** : entrez un Team ID et cliquez "Rejoindre". Une demande est envoyée aux membres.
+- **Valider une demande** : dans la team, développez pour voir les demandes en attente. La validation nécessite 80% d'approbation des membres.
+- **Suivre/Ne plus suivre** : les teams suivies apparaissent dans vos filtres de collections, workflows et pentest.
+- **Copier l'ID** : cliquez sur l'icône de copie à côté du Team ID.
+
+### 10.2. Proxy
+
+Configurez vos proxies HTTP pour le forwarding des requêtes.
+
+- **Ajouter** : nom + URL (ex: `http://proxy:8080`).
+- **Définir comme favori** : le proxy favori est injecté dans vos requêtes lorsqu'il est activé.
+- **Supprimer** : icône X sur chaque proxy.
+
+### 10.3. Agent IA
+
+Gérez vos providers LLM pour le chat IA et le pentest AI.
+
+- **Deux slots indépendants** :
+  - **Flash Model** : utilisé pour l'exploration rapide (batch de requêtes parallèles)
+  - **Pro Model** : utilisé pour l'analyse profonde et le chat IA principal
+- **Chaque slot peut utiliser un provider différent** (ex: Flash sur Ollama local, Pro sur DeepSeek cloud)
+- **Providers supportés** : OpenAI/DeepSeek, LM Studio (local), Ollama (local)
+- **Lister les modèles** : après avoir configuré l'URL, cliquez "Lister" pour voir les modèles disponibles
+- **Définir par défaut** : un seul provider par slot peut être le défaut
+- **Sécurité** : les clés API ne sont jamais renvoyées au frontend (masquées `****`). Vous pouvez les remplacer mais pas les lire.
+
+## 11. Red Team / Pentest
+
+Le module Red Team (accessible via le header ou `/pentest`) permet de scanner vos APIs avec le moteur OWASP API Top 10.
+
+### 11.1. Profils de scan
+
+- **Créer un profil** : bouton "+" dans la sidebar "Scan Profiles"
+- **Configurer** : URL cible, authentification (Bearer, headers), OpenAPI spec, ID list (pour BOLA), collection existante, équipe
+- **Onglet IA** : réglez le nombre de rounds d'exploration (1-50, défaut 15) et d'analyse (1-25, défaut 5)
+- **Modifier** : icône crayon sur le profil
+- **Supprimer** : icône X sur le profil
+
+### 11.2. Campagnes
+
+- **Lancer un scan** : sélectionnez un profil, cliquez "Lancer le scan". Une campagne est créée.
+- **Progression** : barre de progression avec dégradé de couleurs (rouge → orange → violet)
+- **Arrêter** : bouton Stop pendant le scan
+- **Supprimer** : icône X sur chaque campagne (purge complète : findings, logs, campagne)
+- **Refresh** : bouton Refresh dans le header ou automatique toutes les 60s
+
+### 11.3. Findings et Logs
+
+- **Dashboard** : compteurs par sévérité (Critical, High, Medium, Low, Info)
+- **Findings** : chaque vulnérabilité affiche titre, sévérité, description, remédiation, CWE/CVSS
+- **Détails requête/réponse** : cliquez sur un finding pour voir les onglets Requête/Réponse (URL, headers, body)
+- **Analyse IA** : les findings de l'agent IA incluent une courte analyse en 3 phrases
+- **Logs** : historique de toutes les requêtes envoyées pendant le scan, avec détails requête/réponse au clic
+- **Filtre par sévérité** : dropdown dans l'onglet Findings
+- **Rafraîchir** : boutons Refresh dans chaque onglet
+
+### 11.4. Rapport
+
+- **Rapport Markdown** : accessible dans l'onglet Rapport
+- **Navigation rapide** : table des matières sticky avec les sections principales
+- **Téléchargement** : bouton Rapport dans le header pour exporter en .md
+- **Annexes** : détails requête/réponse pour chaque finding
+
+## 12. Raccourcis clavier
 
 | Raccourci | Action |
 |-----------|--------|

@@ -12,6 +12,7 @@ from pentest.campaign_api import app as pentest_router
 from database.workflow_graph_api import app as workflow_graph_router
 from database.proxy_api import app as proxy_router
 from database.teams_api import app as teams_router
+from ai_core.ai_config_api import app as ai_config_router
 
 from dotenv import load_dotenv
 import os
@@ -163,6 +164,7 @@ app.include_router(pentest_router)
 app.include_router(workflow_graph_router)
 app.include_router(proxy_router)
 app.include_router(teams_router)
+app.include_router(ai_config_router)
 
 
 

@@ -95,7 +95,7 @@ def _make_request(url : str,method :str ,headers:dict=None,query_params:dict =No
                 "body" : resp.text if not resp.text.startswith("{") or resp.text.startswith("[") else  json.dumps(resp.json())}
     
     except Exception as e:
-        raise Exception(f"an error as occur during the request")
+        raise Exception(f"Request failed: {e}")
 
 
 

@@ -43,26 +43,36 @@ function setupFetchInterceptor() {
   window.__fetchIntercepted = true;
 
   var originalFetch = window.fetch;
+  var isLoginPage = window.location.pathname.endsWith('/login') || window.location.pathname.endsWith('/login.html');
 
   window.fetch = function (url, options) {
-    if (!_token) return originalFetch(url, options);
-
-    var isSameOrigin = false;
-    try {
-      var resolved = new URL(url, window.location.origin);
-      isSameOrigin = resolved.origin === window.location.origin;
-    } catch (_e) {
-      isSameOrigin = true;
+    // Build request — add auth header for same-origin requests
+    if (_token) {
+      var isSameOrigin = false;
+      try {
+        var resolved = new URL(url, window.location.origin);
+        isSameOrigin = resolved.origin === window.location.origin;
+      } catch (_e) {
+        isSameOrigin = true;
+      }
+      if (isSameOrigin) {
+        options = options || {};
+        options.headers = Object.assign({}, options.headers, {
+          Authorization: 'Bearer ' + _token
+        });
+      }
     }
 
-    if (isSameOrigin) {
-      options = options || {};
-      options.headers = Object.assign({}, options.headers, {
-        Authorization: 'Bearer ' + _token
-      });
-    }
-
-    return originalFetch(url, options);
+    return originalFetch(url, options).then(function (response) {
+      // 401 catcher — logout and redirect to login (skip on login page itself)
+      if (response.status === 401 && !isLoginPage) {
+        _token = null;
+        _user = null;
+        sessionStorage.removeItem(SESSION_KEY);
+        window.location.href = '/login';
+      }
+      return response;
+    });
   };
 }
 

@@ -58,6 +58,20 @@ class UpdateRequestBody(BaseModel):
     body: str = None
 
 
+def _verify_team_membership(team_id, user_id):
+    """Raise 403 if user is not a member of the given team."""
+    if not team_id:
+        return
+    import sqlite3
+    conn = sqlite3.connect("database.db")
+    row = conn.execute(
+        "SELECT 1 FROM team_users WHERE team_id=? AND user_id=?",
+        (team_id, user_id),
+    ).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(403, "You are not a member of this team")
+
 # ═══════════════════════════════════════════════
 # ROUTES
 # ═══════════════════════════════════════════════
@@ -68,6 +82,7 @@ def list_collections(request: Request, team_id: str = ""):
     if team_id == "__personal__":
         team_ids = None  # personal only
     elif team_id:
+        _verify_team_membership(team_id, user_id)
         team_ids = [team_id]
     else:
         team_ids = _get_followed_team_ids(user_id)
@@ -78,6 +93,8 @@ def list_collections(request: Request, team_id: str = ""):
 @app.post("/folder")
 def api_create_folder(body: CreateFolderBody, request: Request):
     token = request.state.token
+    if body.team_id:
+        _verify_team_membership(body.team_id, token)
     folder_id = create_folder(
         name=body.name,
         author_user_id=token,
@@ -101,6 +118,8 @@ def api_delete_folder(folder_id: str, request: Request):
 @app.post("/request")
 def api_create_request(body: CreateRequestBody, request: Request):
     token = request.state.token
+    if body.team_id:
+        _verify_team_membership(body.team_id, token)
     # Inherit team_id from parent folder if not explicitly set
     team_id = body.team_id
     if not team_id and body.folderId:

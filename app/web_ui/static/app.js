@@ -1523,9 +1523,10 @@ async function sendChatMessage() {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
-    state.conversation_id = data.conversation_id; 
+    state.conversation_id = data.conversation_id;
     removeChatLoading();
-    addChatMessage(data.response.content, 'ai');
+    const content = (data.response && data.response.content) ? data.response.content : (data.content || 'Pas de reponse');
+    addChatMessage(content, 'ai');
   } catch (err) {
     removeChatLoading();
     addChatMessage(`Erreur de connexion : ${err.message}`, 'ai');
