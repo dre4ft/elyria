@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+.venv
+.env
+*.pem
+database.db
+pentest_ai_error.log
+.git
+.DS_Store
+*.md
