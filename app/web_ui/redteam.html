@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Elyria — Pentest</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            base: { 900:'#0a0f1c', 800:'#0f1629', 700:'#141c35', 600:'#1a2340', 500:'#212b4a' },
+            primary: { DEFAULT:'#7c3aed', light:'#8b5cf6', dark:'#6d28d9', 50:'rgba(124,58,237,0.08)', 100:'rgba(124,58,237,0.15)' },
+            accent:  { DEFAULT:'#06b6d4', light:'#22d3ee', dark:'#0891b2', 50:'rgba(6,182,212,0.08)', 100:'rgba(6,182,212,0.15)' },
+          },
+        },
+      },
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="static/styles.css" />
+  <style>
+    /* ── Report rendered by marked.js ── */
+    #report-rendered { counter-reset: h2-counter; }
+    #report-rendered h1 { font-size:1.6rem; font-weight:700; color:#f3f4f6; margin-bottom:1.25rem; padding-bottom:.6rem; border-bottom:2px solid rgba(124,58,237,.3); letter-spacing:-0.02em; }
+    #report-rendered h2 { font-size:1.2rem; font-weight:600; color:#e5e7eb; margin-top:2.25rem; margin-bottom:.85rem; padding-bottom:.45rem; border-bottom:1px solid rgba(255,255,255,.07); display:flex; align-items:center; gap:.5rem; }
+    #report-rendered h2::before { content:""; display:inline-block; width:3px; height:1.2em; background:linear-gradient(180deg,#7c3aed,#06b6d4); border-radius:2px; flex-shrink:0; }
+    #report-rendered h3 { font-size:1.05rem; font-weight:600; color:#d1d5db; margin-top:1.6rem; margin-bottom:.6rem; }
+    #report-rendered h4 { font-size:.9rem; font-weight:600; color:#9ca3af; margin-top:1.25rem; margin-bottom:.5rem; }
+    #report-rendered p { color:#9ca3af; line-height:1.75; margin-bottom:.85rem; font-size:.82rem; }
+    #report-rendered strong { color:#e5e7eb; font-weight:600; }
+    #report-rendered table { width:100%; border-collapse:collapse; margin:1.25rem 0; font-size:.8rem; border-radius:.5rem; overflow:hidden; border:1px solid rgba(255,255,255,.06); }
+    #report-rendered thead { background:rgba(124,58,237,.08); }
+    #report-rendered th { text-align:left; padding:.6rem .85rem; color:#c4b5fd; font-weight:600; font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; border-bottom:1px solid rgba(124,58,237,.15); }
+    #report-rendered td { padding:.55rem .85rem; color:#d1d5db; border-bottom:1px solid rgba(255,255,255,.04); font-size:.78rem; }
+    #report-rendered tr:last-child td { border-bottom:none; }
+    #report-rendered tr:hover td { background:rgba(255,255,255,.01); }
+    #report-rendered code { background:rgba(124,58,237,.1); color:#c4b5fd; padding:.12rem .4rem; border-radius:.25rem; font-family:'JetBrains Mono',monospace; font-size:.75rem; }
+    #report-rendered pre { background:rgba(10,15,28,.7); border:1px solid rgba(255,255,255,.08); border-radius:.6rem; padding:1rem 1.15rem; margin:.85rem 0; overflow-x:auto; font-family:'JetBrains Mono',monospace; font-size:.75rem; line-height:1.65; max-height:350px; position:relative; }
+    #report-rendered pre::before { content:"code"; position:absolute; top:.35rem; right:.75rem; font-size:.55rem; text-transform:uppercase; letter-spacing:.1em; color:rgba(255,255,255,.15); font-family:'Inter',sans-serif; }
+    #report-rendered pre code { background:none; color:#d1d5db; padding:0; font-size:inherit; }
+    #report-rendered hr { border:none; border-top:1px solid rgba(255,255,255,.07); margin:2.25rem 0; }
+    #report-rendered blockquote { border-left:3px solid #7c3aed; padding:.6rem 1.1rem; margin:1.1rem 0; background:rgba(124,58,237,.05); color:#9ca3af; border-radius:0 .4rem .4rem 0; font-style:italic; }
+    #report-rendered ul, #report-rendered ol { color:#9ca3af; padding-left:1.6rem; margin-bottom:.85rem; line-height:1.75; font-size:.82rem; }
+    #report-rendered li { margin-bottom:.25rem; }
+    #report-rendered a { color:#a78bfa; text-decoration:none; transition:color .15s; }
+    #report-rendered a:hover { color:#c4b5fd; text-decoration:underline; }
+    #report-toc { position:sticky; top:1.5rem; max-height:calc(100vh - 12rem); overflow-y:auto; }
+    #report-toc-links a { display:block; padding:.3rem .5rem; border-radius:.3rem; font-size:.78rem; color:#6b7280; text-decoration:none; transition:all .15s; line-height:1.4; }
+    #report-toc-links a:hover { color:#d1d5db; background:rgba(255,255,255,.03); }
+    #report-toc-links a.toc-active { color:#c4b5fd; background:rgba(124,58,237,.1); border-left:2px solid #7c3aed; margin-left:-1rem; padding-left:.7rem; }
+    .report-anchor { display:block; position:relative; top:-90px; visibility:hidden; }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body class="h-full bg-base-900 text-gray-200 font-['Inter',sans-serif] overflow-hidden">
+
+  <!-- ===== TOP BAR ===== -->
+  <header class="h-12 bg-base-800 border-b border-white/5 flex items-center justify-between px-5 shrink-0 z-50 relative">
+    <!-- LEFT: Logo + Feature nav -->
+    <div class="flex items-center gap-2">
+      <a href="/app" class="flex items-center gap-2 no-underline flex-shrink-0">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+          <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <span class="text-sm font-semibold tracking-wide text-white">Ely<span class="text-primary-light">ria</span></span>
+      </a>
+      <div class="w-px h-5 bg-white/10"></div>
+      <nav class="flex items-center gap-1">
+        <button onclick="navigateTo('/app')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-gray-300 hover:bg-white/[0.03] transition-all">Client API</button>
+        <button onclick="navigateTo('/workflow')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-gray-300 hover:bg-white/[0.03] transition-all">Workflows</button>
+        <button onclick="navigateTo('/doc')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-gray-300 hover:bg-white/[0.03] transition-all">Docs</button>
+      </nav>
+    </div>
+    <!-- CENTER: Feature actions -->
+    <div class="flex items-center gap-2">
+      <button id="btn-run-scan" class="h-8 px-4 rounded-lg bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white text-xs font-semibold shadow-lg shadow-red-600/20 transition-all flex items-center gap-1.5 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
+        Lancer le scan
+      </button>
+      <button id="btn-stop-scan" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-red-500/15 border border-white/5 hover:border-red-500/40 text-gray-500 hover:text-red-400 text-xs font-semibold transition-all hidden inline-flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z"/></svg>
+        Stop
+      </button>
+      <button id="btn-refresh-campaign" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-500 hover:text-gray-300 text-xs font-medium transition-all flex items-center gap-1.5" title="Rafraichir les donnees">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
+        Refresh
+      </button>
+      <button id="btn-download-report" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-500 hover:text-gray-300 text-xs font-medium transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+        Rapport
+      </button>
+    </div>
+    <!-- RIGHT: User -->
+    <div class="flex items-center gap-2">
+      <button onclick="navigateTo('/hub')" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-primary/15 border border-white/5 hover:border-primary/30 text-xs font-medium text-gray-400 hover:text-primary-light transition-all" title="Hub">Hub</button>
+      <span id="header-username" class="text-[10px] text-gray-500 font-medium hidden"></span>
+      <button id="btn-logout" onclick="logout()" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-red-500/10 border border-white/5 hover:border-red-500/30 text-gray-500 hover:text-red-400 text-xs font-medium transition-all" title="Deconnexion">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== MAIN LAYOUT ===== -->
+  <div class="flex h-[calc(100vh-3rem)]">
+
+    <!-- ===== LEFT — PROFILES + CAMPAIGNS ===== -->
+    <aside class="w-64 min-w-[256px] bg-base-800 border-r border-white/5 flex flex-col shrink-0 overflow-hidden">
+      <div class="p-3 border-b border-white/5 flex items-center justify-between">
+        <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Scan Profiles</span>
+        <div class="flex items-center gap-1">
+          <select id="pentest-team-filter-select" class="h-6 px-1.5 rounded-md bg-base-700 border border-white/5 text-[10px] text-gray-400 focus:outline-none max-w-[110px]"></select>
+          <button id="btn-refresh-profiles" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors" title="Rafraichir les profils">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
+          </button>
+        </div>
+        <button id="btn-new-profile" onclick="openProfileModal()" class="w-6 h-6 rounded-md hover:bg-red-500/15 flex items-center justify-center text-gray-500 hover:text-red-400 transition-colors" title="Nouveau profil">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+        </button>
+      </div>
+      <div id="profile-list" class="p-2 space-y-0.5 scrollbar-thin" style="max-height:40%;overflow-y:auto">
+        <div class="text-[10px] text-gray-600 text-center py-4">Aucun profil</div>
+      </div>
+      <div class="px-3 py-2 border-t border-b border-white/5 flex items-center justify-between">
+        <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Campagnes</span>
+      </div>
+      <div id="campaign-list" class="flex-1 overflow-y-auto p-2 space-y-0.5 scrollbar-thin">
+        <div class="text-[10px] text-gray-600 text-center py-8">Sélectionnez un profil</div>
+      </div>
+    </aside>
+
+    <!-- ===== CENTER ===== -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+      <div id="main-empty" class="flex flex-col items-center justify-center h-full text-center">
+        <div class="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/15 flex items-center justify-center mb-4">
+          <svg class="w-8 h-8 text-red-400/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+        </div>
+        <p class="text-sm text-gray-500 mb-1">Créez ou sélectionnez un profil de scan</p>
+        <p class="text-xs text-gray-600 mb-4">Lancez un scan OWASP API Top 10 complet</p>
+        <button onclick="openProfileModal()" class="h-8 px-4 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-xs font-medium text-red-400 transition-all flex items-center gap-1.5">
+          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+          Nouveau profil
+        </button>
+      </div>
+
+      <div id="main-content" class="flex-1 flex flex-col overflow-hidden hidden">
+        <!-- Dashboard header -->
+        <div class="px-5 py-3 border-b border-white/5 bg-base-800/30 flex items-center justify-between shrink-0">
+          <div>
+            <h2 id="profile-name" class="text-sm font-semibold text-white">—</h2>
+            <p id="profile-target" class="text-[10px] text-gray-500 font-mono">—</p>
+          </div>
+          <div id="scan-progress-container" class="hidden flex items-center gap-3">
+            <div class="h-2 w-40 bg-base-700 rounded-full overflow-hidden"><div id="scan-progress-bar" class="h-full rounded-full transition-all duration-700" style="width:0%;background:linear-gradient(90deg,#7f1d1d,#9a3412,#b45309,#6d28d9)"></div></div>
+            <span id="scan-progress-pct" class="text-xs font-mono text-primary-light font-semibold">0%</span>
+          </div>
+        </div>
+
+        <!-- Stats row -->
+        <div class="px-5 py-3 border-b border-white/5 flex gap-3 shrink-0">
+          <div class="flex-1 rounded-xl p-3 bg-red-500/10 border border-red-500/20 text-center"><div id="stat-critical" class="text-xl font-bold text-red-400 font-mono">0</div><div class="text-[9px] uppercase text-red-400/70 font-semibold">Critical</div></div>
+          <div class="flex-1 rounded-xl p-3 bg-orange-500/10 border border-orange-500/20 text-center"><div id="stat-high" class="text-xl font-bold text-orange-400 font-mono">0</div><div class="text-[9px] uppercase text-orange-400/70 font-semibold">High</div></div>
+          <div class="flex-1 rounded-xl p-3 bg-yellow-500/10 border border-yellow-500/20 text-center"><div id="stat-medium" class="text-xl font-bold text-yellow-400 font-mono">0</div><div class="text-[9px] uppercase text-yellow-400/70 font-semibold">Medium</div></div>
+          <div class="flex-1 rounded-xl p-3 bg-blue-500/10 border border-blue-500/20 text-center"><div id="stat-low" class="text-xl font-bold text-blue-400 font-mono">0</div><div class="text-[9px] uppercase text-blue-400/70 font-semibold">Low</div></div>
+          <div class="flex-1 rounded-xl p-3 bg-gray-500/10 border border-gray-500/20 text-center"><div id="stat-info" class="text-xl font-bold text-gray-400 font-mono">0</div><div class="text-[9px] uppercase text-gray-400/70 font-semibold">Info</div></div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="border-b border-white/5 px-5 flex items-end gap-0 shrink-0">
+          <button data-pentest-tab="overview" class="pentest-tab-btn active">Dashboard</button>
+          <button data-pentest-tab="findings" class="pentest-tab-btn">Findings</button>
+          <button data-pentest-tab="logs" class="pentest-tab-btn">Logs</button>
+          <button data-pentest-tab="report" class="pentest-tab-btn">Rapport</button>
+        </div>
+
+        <div class="flex-1 overflow-hidden">
+          <div id="tab-overview" class="pentest-tab-panel active h-full overflow-y-auto p-5 scrollbar-thin">
+            <div class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-3">Top Findings</div>
+            <div id="findings-preview" class="space-y-2"></div>
+          </div>
+          <div id="tab-findings" class="pentest-tab-panel h-full overflow-y-auto p-5 scrollbar-thin hidden">
+            <div class="flex items-center justify-between mb-4">
+              <span id="findings-count" class="text-xs text-gray-500">0 findings</span>
+              <div class="flex items-center gap-2">
+                <select id="filter-severity" onchange="refreshFindings()" class="h-7 px-2 rounded-md bg-base-700 border border-white/8 text-xs text-gray-300 focus:outline-none">
+                  <option value="all">Toutes</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option>
+                </select>
+                <button id="btn-refresh-findings" class="h-7 px-3 rounded-lg bg-base-700 hover:bg-white/5 text-xs text-gray-500">Rafraichir</button>
+              </div>
+            </div>
+            <div id="findings-table" class="space-y-3"></div>
+          </div>
+          <div id="tab-logs" class="pentest-tab-panel h-full overflow-y-auto p-5 scrollbar-thin hidden">
+            <div class="flex items-center justify-between mb-4">
+              <span id="logs-count" class="text-xs text-gray-500">0 req.</span>
+              <button id="btn-refresh-logs" class="h-7 px-3 rounded-lg bg-base-700 hover:bg-white/5 text-xs text-gray-500">Rafraîchir</button>
+            </div>
+            <div id="logs-table" class="space-y-1 font-mono"></div>
+            <div id="logs-nav"></div>
+          </div>
+          <div id="tab-report" class="pentest-tab-panel h-full overflow-y-auto p-6 scrollbar-thin hidden">
+            <div class="flex gap-8 max-w-6xl mx-auto">
+              <nav id="report-toc" class="w-56 flex-shrink-0 hidden">
+                <div class="sticky top-0 pt-1">
+                  <div class="flex items-center gap-2 mb-4">
+                    <svg class="w-4 h-4 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"/></svg>
+                    <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Sommaire</span>
+                  </div>
+                  <div id="report-toc-links" class="space-y-0.5 border-l-2 border-white/5 pl-3"></div>
+                </div>
+              </nav>
+              <div id="report-rendered" class="flex-1 min-w-0"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ===== NEW CAMPAIGN MODAL ===== -->
+  <div id="campaign-modal" class="fixed inset-0 bg-base-900/80 backdrop-blur-sm z-[100] hidden flex items-center justify-center">
+    <div class="bg-base-800 border border-white/5 rounded-2xl shadow-2xl w-[720px] overflow-hidden">
+      <!-- Header -->
+      <div class="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-red-500/15 border border-red-500/20 flex items-center justify-center">
+            <svg class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold text-white">Nouvelle campagne</h3>
+            <p class="text-[10px] text-gray-500">Configuration du pentest</p>
+          </div>
+        </div>
+        <button onclick="document.getElementById('campaign-modal').classList.add('hidden')" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Name & Description — fixed, outside tabs -->
+      <div class="px-6 py-3 border-b border-white/5 bg-base-900/20 flex gap-4">
+        <div class="flex-1">
+          <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Nom</label>
+          <input id="modal-name" type="text" class="w-full h-8 px-3 rounded-lg bg-base-700 border border-white/8 text-sm text-gray-200 focus:outline-none focus:border-red-500/40" placeholder="Pentest API Production" />
+        </div>
+        <div class="flex-[2]">
+          <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Description</label>
+          <input id="modal-desc" type="text" class="w-full h-8 px-3 rounded-lg bg-base-700 border border-white/8 text-sm text-gray-200 focus:outline-none focus:border-red-500/40" placeholder="Brève description de la campagne..." />
+        </div>
+      </div>
+
+      <!-- Body: tabs on left, content on right -->
+      <div class="flex h-[380px]">
+        <!-- Tabs sidebar -->
+        <div class="w-44 bg-base-900/40 border-r border-white/5 p-3 flex flex-col gap-1">
+          <button class="modal-tab active" data-mtab="target">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/></svg>
+            Cible
+          </button>
+          <button class="modal-tab" data-mtab="auth">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>
+            Authentification
+          </button>
+          <button class="modal-tab" data-mtab="openapi">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+            OpenAPI
+          </button>
+          <button class="modal-tab" data-mtab="ids">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
+            ID List
+          </button>
+          <button class="modal-tab" data-mtab="team">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"/></svg>
+            Equipe
+          </button>
+          <button class="modal-tab" data-mtab="ai">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+            IA
+          </button>
+        </div>
+
+        <!-- Content panels -->
+        <div class="flex-1 p-5 overflow-y-auto scrollbar-thin">
+          <!-- Tab: Target -->
+          <div id="mtab-target" class="mtab-panel">
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">URL cible</label>
+            <input id="modal-url" type="text" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-sm font-['JetBrains_Mono'] text-gray-200 focus:outline-none focus:border-red-500/40 mb-4" placeholder="https://api.example.com" />
+            <div class="flex items-center gap-3 mb-4">
+              <div class="flex-1 h-px bg-white/5"></div>
+              <span class="text-[10px] text-gray-600 uppercase">ou</span>
+              <div class="flex-1 h-px bg-white/5"></div>
+            </div>
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Collection existante</label>
+            <select id="modal-collection" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-sm text-gray-200 focus:outline-none focus:border-red-500/40 mb-2">
+              <option value="">— Aucune —</option>
+            </select>
+            <p class="text-[10px] text-gray-600">Si sélectionnée, chaque requête de la collection sera fuzzée.</p>
+          </div>
+
+          <!-- Tab: Auth -->
+          <div id="mtab-auth" class="mtab-panel hidden">
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Bearer Token</label>
+            <input id="modal-bearer" type="text" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 mb-4" placeholder="eyJhbGciOiJIUzUxMiJ9..." />
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Headers personnalisés (JSON)</label>
+            <textarea id="modal-headers" class="w-full h-28 px-3 py-2 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 resize-none" placeholder='{"X-API-Key": "sk_live_...", "X-Team": "red"}'></textarea>
+          </div>
+
+          <!-- Tab: OpenAPI -->
+          <div id="mtab-openapi" class="mtab-panel hidden">
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">URL du fichier OpenAPI</label>
+            <input id="modal-openapi-url" type="text" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 mb-4" placeholder="https://api.example.com/openapi.json" />
+            <div class="flex items-center gap-3 mb-4">
+              <div class="flex-1 h-px bg-white/5"></div>
+              <span class="text-[10px] text-gray-600 uppercase">ou</span>
+              <div class="flex-1 h-px bg-white/5"></div>
+            </div>
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Uploader un fichier</label>
+            <div class="relative border-2 border-dashed border-white/10 rounded-xl p-6 text-center hover:border-red-500/30 hover:bg-red-500/[0.02] transition-all cursor-pointer">
+              <input id="modal-openapi-file" type="file" accept=".json,.yaml,.yml" class="absolute inset-0 opacity-0 cursor-pointer" />
+              <svg class="w-8 h-8 text-gray-600 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/></svg>
+              <p class="text-xs text-gray-500">JSON ou YAML — Glissez-déposez ou cliquez</p>
+            </div>
+          </div>
+
+          <!-- Tab: ID List -->
+          <div id="mtab-ids" class="mtab-panel hidden">
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Mapping utilisateurs / IDs (JSON)</label>
+            <textarea id="modal-idlist" class="w-full h-44 px-3 py-2 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 resize-none" placeholder='{
+  "alice": {"id": "user-1", "accountId": "acc-123"},
+  "bob":   {"id": "user-2", "accountId": "acc-456"}
+}'></textarea>
+
+            <p class="text-[10px] text-gray-600 mt-2">Format JSON valide. Clés = nom du user, valeurs = mapping id_key → id_value. Utilisé pour les tests BOLA.</p>
+          </div>
+
+          <!-- Tab: Team -->
+          <div id="mtab-team" class="mtab-panel hidden">
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Attacher a une equipe</label>
+            <select id="modal-team" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-sm text-gray-200 focus:outline-none focus:border-red-500/40 mb-2">
+              <option value="">Personnel</option>
+            </select>
+            <p class="text-[10px] text-gray-600">La campagne sera visible par les membres de l'equipe selectionnee.</p>
+          </div>
+
+          <!-- Tab: AI -->
+          <div id="mtab-ai" class="mtab-panel hidden">
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-3 block">Parametres du scan IA</label>
+            <div class="space-y-3">
+              <div>
+                <label class="text-[10px] text-gray-400 mb-1 block">Rounds d'exploration (requetes)</label>
+                <input id="modal-explore-rounds" type="number" min="1" max="50" value="15" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-sm text-gray-200 focus:outline-none focus:border-red-500/40" />
+                <p class="text-[10px] text-gray-600 mt-0.5">Nombre de rounds de probing automatique (max 50). Defaut: 15.</p>
+              </div>
+              <div>
+                <label class="text-[10px] text-gray-400 mb-1 block">Rounds d'analyse (deep scan)</label>
+                <input id="modal-analysis-rounds" type="number" min="1" max="25" value="5" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-sm text-gray-200 focus:outline-none focus:border-red-500/40" />
+                <p class="text-[10px] text-gray-600 mt-0.5">Nombre de rounds d'analyse approfondie (max 25). Defaut: 5.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 py-3 border-t border-white/5 flex items-center justify-between bg-base-900/30">
+        <span class="text-[10px] text-gray-600">OWASP API Top 10 + AI-enhanced</span>
+        <div class="flex gap-2">
+          <button id="btn-modal-cancel" class="h-8 px-4 rounded-lg bg-base-700 hover:bg-base-600 text-xs font-medium text-gray-300 transition-all">Annuler</button>
+          <button id="btn-modal-ok" class="h-8 px-5 rounded-lg bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-xs font-semibold text-white shadow-lg shadow-red-600/20 transition-all active:scale-[0.97] flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
+            Cree la campagne
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .modal-tab {
+      display: flex; align-items: center; gap: .5rem;
+      padding: .5rem .625rem; border-radius: .5rem;
+      font-size: .7rem; font-weight: 500; color: #6b7280;
+      transition: all .15s; border: 1px solid transparent;
+    }
+    .modal-tab:hover { color: #d1d5db; background: rgba(255,255,255,.03); }
+    .modal-tab.active { color: #f87171; background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.15); }
+    .modal-tab svg { flex-shrink: 0; }
+  </style>
+
+  <script src="static/auth.js"></script>
+  <script src="static/pentest.js"></script>
+</body>
+</html>
