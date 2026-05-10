@@ -554,6 +554,11 @@ textarea {
 .log-row.log-expanded .log-detail { display: block; }
 .log-row.log-expanded .expand-icon { transform: rotate(180deg); }
 .log-row .expand-icon { transition: transform 0.2s ease; }
+
+/* ── Finding Card Expand ── */
+.finding-card.expanded .finding-detail { display: block; }
+.finding-card.expanded .expand-icon { transform: rotate(180deg); }
+.finding-card .expand-icon { transition: transform 0.2s ease; }
 .collection-folder-header .folder-icon.closed {
   color: #7c3aed;
 }
