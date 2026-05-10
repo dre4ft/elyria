@@ -33,6 +33,11 @@ class OpenAIProvider:
             "content": message.content,
             "tool_calls": message.tool_calls if hasattr(message, 'tool_calls') else None,
             "reasoning_content": getattr(message, 'reasoning_content', None),
+            "usage": {
+                "prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
+                "completion_tokens": response.usage.completion_tokens if response.usage else 0,
+                "total_tokens": response.usage.total_tokens if response.usage else 0,
+            } if response.usage else None,
         }
     
     def update_model(self, model):
