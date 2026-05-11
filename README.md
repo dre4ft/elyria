@@ -51,6 +51,20 @@ docker compose up --build
 
 L'application est accessible sur `http://localhost:8000`.
 
+**Persistance des données** : la base SQLite et les fichiers sont stockés dans un volume Docker monté sur `./data` (le dossier `data/` à la racine du projet). Ce dossier survit aux `docker compose down` et aux rebuilds de l'image. Pour une sauvegarde :
+
+```bash
+cp -r data/ data-backup-$(date +%Y%m%d)/
+```
+
+Pour réinitialiser complètement les données :
+
+```bash
+docker compose down
+rm -rf data/
+docker compose up --build
+```
+
 **Connexion aux APIs locales (Ollama / LM Studio)** : dans le Hub > AI Agent, utilisez `http://host.docker.internal:11434` pour Ollama et `http://host.docker.internal:1234/v1` pour LM Studio. `host.docker.internal` résout vers l'IP de la machine hôte depuis le conteneur.
 
 ### Léger et rapide — taillé pour le local-first
@@ -140,6 +154,20 @@ docker compose up --build
 ```
 
 The app is available at `http://localhost:8000`.
+
+**Data persistence**: the SQLite database and all files are stored in a Docker volume mounted at `./data` (the `data/` folder at the project root). This folder survives `docker compose down` and image rebuilds. To back up:
+
+```bash
+cp -r data/ data-backup-$(date +%Y%m%d)/
+```
+
+To fully reset all data:
+
+```bash
+docker compose down
+rm -rf data/
+docker compose up --build
+```
 
 **Connecting to local APIs (Ollama / LM Studio)**: in Hub > AI Agent, use `http://host.docker.internal:11434` for Ollama and `http://host.docker.internal:1234/v1` for LM Studio. `host.docker.internal` resolves to the host machine's IP from inside the container.
 

@@ -1,6 +1,6 @@
 ai_agents/
 *.yaml
-*.yml
+
 *.json
 *.log
 *.venv/

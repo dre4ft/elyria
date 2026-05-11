@@ -16,8 +16,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY doc/ ./doc/
 
-# Data directory (SQLite DB lives here)
+# Data directory — SQLite DB + persisted files live here
+# Mount a volume at /data to keep your data across container rebuilds
 RUN mkdir -p /data
+VOLUME ["/data"]
 ENV DB_PATH=/data/database.db
 
 # Expose the API port
