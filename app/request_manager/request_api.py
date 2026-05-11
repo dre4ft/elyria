@@ -261,16 +261,35 @@ def handle_raw(user_id: str, url: str, request: str,is_done_by_ai:bool=False):
 
 
 def handle_request(user_id : str, url : str,method :str ,headers:dict=None,query_params:dict =None,body:str=None,_json :dict=None,auth :str = None,allow_redirect:bool=False,proxies:dict=None,is_done_by_ai:bool=False):
-    
+
     request_uuid = _generate_request_uuid()
     author = user_id
-    req = {"method":method,"headers" : headers,"body":body}
+
+    # Smart body handling: try JSON parse, fallback to raw
+    if _json is None and body and isinstance(body, str):
+        bt = body.strip()
+        if bt:
+            try:
+                _json = json.loads(bt)
+                if not isinstance(_json, (dict, list)):
+                    _json = None  # parsed but not JSON object/array
+            except (json.JSONDecodeError, ValueError):
+                pass  # keep as raw string body
+
+    # If sending raw non-JSON body, strip Content-Type: application/json
+    hdrs = dict(headers) if headers else {}
+    if _json is None and body and isinstance(body, str) and not body.strip().startswith('{'):
+        hdrs = {k: v for k, v in hdrs.items() if k.lower() != 'content-type'}
+
+    # Store body for history
+    stored_body = _json if _json is not None else body
+    req = {"method":method, "headers": hdrs, "body": stored_body}
     try :
         resp = _make_request(method=method,
                             url=url,
-                            body=body,
+                            body=body if _json is None else None,
                             query_params=query_params,
-                            headers=headers,
+                            headers=hdrs,
                             _json=_json,
                             allow_redirect=allow_redirect,
                             proxies=proxies)
@@ -328,12 +347,28 @@ def x_www_form_urlencoded_request(request:WWWFormRequest,_request:Request):
 
 @app.post("")
 def rest_request(request : RESTRequest, _request:Request):
-    body = json.loads(request.body) if request.body else None
-    headers = request.headers
+    # Smart body parsing: try JSON, fallback to raw string
+    raw_body = (request.body or "").strip()
+    body = None
+    _json = None
+    if raw_body:
+        try:
+            _json = json.loads(raw_body)
+            if not isinstance(_json, (dict, list)):
+                # Parsed JSON but not an object/array — treat as raw
+                body = raw_body
+                _json = None
+        except (json.JSONDecodeError, ValueError):
+            body = raw_body
+    headers = request.headers or {}
+    # Strip Content-Type if no body
+    if not raw_body:
+        headers = {k: v for k, v in headers.items() if k.lower() != 'content-type'}
     token = _request.state.token
     proxies = _get_proxy_from_request(_request)
-    req_uuid, resp = handle_request(user_id=token,method=request.method,url=request.url,body=body,headers=headers,proxies=proxies)
-    return _handle_response(req_uuid,resp,dict)
+    req_uuid, resp = handle_request(user_id=token, method=request.method, url=request.url,
+                                     body=body, _json=_json, headers=headers, proxies=proxies)
+    return _handle_response(req_uuid, resp, dict)
 
 
 @app.post("/raw")

@@ -77,6 +77,9 @@
     </div>
     <!-- CENTER: Feature actions -->
     <div class="flex items-center gap-2">
+      <button onclick="toggleSidebar()" class="h-8 px-2.5 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-500 hover:text-gray-300 text-xs transition-all" title="Afficher/Masquer les profils">
+        <svg id="sidebar-toggle-icon" class="w-4 h-4 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+      </button>
       <button id="btn-run-scan" class="h-8 px-4 rounded-lg bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white text-xs font-semibold shadow-lg shadow-red-600/20 transition-all flex items-center gap-1.5 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed">
         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
         Lancer le scan
@@ -89,10 +92,19 @@
         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
         Refresh
       </button>
-      <button id="btn-download-report" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-500 hover:text-gray-300 text-xs font-medium transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
-        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-        Rapport
-      </button>
+      <div class="relative inline-flex" id="report-btn-group">
+        <button id="btn-download-report" class="h-8 px-3 rounded-l-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-500 hover:text-gray-300 text-xs font-medium transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+          Rapport
+        </button>
+        <button id="btn-report-dropdown" class="h-8 w-6 rounded-r-lg bg-base-700 hover:bg-white/5 border border-white/5 border-l-0 text-gray-500 hover:text-gray-300 text-xs transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center -ml-px" disabled>
+          <svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div id="report-dropdown-menu" class="hidden absolute right-0 top-full mt-1 w-40 rounded-lg bg-base-700 border border-white/5 shadow-xl z-50 py-1">
+          <button onclick="downloadReport('md')" class="w-full text-left px-3 py-1.5 text-[11px] text-gray-300 hover:bg-white/5 transition-all">Standard (.md)</button>
+          <button onclick="downloadReport('expert')" id="btn-report-expert" class="w-full text-left px-3 py-1.5 text-[11px] text-gray-300 hover:bg-white/5 transition-all hidden">Expert (.md)</button>
+        </div>
+      </div>
     </div>
     <!-- RIGHT: User -->
     <div class="flex items-center gap-2">
@@ -108,9 +120,9 @@
   <div class="flex h-[calc(100vh-3rem)]">
 
     <!-- ===== LEFT — PROFILES + CAMPAIGNS ===== -->
-    <aside class="w-64 min-w-[256px] bg-base-800 border-r border-white/5 flex flex-col shrink-0 overflow-hidden">
+    <aside id="pentest-sidebar" class="w-64 min-w-[256px] bg-base-800 border-r border-white/5 flex flex-col shrink-0 overflow-hidden transition-all duration-300">
       <div class="p-3 border-b border-white/5 flex items-center justify-between">
-        <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Scan Profiles</span>
+        <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold sidebar-label">Scan Profiles</span>
         <div class="flex items-center gap-1">
           <select id="pentest-team-filter-select" class="h-6 px-1.5 rounded-md bg-base-700 border border-white/5 text-[10px] text-gray-400 focus:outline-none max-w-[110px]"></select>
           <button id="btn-refresh-profiles" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors" title="Rafraichir les profils">
@@ -168,6 +180,25 @@
           <div class="flex-1 rounded-xl p-3 bg-gray-500/10 border border-gray-500/20 text-center"><div id="stat-info" class="text-xl font-bold text-gray-400 font-mono">0</div><div class="text-[9px] uppercase text-gray-400/70 font-semibold">Info</div></div>
         </div>
 
+        <!-- AI Config row -->
+        <div id="ai-config-row" class="px-5 py-2 border-b border-white/5 flex items-center gap-3 shrink-0 hidden">
+          <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-yellow-500/10 border border-yellow-500/15">
+            <svg class="w-3 h-3 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>
+            <span id="ai-flash-model" class="text-[10px] text-yellow-300 font-mono">—</span>
+            <span class="text-[8px] text-yellow-500 font-semibold uppercase">Flash</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-500/10 border border-purple-500/15">
+            <svg class="w-3 h-3 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+            <span id="ai-pro-model" class="text-[10px] text-purple-300 font-mono">—</span>
+            <span class="text-[8px] text-purple-500 font-semibold uppercase">Pro</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/15">
+            <svg class="w-3 h-3 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75c0 2.278-3.694 4.125-8.25 4.125S3.75 12.403 3.75 10.125V6.375"/></svg>
+            <span id="ai-tokens" class="text-[10px] text-emerald-300 font-mono">—</span>
+            <span class="text-[8px] text-emerald-500 font-semibold uppercase">Tokens</span>
+          </div>
+        </div>
+
         <!-- Tabs -->
         <div class="border-b border-white/5 px-5 flex items-end gap-0 shrink-0">
           <button data-pentest-tab="overview" class="pentest-tab-btn active">Dashboard</button>
@@ -202,6 +233,15 @@
             <div id="logs-nav"></div>
           </div>
           <div id="tab-report" class="pentest-tab-panel h-full overflow-y-auto p-6 scrollbar-thin hidden">
+            <div class="flex items-center justify-between mb-4 max-w-6xl mx-auto">
+              <div class="flex items-center gap-1 bg-base-700/50 rounded-lg p-0.5">
+                <button data-reporttab="standard" class="report-tab-btn active px-4 py-1.5 text-[11px] font-medium rounded-md transition-all">Standard</button>
+                <button data-reporttab="expert" id="report-tab-expert" class="report-tab-btn hidden px-4 py-1.5 text-[11px] font-medium rounded-md transition-all">Expert IA</button>
+              </div>
+              <div class="flex items-center gap-2">
+                <button id="btn-download-expert-report" class="hidden h-7 px-3 rounded-md bg-accent/15 hover:bg-accent/25 border border-accent/20 hover:border-accent/40 text-[11px] text-accent-light font-medium transition-all flex items-center gap-1.5">Telecharger .md</button>
+              </div>
+            </div>
             <div class="flex gap-8 max-w-6xl mx-auto">
               <nav id="report-toc" class="w-56 flex-shrink-0 hidden">
                 <div class="sticky top-0 pt-1">
@@ -317,10 +357,16 @@
               <div class="flex-1 h-px bg-white/5"></div>
             </div>
             <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Uploader un fichier</label>
-            <div class="relative border-2 border-dashed border-white/10 rounded-xl p-6 text-center hover:border-red-500/30 hover:bg-red-500/[0.02] transition-all cursor-pointer">
+            <div id="openapi-drop-zone" class="relative border-2 border-dashed border-white/10 rounded-xl p-6 text-center hover:border-red-500/30 hover:bg-red-500/[0.02] transition-all cursor-pointer">
               <input id="modal-openapi-file" type="file" accept=".json,.yaml,.yml" class="absolute inset-0 opacity-0 cursor-pointer" />
-              <svg class="w-8 h-8 text-gray-600 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/></svg>
-              <p class="text-xs text-gray-500">JSON ou YAML — Glissez-déposez ou cliquez</p>
+              <div id="openapi-drop-content">
+                <svg class="w-8 h-8 text-gray-600 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/></svg>
+                <p class="text-xs text-gray-500">JSON ou YAML — Glissez-déposez ou cliquez</p>
+              </div>
+              <div id="openapi-file-selected" class="hidden">
+                <svg class="w-6 h-6 text-emerald-400 mx-auto mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <p id="openapi-file-name" class="text-xs text-gray-300 font-mono truncate"></p>
+              </div>
             </div>
           </div>
 
@@ -348,15 +394,36 @@
           <div id="mtab-ai" class="mtab-panel hidden">
             <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-3 block">Parametres du scan IA</label>
             <div class="space-y-3">
-              <div>
+              <!-- Expert Mode -->
+              <label class="flex items-center gap-2 cursor-pointer select-none" onclick="const cb=$('#modal-expert-mode');cb.checked=!cb.checked;toggleExpertFields()">
+                <input id="modal-expert-mode" type="checkbox" class="sr-only" />
+                <div id="expert-toggle-dot" class="w-4 h-4 rounded-full border-2 transition-all duration-200 flex items-center justify-center border-gray-500 bg-transparent">
+                  <div class="w-2 h-2 rounded-full bg-primary transition-all duration-200 opacity-0 scale-0" id="expert-dot-inner"></div>
+                </div>
+                <span class="text-xs text-gray-300 font-medium">Mode Expert</span>
+                <span class="text-[10px] text-accent-light">(documentation-driven, 2x rounds, feedback loop)</span>
+              </label>
+              <div id="expert-fields" class="space-y-3 hidden pl-6 border-l-2 border-accent/20">
+                <div>
+                  <label class="text-[10px] text-gray-400 mb-1 block">Master Prompt</label>
+                  <textarea id="modal-master-prompt" rows="3" class="w-full px-3 py-2 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-accent/40 resize-none" placeholder="Instructions precises pour l'agent IA...&#10;Ex: Focus sur les endpoints /api/admin et /api/users. Utilise les IDs de la liste pour tester BOLA. Verifie la conformite OWASP."></textarea>
+                  <p class="text-[10px] text-gray-600 mt-0.5">Instructions prioritaires pour guider le scan. Supporte le Markdown.</p>
+                </div>
+                <div>
+                  <label class="text-[10px] text-gray-400 mb-1 block">Documentation additionnelle</label>
+                  <textarea id="modal-documentation" rows="4" class="w-full px-3 py-2 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-accent/40 resize-none" placeholder="Documentation metier, specs API, notes d'architecture...&#10;Toute information utile pour contextualiser le pentest."></textarea>
+                  <p class="text-[10px] text-gray-600 mt-0.5">Documentation metier, specs, notes pour contextualiser l'analyse.</p>
+                </div>
+              </div>
+              <div class="border-t border-white/5 pt-3">
                 <label class="text-[10px] text-gray-400 mb-1 block">Rounds d'exploration (requetes)</label>
                 <input id="modal-explore-rounds" type="number" min="1" max="50" value="15" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-sm text-gray-200 focus:outline-none focus:border-red-500/40" />
-                <p class="text-[10px] text-gray-600 mt-0.5">Nombre de rounds de probing automatique (max 50). Defaut: 15.</p>
+                <p class="text-[10px] text-gray-600 mt-0.5">Nombre de rounds de probing automatique (max 50). Defaut: 15. Expert: 30.</p>
               </div>
               <div>
                 <label class="text-[10px] text-gray-400 mb-1 block">Rounds d'analyse (deep scan)</label>
                 <input id="modal-analysis-rounds" type="number" min="1" max="25" value="5" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-sm text-gray-200 focus:outline-none focus:border-red-500/40" />
-                <p class="text-[10px] text-gray-600 mt-0.5">Nombre de rounds d'analyse approfondie (max 25). Defaut: 5.</p>
+                <p class="text-[10px] text-gray-600 mt-0.5">Nombre de rounds d'analyse approfondie (max 25). Defaut: 5. Expert: 15.</p>
               </div>
             </div>
           </div>
@@ -387,6 +454,8 @@
     .modal-tab:hover { color: #d1d5db; background: rgba(255,255,255,.03); }
     .modal-tab.active { color: #f87171; background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.15); }
     .modal-tab svg { flex-shrink: 0; }
+    #pentest-sidebar[data-collapsed="true"] { width: 0 !important; min-width: 0 !important; padding: 0 !important; border: none !important; overflow: hidden !important; }
+    #pentest-sidebar[data-collapsed="true"] > * { display: none !important; }
   </style>
 
   <script src="static/auth.js"></script>
