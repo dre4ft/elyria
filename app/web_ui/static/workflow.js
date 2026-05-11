@@ -90,15 +90,13 @@ const BLOCK_DEFS = {
   },
   // ── Red Team blocks ──
   fuzz_params: {
-    label: 'Fuzz Params', color: 'red', icon: 'fuzz',
-    desc: 'Fuzze les parametres d\'URL avec des valeurs multiples et les paths avec une wordlist personnalisable. Chaque combinaison genere une requete distincte. Les resultats (statut HTTP + apercu du body) sont stockes dans ctx.{saveTo}.',
+    label: 'Fuzz Requete', color: 'red', icon: 'fuzz', isContainer: true,
+    desc: 'Glissez un bloc HTTP Request dans la zone ci-dessous. Placez $FUZZ$ dans ses champs (URL, headers, body). Chaque ligne de la wordlist = 1 iteration.',
     ports: { in: ['in'], out: ['out'] },
     fields: [
-      { key: 'url', label: 'URL cible a fuzzer', type: 'text', placeholder: 'https://api.target.com/users?role=admin' },
-      { key: 'method', label: 'Methode HTTP', type: 'select', options: ['GET','POST','PUT','PATCH'], default: 'GET' },
-      { key: 'params', label: 'Parametres et valeurs (JSON)', type: 'textarea', placeholder: '{\n  "id": [1, 2, 3, 100, 999],\n  "role": ["admin", "superadmin", "user"],\n  "debug": [true, false]\n}', rows: 4 },
-      { key: 'wordlist', label: 'Wordlist de paths (1 par ligne)', type: 'textarea', placeholder: '../\nadmin\nconfig\n.env\n/api/v2\n/api/internal\n/backup\n/console', rows: 3 },
-      { key: 'saveTo', label: 'Variable de sortie', type: 'text', placeholder: 'fuzzResults', default: 'fuzz' },
+      { key: 'wordlist', label: 'Wordlist (1 valeur par ligne = 1 iteration)', type: 'textarea', placeholder: 'admin\nuser\ntest\n../../../etc/passwd\n<script>alert(1)</script>', rows: 5 },
+      { key: 'childNodeId', label: '', type: 'hidden', default: '' },
+      { key: 'saveTo', label: 'Variable de sortie (resultats)', type: 'text', placeholder: 'fuzzResults', default: 'fuzz' },
     ],
   },
   bola_test: {
@@ -306,6 +304,8 @@ function setupPaletteDrag() {
   });
 
   dom.canvasWrapper.addEventListener('drop', (e) => {
+    // If dropped on a fuzz container body, let that handler deal with it
+    if (e.target.closest('.wf-container-body')) return;
     e.preventDefault();
     const rect = dom.canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) / wf.zoom;
@@ -741,17 +741,20 @@ function renderSavedRequestItem(req) {
 // ─────────────────────────────────────────────
 function renderNode(node) {
   const def = BLOCK_DEFS[node.type];
+  const isEmbedded = node._embedded; // child of a container node
   const colors = COLOR_MAP[def.color];
   const el = document.createElement('div');
-  el.className = 'wf-node';
+  el.className = 'wf-node' + (def.isContainer ? ' wf-node-container' : '') + (isEmbedded ? ' wf-node-embedded' : '');
   el.id = `node-${node.id}`;
   el.style.left = node.x + 'px';
   el.style.top = node.y + 'px';
+  if (def.isContainer) { el.style.minWidth = '320px'; el.style.zIndex = '15'; }
+  if (isEmbedded) { el.style.zIndex = '25'; }
 
   // Summary text
   let summary = '';
-  if (node.type === 'http_request') summary = `${node.data.method || 'GET'} ${truncate(node.data.url, 22)}`;
-  else if (node.type === 'raw_request') summary = truncate(node.data.url, 28);
+  if (node.type === 'http_request') summary = `${node.data.method || 'GET'} ${truncate(node.data.url, 30)}`;
+  else if (node.type === 'raw_request') summary = truncate(node.data.url, 30);
   else if (node.type === 'set_data') summary = (node.data.saveTo ? `ctx.${node.data.saveTo}` : truncate(node.data.variables, 28));
   else if (node.type === 'if_else') summary = truncate(node.data.condition, 28);
   else if (node.type === 'for_loop') summary = `${node.data.iterations || 5}x — ${node.data.variable || 'i'}`;
@@ -759,10 +762,31 @@ function renderNode(node) {
   else if (node.type === 'assert') summary = truncate(node.data.label || node.data.expression, 28);
   else if (node.type === 'sub_workflow') summary = node.data.workflowName || node.data.workflowId;
 
+  // Container node: U-shape with drop zone
+  let childHTML = '';
+  if (def.isContainer) {
+    if (node.data.childNodeId) {
+      const child = wf.nodes.find(n => n.id === node.data.childNodeId);
+      if (child) {
+        const childDef = BLOCK_DEFS[child.type];
+        const childColors = COLOR_MAP[childDef.color];
+        const cSummary = child.type === 'http_request' || child.type === 'raw_request'
+          ? `${child.data.method || 'GET'} ${truncate(child.data.url || '', 40)}`
+          : childDef.label;
+        childHTML = `<div class="wf-container-child" style="margin:4px 8px;padding:8px 10px;border-radius:6px;background:rgba(255,255,255,.04);border:1px solid ${childColors.border};font-size:10px;color:#d1d5db;font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:6px;">
+          <span class="method-badge ${(child.data.method||'GET').toLowerCase()}" style="font-size:7px;padding:1px 4px;flex-shrink:0;">${esc(child.data.method||'GET')}</span>
+          <span class="truncate flex-1">${esc(cSummary)}</span>
+          <button class="wf-detach-child" data-node="${node.id}" style="flex-shrink:0;width:16px;height:16px;border-radius:50%;background:#1a2340;border:1px solid rgba(255,255,255,.15);color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;line-height:1;">×</button>
+        </div>`;
+      }
+    }
+  }
+
   el.innerHTML = `
     <button class="wf-node-delete" data-delete="${node.id}">
       <svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
+    ${def.isContainer ? `<div class="wf-container-top" style="margin:4px 8px 0;border:1px solid ${colors.border};border-bottom:none;border-radius:10px 10px 0 0;height:10px;background:linear-gradient(180deg,${colors.bg},transparent);"></div>` : ''}
     <div class="wf-node-header">
       <div class="wf-node-icon" style="background:${colors.bg}; color:${colors.text}">
         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">${ICON_SVG[def.icon]}</svg>
@@ -771,22 +795,80 @@ function renderNode(node) {
       <div class="wf-node-status" id="status-${node.id}"></div>
     </div>
     ${summary ? `<div class="wf-node-body">${escapeHtml(summary)}</div>` : ''}
+    ${def.isContainer ? `
+      <div class="wf-container-body" data-fuzz-drop="${node.id}" style="min-height:${node.data.childNodeId ? 'auto' : '52px'};margin:0 8px 8px;border:1.5px dashed ${node.data.childNodeId ? 'rgba(239,68,68,.2)' : 'rgba(239,68,68,.3)'};border-radius:8px;display:flex;align-items:center;justify-content:center;transition:all .2s;${node.data.childNodeId ? '' : 'padding:8px;'}">
+        ${node.data.childNodeId ? childHTML : '<span class="text-[11px] text-gray-600">Drop HTTP or Raw Request here</span>'}
+      </div>
+    ` : ''}
   `;
 
-  // Ports
-  const portDefs = def.ports;
-  portDefs.in.forEach(pName => {
-    const port = createPort('in', pName, node.id);
-    el.appendChild(port);
-  });
-  portDefs.out.forEach(pName => {
-    const port = createPort('out', pName, node.id);
-    el.appendChild(port);
-  });
+  // Wire detach button
+  if (def.isContainer) {
+    el.querySelector('.wf-detach-child')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const child = wf.nodes.find(n => n.id === node.data.childNodeId);
+      if (child) { child._embedded = false; child.x = node.x + 350; child.y = node.y; renderNode(child); }
+      node.data.childNodeId = '';
+      refreshNodeDisplay(node);
+    });
+    // Container drop zone
+    const body = el.querySelector('.wf-container-body');
+    if (body) {
+      body.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); body.style.borderColor = 'rgba(239,68,68,.6)'; body.style.background = 'rgba(239,68,68,.05)'; });
+      body.addEventListener('dragleave', (e) => { e.preventDefault(); body.style.borderColor = node.data.childNodeId ? 'rgba(239,68,68,.2)' : 'rgba(239,68,68,.3)'; body.style.background = 'transparent'; });
+      body.addEventListener('drop', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        body.style.borderColor = node.data.childNodeId ? 'rgba(239,68,68,.2)' : 'rgba(239,68,68,.3)';
+        body.style.background = 'transparent';
+        const blockType = e.dataTransfer.getData('block-type');
+        if (blockType === 'http_request' || blockType === 'raw_request') {
+          // Detach previous child if any
+          if (node.data.childNodeId) {
+            const prev = wf.nodes.find(n => n.id === node.data.childNodeId);
+            if (prev) { prev._embedded = false; prev.x = node.x + 350; prev.y = node.y; }
+          }
+          // Create child node (embedded — rendered inline inside container, not on canvas)
+          const def = BLOCK_DEFS[blockType];
+          const data = {};
+          def.fields.forEach(f => { data[f.key] = f.default || ''; });
+          const child = {
+            id: 'n' + (wf.nextId++),
+            type: blockType,
+            x: node.x + 16,
+            y: node.y + 60,
+            data,
+            status: null,
+            _embedded: true,
+          };
+          wf.nodes.push(child);
+          node.data.childNodeId = child.id;
+          // Only refresh container — child is rendered inline in childHTML
+          refreshNodeDisplay(node);
+          updateNodeCount();
+          // Remove any leftover DOM element from previous standalone child
+          const oldEl = document.getElementById(`node-${child.id}`);
+          if (oldEl) oldEl.remove();
+        }
+      });
+    }
+  }
+
+  // Ports — skip for embedded nodes
+  if (!isEmbedded) {
+    const portDefs = def.ports;
+    portDefs.in.forEach(pName => {
+      const port = createPort('in', pName, node.id);
+      el.appendChild(port);
+    });
+    portDefs.out.forEach(pName => {
+      const port = createPort('out', pName, node.id);
+      el.appendChild(port);
+    });
+  }
 
   // Events
   el.addEventListener('mousedown', (e) => {
-    if (e.target.closest('.wf-port') || e.target.closest('.wf-node-delete')) return;
+    if (e.target.closest('.wf-port') || e.target.closest('.wf-node-delete') || e.target.closest('.wf-container-body') || e.target.closest('.wf-detach-child')) return;
     selectNode(node.id);
     wf.dragging = {
       nodeId: node.id,
@@ -801,7 +883,10 @@ function renderNode(node) {
     removeNode(node.id);
   });
 
-  dom.canvas.appendChild(el);
+  // Embedded nodes are rendered inline inside their container — skip canvas append
+  if (!isEmbedded) {
+    dom.canvas.appendChild(el);
+  }
 }
 
 function createPort(dir, portName, nodeId) {
@@ -1035,6 +1120,7 @@ function renderConfigPanel(nodeId) {
   `;
 
   def.fields.forEach(f => {
+    if (f.type === 'hidden') return;
     const val = node.data[f.key] || '';
     html += `<div class="wf-config-section">`;
     html += `<label class="wf-config-label">${f.label}</label>`;
@@ -1480,32 +1566,61 @@ async function executeNode(nodeId, ctx) {
       }
 
       case 'fuzz_params': {
-        const url = interpolate(node.data.url || '', ctx);
-        const method = node.data.method || 'GET';
-        const params = node.data.params || '{}';
-        const wordlist = (node.data.wordlist || '').split('\n').filter(l => l.trim());
-        let paramMap = {};
-        try { paramMap = JSON.parse(interpolate(params, ctx)); } catch {}
-        const allResults = [];
-        for (const [key, values] of Object.entries(paramMap)) {
-          for (const val of (Array.isArray(values) ? values : [values])) {
-            const fuzzUrl = url.includes('?') ? url + `&${key}=${encodeURIComponent(val)}` : url + `?${key}=${encodeURIComponent(val)}`;
-            const res = await fetch(API.structured, { method:'POST', headers:{'Content-Type':'application/json',...getAuthHeader()}, body:JSON.stringify({url:fuzzUrl, method}) });
-            const data = await res.json();
-            allResults.push({param:key, value:val, status:data.response?.status_code, body:data.response?.body?.substring(0,200)});
-            addLog(`Fuzz ${method} ${key}=${val} → ${data.response?.status_code||'?'}`, 'info');
+        const wordlist = (node.data.wordlist || '').split('\n').map(l => l.trim()).filter(l => l);
+        if (!wordlist.length) { addLog('Fuzz: wordlist vide', 'warn'); break; }
+        // Get request config from embedded child node
+        let method = 'GET', urlTpl = '', headersTpl = '{}', bodyTpl = '';
+        if (node.data.childNodeId) {
+          const child = wf.nodes.find(n => n.id === node.data.childNodeId);
+          if (child) {
+            if (child.type === 'raw_request') {
+              // Parse raw HTTP request to extract method/url/headers/body
+              const raw = interpolate(child.data.rawRequest || '', ctx);
+              const lines = raw.split('\n');
+              const firstLine = lines[0]?.trim() || '';
+              const parts = firstLine.split(' ');
+              method = parts[0] || 'GET';
+              urlTpl = parts[1] || child.data.url || '';
+              let inHeaders = true;
+              let hdrLines = [], bodyLines = [];
+              for (let i = 1; i < lines.length; i++) {
+                const l = lines[i].trim();
+                if (inHeaders && l === '') { inHeaders = false; continue; }
+                if (inHeaders) hdrLines.push(l);
+                else bodyLines.push(l);
+              }
+              hdrLines.forEach(l => { const idx = l.indexOf(':'); if (idx > 0) headersTpl = (headersTpl === '{}' ? '{' : headersTpl.slice(0,-1)) + (headersTpl.length > 2 ? ',' : '') + `"${l.substring(0,idx).trim()}":"${l.substring(idx+1).trim()}"}`; });
+              if (headersTpl === '{}') headersTpl = '{}';
+              bodyTpl = bodyLines.join('\n');
+            } else {
+              method = child.data.method || 'GET';
+              urlTpl = interpolate(child.data.url || '', ctx);
+              headersTpl = interpolate(child.data.headers || '{}', ctx);
+              bodyTpl = interpolate(child.data.body || '', ctx);
+            }
           }
         }
-        // Also fuzz wordlist paths
+        if (!urlTpl) { addLog('Fuzz: aucune URL dans la requete imbriquee', 'error'); break; }
+        addLog(`Fuzz: ${wordlist.length} iterations sur ${method} $FUZZ$ → ${truncate(urlTpl,40)}`, 'step');
+        const allResults = [];
         for (const word of wordlist) {
-          const base = url.replace(/\/$/, '');
-          const pathUrl = base + (word.startsWith('/') ? word : '/' + word);
-          const res = await fetch(API.structured, { method:'POST', headers:{'Content-Type':'application/json',...getAuthHeader()}, body:JSON.stringify({url:pathUrl, method}) });
+          const fuzzUrl = urlTpl.replace(/\$FUZZ\$/gi, encodeURIComponent(word));
+          const fuzzHeadersStr = headersTpl.replace(/\$FUZZ\$/gi, word);
+          const fuzzBodyStr = bodyTpl.replace(/\$FUZZ\$/gi, word);
+          let fuzzHeaders = {};
+          try { fuzzHeaders = JSON.parse(fuzzHeadersStr); } catch {}
+          const res = await fetch(API.structured, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+            body: JSON.stringify({ url: fuzzUrl, method, headers: fuzzHeaders, body: fuzzBodyStr || undefined }),
+          });
           const data = await res.json();
-          allResults.push({word, status:data.response?.status_code, body:data.response?.body?.substring(0,200)});
+          const sc = data.response?.status_code || 0;
+          allResults.push({ word, url: fuzzUrl, status: sc, body: data.response?.body?.substring(0, 200) });
+          addLog(`$FUZZ$="${word}" → ${sc}`, sc >= 400 ? 'warn' : 'info');
         }
         ctx[node.data.saveTo || 'fuzz'] = allResults;
-        addLog(`Fuzzing terminé : ${allResults.length} requêtes`, 'success');
+        addLog(`Fuzz termine : ${allResults.length} requetes`, 'success');
         break;
       }
 

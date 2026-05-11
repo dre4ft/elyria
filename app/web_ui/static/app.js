@@ -199,7 +199,12 @@ function init() {
   setupCollections();
   setupResizeHandle();
   setupDocModal();
+  setupJWTPanel();
   setupKeyboardShortcuts();
+
+  // Burger menu sidebar toggle
+  const btnSidebar = document.getElementById('btn-toggle-sidebar');
+  if (btnSidebar) btnSidebar.addEventListener('click', toggleSidebar);
 
   // Initialiser le builder avec des rows vides
   addParamRow('', '', true);
@@ -597,6 +602,13 @@ function populateStructuredFromParsed(method, url, headers, body) {
 function setupSend() {
   dom.btnSendStruct.addEventListener('click', sendStructured);
   dom.btnSendRaw.addEventListener('click', sendRaw);
+  const btnCurl = $('#btn-export-curl');
+  if (btnCurl) btnCurl.addEventListener('click', () => exportAsCurl());
+  const btnCopyCurl = $('#btn-copy-curl');
+  if (btnCopyCurl) btnCopyCurl.addEventListener('click', () => {
+    const curl = $('#curl-content')?.textContent;
+    if (curl) { navigator.clipboard.writeText(curl); btnCopyCurl.textContent = 'Copie !'; setTimeout(()=>btnCopyCurl.textContent='Copier', 1500); }
+  });
 }
 
 async function sendStructured() {
@@ -760,6 +772,9 @@ function displayResponse(entry, elapsed) {
   } catch {}
   dom.respBodyContent.textContent = bodyContent;
 
+  // JWT detection
+  renderJWTParser(bodyContent);
+
   // Headers
   dom.respHeadersContent.innerHTML = '';
   const respHeaders = entry.headers || {};
@@ -811,6 +826,73 @@ function setupCollections() {
     } else if (e.key === 'Escape') {
       hideCreateModal();
     }
+  });
+
+  // ── cURL Compiler Modal ──
+  const curlModal = $('#curl-modal');
+  const curlInput = $('#curl-input');
+  const curlName = $('#curl-name');
+  const curlPreview = $('#curl-preview');
+  const curlError = $('#curl-error');
+  const curlSuccess = $('#curl-success');
+
+  if ($('#btn-open-curl')) {
+    $('#btn-open-curl').addEventListener('click', () => {
+      curlModal.classList.remove('hidden');
+      curlModal.classList.add('flex');
+      curlInput.value = '';
+      curlName.value = '';
+      curlPreview.classList.add('hidden');
+      curlError.classList.add('hidden');
+      curlSuccess.classList.add('hidden');
+      curlInput.focus();
+    });
+  }
+
+  if ($('#btn-curl-close')) {
+    $('#btn-curl-close').addEventListener('click', () => {
+      curlModal.classList.add('hidden');
+      curlModal.classList.remove('flex');
+    });
+  }
+
+  // Close on backdrop click
+  curlModal.addEventListener('click', (e) => { if (e.target === curlModal) { curlModal.classList.add('hidden'); curlModal.classList.remove('flex'); } });
+
+  if ($('#btn-curl-compile')) {
+    $('#btn-curl-compile').addEventListener('click', async () => {
+      const curlCmd = curlInput.value.trim();
+      if (!curlCmd) { curlError.textContent = 'Collez une commande cURL'; curlError.classList.remove('hidden'); return; }
+      curlError.classList.add('hidden');
+      curlSuccess.classList.add('hidden');
+      try {
+        const res = await fetch('/api/collections/compile-curl', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          body: JSON.stringify({ curl: curlCmd, name: curlName.value.trim() || '' }),
+        });
+        const data = await res.json();
+        if (!res.ok) { curlError.textContent = data.detail || 'Erreur de compilation'; curlError.classList.remove('hidden'); return; }
+        // Show preview
+        curlPreview.classList.remove('hidden');
+        $('#curl-preview-method').innerHTML = `<span class="text-accent-light">${esc(data.parsed.method)}</span>`;
+        $('#curl-preview-url').textContent = data.parsed.url;
+        $('#curl-preview-headers').textContent = data.parsed.headers && Object.keys(data.parsed.headers).length ? 'Headers: ' + JSON.stringify(data.parsed.headers) : '';
+        $('#curl-preview-body').textContent = data.parsed.body ? 'Body: ' + data.parsed.body.substring(0, 200) : '';
+        curlSuccess.textContent = 'Requête sauvegardée : ' + data.name;
+        curlSuccess.classList.remove('hidden');
+        // Refresh collections
+        setTimeout(() => { loadCollections(); curlModal.classList.add('hidden'); curlModal.classList.remove('flex'); }, 800);
+      } catch (e) {
+        curlError.textContent = 'Erreur réseau : ' + e.message;
+        curlError.classList.remove('hidden');
+      }
+    });
+  }
+
+  // Escape to close
+  curlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { curlModal.classList.add('hidden'); curlModal.classList.remove('flex'); }
   });
 }
 
@@ -1212,198 +1294,267 @@ function removeNodeById(nodes, id) {
 // HISTORY
 // ─────────────────────────────────────────────
 function setupHistory() {
-  dom.searchHistory.addEventListener('input', renderHistory);
-  dom.btnRefresh.addEventListener('click', () => loadHistory(true));
+  const historyPanel = $('#history-panel');
+  const btnToggle = $('#btn-toggle-history');
+  const btnClose = $('#btn-close-history');
+  const btnClear = $('#btn-clear-history');
+  const logList = $('#history-log-list');
+  const searchInput = $('#history-search');
+  const emptyState = $('#history-empty-state');
+  const countBadge = $('#history-count-badge');
+
+  if (!historyPanel) return;
+
+  btnToggle.addEventListener('click', () => toggleHistoryPanel());
+  btnClose.addEventListener('click', () => toggleHistoryPanel(false));
+  btnClear.addEventListener('click', () => { state.history = []; renderHistoryLog(); });
+  searchInput.addEventListener('input', () => renderHistoryLog());
 }
 
-async function loadHistory(forceRefresh = false) {
-  if (state.history.length > 0 && !forceRefresh) return;
+function toggleHistoryPanel(show) {
+  const panel = $('#history-panel');
+  if (!panel) return;
+  const open = typeof show === 'boolean' ? show : panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !open);
+  panel.classList.toggle('flex', open);
+  if (open) { loadHistory(); renderHistoryLog(); }
+}
 
+async function loadHistory(forceRefresh) {
+  if (state.history.length > 0 && !forceRefresh) return;
   try {
     const user = getUser();
     const userId = user ? user.userId : 'anonymous';
-    const url = `${API.userHistory}/${userId}?limit=50&page=1`;
+    const url = `${API.userHistory}/${userId}?limit=100&page=1`;
     const res = await fetch(url, { headers: { ...getAuthHeader() } });
     if (!res.ok) return;
     const rows = await res.json();
     if (!Array.isArray(rows)) return;
-
     rows.reverse().forEach(row => {
       const entry = {
-        id: row.request_id,
-        method: row.request_method,
-        url: row.request_url,
+        id: row.request_id, method: row.request_method, url: row.request_url,
         statusCode: row.request_status_code,
         reqHeaders: safeJsonParse(row.request_headers) || {},
-        reqBody: row.request_body || '',
-        reqParams: [],
+        reqBody: row.request_body || '', reqParams: [],
         headers: safeJsonParse(row.response_headers) || {},
-        body: row.response_body || '',
-        type: 'structured',
+        body: row.response_body || '', type: 'structured',
         date: row.date || null,
         isDoneByAI: row.is_done_by_ai === 1 || row.is_done_by_ai === true,
         timestamp: row.date ? new Date(row.date).getTime() : Date.now(),
       };
-      // Avoid duplicates
-      if (!state.history.find(h => h.id === entry.id)) {
-        state.history.push(entry);
-      }
+      if (!state.history.find(h => h.id === entry.id)) state.history.push(entry);
     });
-
     state.history.sort((a, b) => b.timestamp - a.timestamp);
-    renderHistory();
-  } catch { }
+    renderHistoryLog();
+  } catch {}
 }
 
 function addToHistory(entry) {
-  // Avoid duplicates
   state.history = state.history.filter(h => h.id !== entry.id);
   state.history.unshift(entry);
-  renderHistory();
+  renderHistoryLog();
 }
 
-function renderHistory() {
-  const query = dom.searchHistory.value.toLowerCase().trim();
+function renderHistoryLog() {
+  const logList = $('#history-log-list');
+  const emptyState = $('#history-empty-state');
+  const countBadge = $('#history-count-badge');
+  const searchInput = $('#history-search');
+  if (!logList) return;
+
+  const query = (searchInput ? searchInput.value : '').toLowerCase().trim();
   const filtered = query
-    ? state.history.filter(h => h.url.toLowerCase().includes(query) || h.method.toLowerCase().includes(query) || h.id.toLowerCase().includes(query))
+    ? state.history.filter(h => (h.url||'').toLowerCase().includes(query) || (h.method||'').toLowerCase().includes(query))
     : state.history;
 
-  // Clear except empty state
-  const items = dom.historyList.querySelectorAll('.history-item');
-  items.forEach(i => i.remove());
-
-  dom.historyEmpty.classList.toggle('hidden', filtered.length > 0);
+  // Remove old rows (keep empty state)
+  logList.querySelectorAll('.history-log-row,.history-quick-view').forEach(e => e.remove());
+  if (emptyState) emptyState.classList.toggle('hidden', filtered.length > 0);
+  if (countBadge) { countBadge.textContent = state.history.length; countBadge.classList.toggle('hidden', state.history.length === 0); }
 
   filtered.forEach(entry => {
-    const item = document.createElement('div');
-    item.className = 'history-item' + (entry.id === state.currentRequestId ? ' active' : '');
-    item.dataset.id = entry.id;
-
-    const methodLower = (entry.method || 'get').toLowerCase();
-    const urlShort = truncateUrl(entry.url, 28);
-    const statusCode = entry.statusCode || '—';
-    const statusClass = statusCode >= 500 ? 's5xx' : statusCode >= 400 ? 's4xx' : statusCode >= 300 ? 's3xx' : 's2xx';
-    const dateDisplay = formatDate(entry.date || entry.timestamp);
+    const sc = entry.statusCode || 0;
+    const scC = sc >= 500 ? 'text-red-400' : sc >= 400 ? 'text-orange-400' : sc >= 200 ? 'text-green-400' : 'text-gray-500';
+    const mC = {GET:'text-green-400',POST:'text-blue-400',PUT:'text-orange-400',DELETE:'text-red-400',PATCH:'text-purple-400'}[entry.method] || 'text-gray-400';
+    const path = (entry.url || '').replace(/^https?:\/\/[^/]+/, '') || '/';
+    const time = entry.date ? entry.date.substring(11, 19) : '--:--:--';
     const aiBadge = entry.isDoneByAI
-      ? `<span class="ai-badge" title="Généré par IA"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg></span>`
-      : '';
+      ? `<span class="hl-ai" title="Requete envoyee par l'agent IA"><span class="px-1 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/20 text-[7px] text-purple-400 font-bold">IA</span></span>`
+      : '<span class="hl-ai"></span>';
 
-    item.innerHTML = `
-      <span class="method-badge ${methodLower}">${entry.method}</span>
-      <div class="flex-1 min-w-0">
-        <div class="text-xs text-gray-300 truncate font-['JetBrains_Mono'] leading-tight">${escapeHtml(urlShort)}</div>
-        <div class="flex items-center gap-2 mt-0.5">
-          <span class="text-[10px] font-mono font-semibold ${statusClass === 's2xx' ? 'text-green-400/70' : statusClass === 's4xx' ? 'text-orange-400/70' : statusClass === 's5xx' ? 'text-red-400/70' : 'text-blue-400/70'}">${statusCode}</span>
-          <span class="text-[10px] text-gray-600">${dateDisplay}</span>
-          ${aiBadge}
-        </div>
-      </div>
-    `;
+    const row = document.createElement('div');
+    row.className = 'history-log-row';
+    row.dataset.hid = entry.id;
+    row.innerHTML = `<span class="hl-method ${mC}">${entry.method}</span>
+      <span class="hl-status ${scC}">${sc || '—'}</span>
+      <span class="hl-path" title="${escapeHtml(entry.url||'')}">${escapeHtml(path)}</span>
+      <span class="hl-time">${time}</span>
+      ${aiBadge}
+      <svg class="hl-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>`;
+    row.addEventListener('click', () => toggleHistoryQuickView(row, entry));
+    logList.appendChild(row);
 
-    item.addEventListener('click', () => loadHistoryEntry(entry));
-    dom.historyList.insertBefore(item, dom.historyEmpty);
+    // Quick-view placeholder (hidden, shown on expand)
+    const qv = document.createElement('div');
+    qv.className = 'history-quick-view';
+    qv.dataset.hidQv = entry.id;
+    qv.innerHTML = buildQuickViewHTML(entry);
+    logList.appendChild(qv);
+    // Setup quick-view buttons after DOM insertion
+    setTimeout(() => setupQuickViewButtons(qv, entry), 0);
   });
 }
 
+function buildQuickViewHTML(entry) {
+  const reqHeadersStr = entry.reqHeaders ? Object.entries(entry.reqHeaders).map(([k,v]) => `${k}: ${v}`).join('\n') : '';
+  const reqBodyStr = entry.reqBody || '';
+  const respBody = entry.body || '';
+  let respBodyFormatted = respBody;
+  try { const p = JSON.parse(respBody); respBodyFormatted = JSON.stringify(p, null, 2); } catch {}
+  const respHeadersStr = entry.headers ? Object.entries(entry.headers).map(([k,v]) => `${k}: ${v}`).join('\n') : '';
+  const sc = entry.statusCode || 0;
+  const scC = sc >= 500 ? 'text-red-400' : sc >= 400 ? 'text-orange-400' : sc >= 200 ? 'text-green-400' : 'text-gray-500';
+  const qvId = 'qv-' + (entry.id || Math.random().toString(36).slice(2));
+
+  return `<div class="qv-toolbar flex items-center gap-2 mb-3">
+    <span class="text-[10px] uppercase text-gray-500 font-semibold">Details</span>
+    <div class="flex-1"></div>
+    <button class="qv-load-btn h-6 px-3 rounded-md bg-accent/10 hover:bg-accent/20 border border-accent/20 hover:border-accent/40 text-[10px] font-medium text-accent-light transition-all flex items-center gap-1">
+      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+      Load
+    </button>
+    <button class="qv-send-btn h-6 px-3 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/20 hover:border-amber-500/40 text-[10px] font-medium text-amber-400 transition-all flex items-center gap-1">
+      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
+      Replay
+    </button>
+  </div>
+  <div class="flex border-b border-white/5 mb-2">
+    <button class="qv-tab active flex-1 h-7 text-[10px] font-semibold text-gray-400 transition-all" data-qvtab="${qvId}-req" onclick="switchQVTab('${qvId}','req')">Requete</button>
+    <button class="qv-tab flex-1 h-7 text-[10px] font-semibold text-gray-500 transition-all" data-qvtab="${qvId}-resp" onclick="switchQVTab('${qvId}','resp')">Reponse</button>
+  </div>
+  <div id="${qvId}-req" class="qv-panel space-y-2">
+    <div><span class="text-[9px] uppercase text-gray-500 font-semibold">URL</span><div class="text-[11px] text-gray-300 font-mono mt-0.5 break-all">${escapeHtml(entry.method)} ${escapeHtml(entry.url||'')}</div></div>
+    ${reqHeadersStr ? `<div><span class="text-[9px] uppercase text-gray-500 font-semibold">Headers</span><pre class="text-[10px] text-gray-400 font-mono mt-0.5 bg-base-900/40 p-2 rounded max-h-24 overflow-y-auto">${escapeHtml(reqHeadersStr)}</pre></div>` : ''}
+    ${reqBodyStr ? `<div><span class="text-[9px] uppercase text-gray-500 font-semibold">Body</span><pre class="text-[10px] text-gray-300 font-mono mt-0.5 bg-base-900/40 p-2 rounded max-h-32 overflow-y-auto">${escapeHtml(reqBodyStr)}</pre></div>` : ''}
+  </div>
+  <div id="${qvId}-resp" class="qv-panel hidden space-y-2">
+    <div><span class="text-[9px] uppercase text-gray-500 font-semibold">Status</span><div class="text-[11px] font-mono font-bold ${scC} mt-0.5">${sc || '—'}</div></div>
+    ${respHeadersStr ? `<div><span class="text-[9px] uppercase text-gray-500 font-semibold">Headers</span><pre class="text-[10px] text-gray-400 font-mono mt-0.5 bg-base-900/40 p-2 rounded max-h-24 overflow-y-auto">${escapeHtml(respHeadersStr)}</pre></div>` : ''}
+    ${respBody ? `<div><span class="text-[9px] uppercase text-gray-500 font-semibold">Body</span><pre class="text-[10px] text-gray-300 font-mono mt-0.5 bg-base-900/40 p-2 rounded max-h-48 overflow-y-auto">${escapeHtml(respBodyFormatted)}</pre></div>` : ''}
+  </div>`;
+}
+
+function switchQVTab(qvId, tab) {
+  const panel = document.getElementById(qvId + '-req').parentElement;
+  panel.querySelectorAll('.qv-tab').forEach(b => { b.classList.toggle('active', b.dataset.qvtab === qvId + '-' + tab); });
+  panel.querySelectorAll('.qv-panel').forEach(p => { p.classList.toggle('hidden', !p.id.startsWith(qvId + '-' + tab)); });
+}
+
+function setupQuickViewButtons(qvEl, entry) {
+  // Load button — populate the main builder
+  qvEl.querySelector('.qv-load-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    loadHistoryEntry(entry);
+    // Scroll to top
+    document.querySelector('.tab-panel.active')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  // Replay button — re-send the exact same request
+  qvEl.querySelector('.qv-send-btn')?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const url = entry.url || '';
+    const method = entry.method || 'GET';
+    const body = entry.reqBody || '';
+    if (!url) return;
+
+    // Build headers from stored reqHeaders
+    const headers = entry.reqHeaders || {};
+    const resultPanel = qvEl.querySelector('.qv-result');
+    if (!resultPanel) {
+      const panel = document.createElement('div');
+      panel.className = 'qv-result mt-3 p-3 rounded-lg bg-base-900/60 border border-white/5 text-[10px] font-mono text-gray-300 max-h-48 overflow-y-auto';
+      panel.textContent = 'Envoi...';
+      qvEl.appendChild(panel);
+    }
+    const resultEl = qvEl.querySelector('.qv-result');
+    if (resultEl) {
+      resultEl.classList.remove('hidden');
+      resultEl.textContent = 'Envoi...';
+    }
+
+    try {
+      const res = await fetch(API.structured, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({ url, method, headers, body: body || undefined }),
+      });
+      const data = await res.json();
+      const resp = data.response || data;
+      const statusCode = resp.status_code || 0;
+      const respBody = resp.body || '';
+      if (resultEl) resultEl.innerHTML = `<span class="${statusCode >= 400 ? 'text-red-400' : 'text-green-400'} font-bold">${statusCode}</span> — ${respBody.substring(0, 500)}`;
+      addToHistory({
+        id: data.request_uuid || generateId(), method, url, statusCode,
+        reqHeaders: headers, reqBody: body, reqParams: [],
+        headers: resp.headers || {}, body: respBody,
+        type: 'structured', timestamp: Date.now(),
+      });
+    } catch (err) {
+      if (resultEl) resultEl.innerHTML = `<span class="text-red-400">Erreur: ${escapeHtml(err.message)}</span>`;
+    }
+  });
+}
+
+function toggleHistoryQuickView(row, entry) {
+  const wasExpanded = row.classList.contains('expanded');
+  // Collapse all
+  document.querySelectorAll('.history-log-row.expanded').forEach(r => r.classList.remove('expanded'));
+  if (wasExpanded) return;
+  row.classList.add('expanded');
+  // Scroll to quick-view
+  const qv = row.nextElementSibling;
+  if (qv && qv.classList.contains('history-quick-view')) {
+    qv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
 async function loadHistoryEntry(entry) {
-  // Save current collection request before switching to history
   await saveCurrentRequestToDb();
   state.activeCollectionId = null;
   state.currentRequestId = entry.id;
   updateChatContext();
   renderCollections();
-
-  // Try to fetch the latest from the API
   let freshEntry = entry;
   try {
-    const res = await fetch(`${API.getRequest}/${entry.id}`, {
-      headers: { ...getAuthHeader() },
-    });
+    const res = await fetch(`${API.getRequest}/${entry.id}`, { headers: { ...getAuthHeader() } });
     if (res.ok) {
       const row = await res.json();
-      freshEntry = {
-        ...entry,
-        id: row.request_id || entry.id,
-        method: row.request_method || entry.method,
-        url: row.request_url || entry.url,
-        statusCode: row.request_status_code || entry.statusCode,
+      freshEntry = { ...entry, id: row.request_id || entry.id, method: row.request_method || entry.method,
+        url: row.request_url || entry.url, statusCode: row.request_status_code || entry.statusCode,
         reqHeaders: safeJsonParse(row.request_headers) || entry.reqHeaders,
         reqBody: row.request_body || entry.reqBody,
         headers: safeJsonParse(row.response_headers) || entry.headers,
         body: row.response_body || entry.body,
         date: row.date || entry.date,
         isDoneByAI: row.is_done_by_ai === 1 || row.is_done_by_ai === true,
-        timestamp: row.date ? new Date(row.date).getTime() : entry.timestamp,
-      };
+        timestamp: row.date ? new Date(row.date).getTime() : entry.timestamp };
     }
-  } catch {
-    // Use cached entry
-  }
-
-  // Populate the request builder based on type
-  if (freshEntry.type === 'raw') {
-    // Now that the parser is operational, display in structured tab
-    dom.tabBtns.forEach(b => {
-      b.classList.toggle('active', b.dataset.tab === 'structured');
-    });
-    dom.tabPanels.forEach(p => {
-      p.classList.toggle('hidden', p.id !== 'tab-structured');
-      p.classList.toggle('active', p.id === 'tab-structured');
-    });
-
-    const rawParsed = parseRawHttp(freshEntry.rawRequest || '');
-    const method = freshEntry.method || rawParsed.method || 'GET';
-    const fullUrl = freshEntry.url || '';
-    const reqHeaders = freshEntry.reqHeaders || rawParsed.headers || {};
-    const reqBody = freshEntry.reqBody || rawParsed.body || '';
-
-    populateStructuredFromParsed(method, fullUrl, reqHeaders, reqBody);
-  } else {
-    // Switch to structured tab
-    dom.tabBtns.forEach(b => {
-      b.classList.toggle('active', b.dataset.tab === 'structured');
-    });
-    dom.tabPanels.forEach(p => {
-      p.classList.toggle('hidden', p.id !== 'tab-structured');
-      p.classList.toggle('active', p.id === 'tab-structured');
-    });
-    dom.reqMethod.value = freshEntry.method || 'GET';
-    dom.reqUrl.value = freshEntry.url || '';
-    dom.reqBody.value = freshEntry.reqBody || '';
-
-    // Populate query params
-    clearParams();
-    const reqParams = freshEntry.reqParams || [];
-    if (reqParams.length === 0) {
-      // Try to parse from URL
-      parseUrlToParams();
-      // If still empty, add an empty row
-      if (dom.paramsList.querySelectorAll('.param-row').length === 0) {
-        addParamRow('', '', true);
-      }
-    } else {
-      reqParams.forEach(p => addParamRow(p.key, p.value, p.enabled));
-    }
-
-    // Populate headers
-    clearHeaders();
-    const reqHeaders = freshEntry.reqHeaders || {};
-    const otherHeaders = Object.entries(reqHeaders).filter(([k]) => k.toLowerCase() !== 'content-type');
-    if (otherHeaders.length === 0) {
-      addHeaderRow('', '', true);
-    } else {
-      otherHeaders.forEach(([k, v]) => addHeaderRow(k, v, true));
-    }
-    syncContentTypeHeader();
-  }
-
-  // Display response
+  } catch {}
+  // Populate request builder
+  dom.tabBtns.forEach(b => { b.classList.toggle('active', b.dataset.tab === 'structured'); });
+  dom.tabPanels.forEach(p => { p.classList.toggle('hidden', p.id !== 'tab-structured'); p.classList.toggle('active', p.id === 'tab-structured'); });
+  dom.reqMethod.value = freshEntry.method || 'GET';
+  dom.reqUrl.value = freshEntry.url || '';
+  dom.reqBody.value = freshEntry.reqBody || '';
+  clearParams(); parseUrlToParams();
+  if (dom.paramsList.querySelectorAll('.param-row').length === 0) addParamRow('', '', true);
+  clearHeaders();
+  const rh = freshEntry.reqHeaders || {};
+  const other = Object.entries(rh).filter(([k]) => k.toLowerCase() !== 'content-type');
+  if (other.length === 0) addHeaderRow('', '', true);
+  else other.forEach(([k, v]) => addHeaderRow(k, v, true));
+  syncContentTypeHeader();
   displayResponse(freshEntry, 0);
-
-  // Update active state in sidebar
-  dom.historyList.querySelectorAll('.history-item').forEach(item => {
-    item.classList.toggle('active', item.dataset.id === entry.id);
-  });
 }
 
 // ─────────────────────────────────────────────
@@ -1433,6 +1584,13 @@ function toggleChat() {
     dom.chatPanel.classList.remove('flex');
   }
   updateChatContext();
+}
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+  const collapsed = sidebar.dataset.collapsed === 'true';
+  sidebar.dataset.collapsed = collapsed ? 'false' : 'true';
 }
 
 function clearChatHistory() {
@@ -1723,6 +1881,218 @@ function formatFileSize(bytes) {
 // ─────────────────────────────────────────────
 // KEYBOARD SHORTCUTS
 // ─────────────────────────────────────────────
+
+// ── JWT Parser (jwt.io style) ──
+function renderJWTParser(bodyText) {
+  const panel = document.getElementById("jwt-parser");
+  if (!panel) return;
+  bodyText = (bodyText||"").trim();
+  const jwtMatch = bodyText.match(/^(eyJ[A-Za-z0-9\-_]+?\.[A-Za-z0-9\-_]+?\.[A-Za-z0-9\-_]+)$/);
+  if (!jwtMatch && !bodyText.match(/^"?eyJ/)) { panel.classList.add("hidden"); return; }
+  const token = jwtMatch ? jwtMatch[1] : bodyText.replace(/^"|"$/g, "").trim();
+
+  if (!jwtMatch && bodyText.startsWith("{")) {
+    try {
+      const obj = JSON.parse(bodyText);
+      const tok = obj.access_token || obj.token || obj.id_token || obj.jwt;
+      if (tok && tok.match(/^eyJ/)) { renderJWTParser(tok); return; }
+    } catch {}
+    panel.classList.add("hidden"); return;
+  }
+
+  if (!token.match(/^[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+$/)) { panel.classList.add("hidden"); return; }
+
+  const parts = token.split(".");
+  const b64Decode = (s) => {
+    try {
+      s = s.replace(/-/g, "+").replace(/_/g, "/");
+      while (s.length % 4) s += "=";
+      return JSON.parse(atob(s));
+    } catch { return null; }
+  };
+  const header = b64Decode(parts[0]);
+  const payload = b64Decode(parts[1]);
+  if (!header || !payload) { panel.classList.add("hidden"); return; }
+
+  const alg = header.alg || "unknown";
+  const isSymmetric = alg && alg.startsWith("HS");
+  const escFn = (s) => { const d = document.createElement("div"); d.textContent = s||""; return d.innerHTML; };
+
+  panel.classList.remove("hidden");
+  panel.innerHTML = `<div class="p-4">
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-accent-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>
+        <span class="text-xs font-semibold text-accent-light">JWT Decoder</span>
+        <span class="text-[9px] text-gray-500 font-mono">alg: ${escFn(alg)}</span>
+      </div>
+      <button onclick="document.getElementById(\'jwt-parser\').classList.add(\'hidden\')" class="w-5 h-5 rounded hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><div class="text-[9px] uppercase text-gray-500 font-semibold mb-1">Header</div><pre class="text-[11px] text-pink-400 font-mono bg-base-900/60 p-3 rounded-lg overflow-x-auto max-h-32">${escFn(JSON.stringify(header,null,2))}</pre></div>
+      <div><div class="text-[9px] uppercase text-gray-500 font-semibold mb-1">Payload</div><pre class="text-[11px] text-purple-400 font-mono bg-base-900/60 p-3 rounded-lg overflow-x-auto max-h-48">${escFn(JSON.stringify(payload,null,2))}</pre></div>
+    </div>
+    ${isSymmetric ? `<div class="mt-3 flex gap-2 items-end"><div class="flex-1"><label class="text-[9px] uppercase text-gray-500 font-semibold mb-1 block">Cle secrete (${escFn(alg)})</label><input id="jwt-secret-key" type="text" class="input input-mono w-full" placeholder="votre-cle-secrete" oninput="verifyJWTSig()" /></div><div id="jwt-verify-result" class="text-[10px] font-mono pb-1.5"></div></div>` : ""}
+  </div>`;
+
+  if (isSymmetric) {
+    window._jwtToken = token;
+    window.verifyJWTSig = async function() {
+      const key = document.getElementById("jwt-secret-key")?.value;
+      const result = document.getElementById("jwt-verify-result");
+      if (!key) { result.innerHTML = ""; return; }
+      try {
+        const enc = new TextEncoder();
+        const keyData = await crypto.subtle.importKey("raw", enc.encode(key), {name:"HMAC", hash:"SHA-256"}, false, ["sign","verify"]);
+        const sigPart = window._jwtToken.split(".")[2];
+        const sigBytes = Uint8Array.from(atob(sigPart.replace(/-/g,"+").replace(/_/g,"/")), c=>c.charCodeAt(0));
+        const dataToSign = window._jwtToken.split(".").slice(0,2).join(".");
+        const valid = await crypto.subtle.verify("HMAC", keyData, sigBytes, enc.encode(dataToSign));
+        result.innerHTML = valid ? "<span class=\"text-green-400\">\u2713 Signature valide</span>" : "<span class=\"text-red-400\">\u2717 Signature invalide</span>";
+      } catch(e) { result.innerHTML = "<span class=\"text-gray-500\">Erreur de verification</span>"; }
+    };
+  }
+}
+
+
+
+// ── JWT Panel Toggle ──
+let jwtPanelOpen = false;
+function toggleJWTPanel(show) {
+  const panel = $('#jwt-panel');
+  if (!panel) return;
+  jwtPanelOpen = typeof show === 'boolean' ? show : !jwtPanelOpen;
+  panel.classList.toggle('hidden', !jwtPanelOpen);
+  panel.classList.toggle('flex', jwtPanelOpen);
+  if (jwtPanelOpen) {
+    $('#jwt-input').focus();
+  }
+}
+
+function setupJWTPanel() {
+  const btnToggle = $('#btn-toggle-jwt');
+  const btnClose = $('#btn-close-jwt');
+  const input = $('#jwt-input');
+  if (btnToggle) btnToggle.addEventListener('click', () => toggleJWTPanel());
+  if (btnClose) btnClose.addEventListener('click', () => toggleJWTPanel(false));
+  if (input) {
+    input.addEventListener('input', () => {
+      const token = input.value.trim();
+      const output = $('#jwt-output');
+      if (!output) return;
+      if (!token) { output.classList.add('hidden'); return; }
+      decodeJWT(token);
+    });
+  }
+}
+
+function decodeJWT(token) {
+  const output = $('#jwt-output');
+  const hdrEl = $('#jwt-header');
+  const payloadEl = $('#jwt-payload');
+  const sigEl = $('#jwt-signature');
+  const claimsEl = $('#jwt-claims');
+  const claimsContent = $('#jwt-claims-content');
+  if (!output) return;
+
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    output.classList.add('hidden');
+    return;
+  }
+
+  const b64Decode = (s) => {
+    try {
+      s = s.replace(/-/g, '+').replace(/_/g, '/');
+      while (s.length % 4) s += '=';
+      const decoded = atob(s);
+      try { return JSON.parse(decoded); }
+      catch { return decoded; }
+    } catch { return null; }
+  };
+
+  const header = b64Decode(parts[0]);
+  const payload = b64Decode(parts[1]);
+
+  if (!header || !payload) {
+    output.classList.add('hidden');
+    return;
+  }
+
+  output.classList.remove('hidden');
+  if (hdrEl) hdrEl.textContent = JSON.stringify(header, null, 2);
+  if (payloadEl) payloadEl.textContent = JSON.stringify(payload, null, 2);
+  if (sigEl) sigEl.textContent = parts[2].substring(0, 10) + '...';
+
+  // Claims table
+  const importantClaims = ['sub','iss','aud','exp','iat','nbf','jti','role','scope','permissions','email','name'];
+  const claims = [];
+  importantClaims.forEach(k => {
+    if (payload[k] !== undefined) {
+      let v = payload[k];
+      if (k === 'exp' || k === 'iat' || k === 'nbf') {
+        v = new Date(v * 1000).toISOString() + ' (' + (Date.now()/1000 > payload[k] ? 'expire' : 'valide') + ')';
+      }
+      claims.push(`${k}: ${v}`);
+    }
+  });
+  // Add any other claims not in the important list
+  Object.keys(payload).forEach(k => {
+    if (!importantClaims.includes(k)) claims.push(`${k}: ${payload[k]}`);
+  });
+
+  if (claimsEl && claimsContent) {
+    if (claims.length) {
+      claimsEl.classList.remove('hidden');
+      claimsContent.textContent = claims.join('\n');
+    } else {
+      claimsEl.classList.add('hidden');
+    }
+  }
+}
+
+// ── cURL Export ──
+function exportAsCurl() {
+  const display = document.getElementById("curl-display");
+  const pre = document.getElementById("curl-content");
+  if (!display || !pre) return;
+
+  // Toggle: if already visible, hide it
+  if (!display.classList.contains("hidden")) {
+    display.classList.add("hidden");
+    return;
+  }
+
+  const method = dom.reqMethod.value;
+  const url = dom.reqUrl.value.trim();
+  const headers = getHeaders();
+  const body = dom.reqBody.value.trim();
+
+  let curl = `curl -X ${method}`;
+  if (url) curl += ` "${url}"`;
+  Object.entries(headers).forEach(([k, v]) => {
+    curl += ` \\\n  -H "${k}: ${v.replace(/"/g, '\\"')}"`;
+  });
+  if (body) {
+    const escaped = body.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    curl += ` \\\n  -d "${escaped}"`;
+  }
+
+  pre.textContent = curl;
+  display.classList.remove("hidden");
+}
+
+// Hide curl display when clicking outside
+document.addEventListener('click', (e) => {
+  const display = document.getElementById("curl-display");
+  const btn = document.getElementById("btn-export-curl");
+  if (!display || display.classList.contains("hidden")) return;
+  if (!display.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+    display.classList.add("hidden");
+  }
+});
+
+
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
     // Ctrl+I → toggle chat

@@ -58,6 +58,73 @@ class UpdateRequestBody(BaseModel):
     body: str = None
 
 
+class CurlCompileBody(BaseModel):
+    curl: str
+    name: str = ""
+    folderId: str = None
+    team_id: str = ""
+
+
+def parse_curl(curl: str) -> dict:
+    """Parse a curl command into {method, url, headers, body}."""
+    import shlex
+    try:
+        args = shlex.split(curl)
+    except ValueError:
+        # Fallback: simple split by whitespace, respecting quotes
+        import re
+        args = re.findall(r'(?:"[^"]*"|\'[^\']*\'|\S+)', curl)
+        args = [a[1:-1] if (a[0]=='"' and a[-1]=='"') or (a[0]=="'" and a[-1]=="'") else a for a in args]
+
+    if not args or args[0] != 'curl':
+        raise HTTPException(400, "Not a curl command")
+
+    method = "GET"
+    url = ""
+    headers = {}
+    body = None
+
+    i = 1
+    while i < len(args):
+        a = args[i]
+        # Method
+        if a in ('-X', '--request'):
+            i += 1
+            if i < len(args): method = args[i].upper()
+        # Headers
+        elif a in ('-H', '--header'):
+            i += 1
+            if i < len(args):
+                hdr = args[i]
+                if ':' in hdr:
+                    k, v = hdr.split(':', 1)
+                    headers[k.strip()] = v.strip()
+        # Body
+        elif a in ('-d', '--data', '--data-raw', '--data-binary'):
+            i += 1
+            if i < len(args): body = args[i]
+            if method == "GET": method = "POST"
+        # URL — any argument not starting with - (skip flags we don't handle)
+        elif not a.startswith('-'):
+            url = a
+        # Skip unknown flags (--compressed, -k, -s, -v, -L, etc.)
+        elif a in ('-k', '--insecure', '-s', '--silent', '-v', '--verbose',
+                    '-L', '--location', '--compressed', '-i', '--include'):
+            pass
+        elif a.startswith('--'):
+            # Unknown long flag — skip its value if it's a flag with value
+            pass
+        elif a.startswith('-') and len(a) == 2:
+            # Single-letter flag — skip
+            pass
+        i += 1
+
+    if not url:
+        raise HTTPException(400, "No URL found in curl command")
+
+    return {"method": method, "url": url, "headers": headers, "body": body}
+
+
 def _verify_team_membership(team_id, user_id):
     """Raise 403 if user is not a member of the given team."""
     if not team_id:
@@ -144,6 +211,39 @@ def api_create_request(body: CreateRequestBody, request: Request):
     if saved_id:
         return JSONResponse({"saved_request_id": saved_id, "name": body.name}, status_code=201)
     raise HTTPException(status_code=500, detail="Failed to create saved request")
+
+
+@app.post("/compile-curl")
+def api_compile_curl(body: CurlCompileBody, request: Request):
+    """Parse a curl command and optionally save it as a saved request."""
+    token = request.state.token
+    parsed = parse_curl(body.curl)
+    if not body.name:
+        body.name = parsed["url"].rsplit("/", 1)[-1].split("?")[0] or "curl-import"
+    if body.team_id:
+        _verify_team_membership(body.team_id, token)
+    team_id = body.team_id
+    if not team_id and body.folderId:
+        try:
+            conn = sqlite3.connect("database.db")
+            row = conn.execute("SELECT team_id FROM folders WHERE folder_id=?", (body.folderId,)).fetchone()
+            conn.close()
+            if row and row[0]: team_id = row[0]
+        except: pass
+    saved_id = create_saved_request(
+        name=body.name,
+        author_user_id=token,
+        folder_id=body.folderId,
+        method=parsed["method"],
+        url=parsed["url"],
+        headers=parsed["headers"] if parsed["headers"] else None,
+        body=parsed["body"],
+        is_done_by_ai=False,
+        team_id=team_id,
+    )
+    if saved_id:
+        return JSONResponse({"saved_request_id": saved_id, "name": body.name, "parsed": parsed}, status_code=201)
+    raise HTTPException(status_code=500, detail="Failed to save request")
 
 
 @app.put("/request/{saved_request_id}")

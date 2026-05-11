@@ -17,7 +17,7 @@ def _validate_file(file : File):
     raise  HTTPException(status_code=400,detail="invalid file format !")
 
 @app.post("/openapi")
-async def upload(request : Request, file: UploadFile = File(...)):
+async def upload(request : Request, target_url: str="http://localhost:9000", file: UploadFile = File(...)):
     user_id = request.state.token
     file_type = _validate_file(file)
     try:
@@ -32,7 +32,7 @@ async def upload(request : Request, file: UploadFile = File(...)):
         # Route to OpenAPI parser
         if openapi_parser.validate_wrapper(content_as_dict):
             result = openapi_parser.import_to_db(
-                parsed=openapi_parser.parse_openapi(content=content_as_dict),
+                parsed=openapi_parser.parse_openapi(content=content_as_dict,server_url=target_url),
                 author_user_id=user_id,
             )
             return JSONResponse(status_code=201, content=result)

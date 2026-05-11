@@ -230,7 +230,7 @@ def parse_openapi(content: dict, server_url: str) -> dict:
 
 
 
-def import_to_db(parsed: dict, author_user_id: str) -> dict:
+def import_to_db(parsed: dict, author_user_id: str="http://localhost:9000") -> dict:
     
     from database import collection_mgmt
 
