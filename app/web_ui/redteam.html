@@ -456,6 +456,8 @@
     .modal-tab svg { flex-shrink: 0; }
     #pentest-sidebar[data-collapsed="true"] { width: 0 !important; min-width: 0 !important; padding: 0 !important; border: none !important; overflow: hidden !important; }
     #pentest-sidebar[data-collapsed="true"] > * { display: none !important; }
+    /* Expand check_name when sidebar is hidden */
+    #pentest-sidebar[data-collapsed="true"] ~ main .log-check-name { max-width: none !important; }
   </style>
 
   <script src="static/auth.js"></script>
