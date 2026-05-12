@@ -12,6 +12,8 @@
 
 **Red Team / Pentest** — Scannez vos APIs avec le moteur OWASP API Top 10. Scanner déterministe + IA deep scan en 2 phases (exploration flash, analyse pro). ID lists pour tests BOLA, collections pour fuzzing. Rapports Markdown professionnels avec annexe requêtes/réponses.
 
+**Blue Team / SSDLC** — Analyse security-by-design de vos specs OpenAPI. L'IA audite votre surface d'API et votre documentation pour produire un rapport d'exigences de sécurité couvrant authentification, autorisation, chiffrement, input validation, logging et durcissement infrastructure. Profils SSDLC multi-rounds avec master prompt et documentation personnalisables.
+
 **Raw requests** — Forgez vos requêtes HTTP from scratch. Testez les edge cases et le comportement de votre stack face à des requêtes malformées.
 
 **Collections collaboratives** — Vos équipes travaillent sur des collections partagées. Support multi-teams avec permissions et filtrage.
@@ -116,6 +118,8 @@ Open source. Pour toujours.
 
 **Red Team / Pentest** — Scan your APIs with the OWASP API Top 10 engine. Deterministic scanner + AI deep scan in 2 phases (flash exploration, pro analysis). ID lists for BOLA testing, collections for fuzzing. Professional Markdown reports with request/response appendix.
 
+**Blue Team / SSDLC** — Security-by-design analysis of your OpenAPI specs. The AI audits your API surface and documentation to produce a comprehensive security requirements report covering authentication, authorization, encryption, input validation, logging, and infrastructure hardening. Multi-round SSDLC profiles with customizable master prompts and documentation.
+
 **Raw requests** — Forge HTTP requests from scratch. Test edge cases and how your stack handles malformed input.
 
 **Collaborative collections** — Teams work on shared collections. Multi-team support with permissions and filtering.
@@ -216,9 +220,8 @@ Open source. Forever.
 
 ## TODO
 
-- dockerfile
 - parser pour raw HTTP
 - test bout en bout
-- connecteur pour DB externe
+- connecteur pour DB externe (MySQL)
 - stockage local des requêtes le temps du premier envoi
 - reload à l'envoi
