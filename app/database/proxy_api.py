@@ -1,17 +1,17 @@
 """Proxy CRUD + user favorite proxy selection."""
 
-import json, uuid, sqlite3
+import json, uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException
+from database.connection import get_connection
 
 app = APIRouter(prefix="/api/proxies", tags=["proxies"])
-DB = "database.db"
 
 def _now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 def _conn():
-    c = sqlite3.connect(DB); c.row_factory = sqlite3.Row; return c
+    return get_connection()
 
 def init():
     c = _conn()

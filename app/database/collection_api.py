@@ -5,7 +5,7 @@ from .collection_mgmt import (
     create_folder, delete_folder, get_collection_tree,
     create_saved_request, update_saved_request, delete_saved_request
 )
-import sqlite3
+from database.connection import get_connection
 
 app = APIRouter(prefix="/api/collections")
 
@@ -13,7 +13,7 @@ def _get_user(r: Request): return getattr(r.state, "token", "anonymous")
 
 def _get_followed_team_ids(user_id: str) -> list:
     try:
-        conn = sqlite3.connect("database.db")
+        conn = get_connection()
         rows = conn.execute("SELECT team_id FROM user_followed_teams WHERE user_id=?", (user_id,)).fetchall()
         conn.close()
         return [r[0] for r in rows]
@@ -129,8 +129,7 @@ def _verify_team_membership(team_id, user_id):
     """Raise 403 if user is not a member of the given team."""
     if not team_id:
         return
-    import sqlite3
-    conn = sqlite3.connect("database.db")
+    conn = get_connection()
     row = conn.execute(
         "SELECT 1 FROM team_users WHERE team_id=? AND user_id=?",
         (team_id, user_id),
@@ -191,8 +190,7 @@ def api_create_request(body: CreateRequestBody, request: Request):
     team_id = body.team_id
     if not team_id and body.folderId:
         try:
-            import sqlite3
-            conn = sqlite3.connect("database.db")
+            conn = get_connection()
             row = conn.execute("SELECT team_id FROM folders WHERE folder_id=?", (body.folderId,)).fetchone()
             conn.close()
             if row and row[0]: team_id = row[0]
@@ -225,7 +223,7 @@ def api_compile_curl(body: CurlCompileBody, request: Request):
     team_id = body.team_id
     if not team_id and body.folderId:
         try:
-            conn = sqlite3.connect("database.db")
+            conn = get_connection()
             row = conn.execute("SELECT team_id FROM folders WHERE folder_id=?", (body.folderId,)).fetchone()
             conn.close()
             if row and row[0]: team_id = row[0]

@@ -3,16 +3,16 @@ Team management + User Hub API.
 Decentralized governance: any user can create teams, join requests require 80% approval.
 """
 
-import json, uuid, math, sqlite3
+import json, uuid, math
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException
+from database.connection import get_connection
 
 app = APIRouter(prefix="/api", tags=["teams"])
-DB = "database.db"
 
 def _now(): return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 def _conn():
-    c = sqlite3.connect(DB); c.row_factory = sqlite3.Row; c.execute("PRAGMA foreign_keys=ON"); return c
+    return get_connection()
 def _uid(r: Request): return getattr(r.state, "token", "anonymous")
 
 def init_teams():

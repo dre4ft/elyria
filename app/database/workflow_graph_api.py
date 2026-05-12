@@ -53,8 +53,8 @@ def _verify_team_membership(team_id, user_id):
     if not team_id:
         return
     try:
-        import sqlite3
-        conn = sqlite3.connect("database.db")
+        from database.connection import get_connection
+        conn = get_connection()
         row = conn.execute(
             "SELECT 1 FROM team_users WHERE team_id=? AND user_id=?",
             (team_id, user_id),
