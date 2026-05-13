@@ -92,6 +92,8 @@ CREATE TABLE IF NOT EXISTS saved_requests (
     body_is_json BOOLEAN,
     is_done_by_ai BOOLEAN NOT NULL DEFAULT 0,
     author_user_id TEXT NOT NULL,
+    team_id TEXT DEFAULT '',
+    payload_encrypted TEXT DEFAULT '',
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL
 )
@@ -103,6 +105,17 @@ def connect():
     if not _IS_INIT:
         init_db()
     return get_connection()
+
+
+def _migrate_crypto_columns(cursor, conn):
+    """Add payload_encrypted column to tables that need encryption."""
+    for tbl in ("saved_requests", "workflow_graphs"):
+        existing = {row[1] for row in cursor.execute(f"PRAGMA table_info({tbl})").fetchall()}
+        if "payload_encrypted" not in existing:
+            cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN payload_encrypted TEXT DEFAULT ''")
+        if "team_id" not in existing:
+            cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN team_id TEXT DEFAULT ''")
+    conn.commit()
 
 
 def _migrate_oidc_columns(cursor, conn):
@@ -142,5 +155,6 @@ def init_db():
         conn.commit()
         # ── Migrations: add columns that didn't exist in older schemas ──
         _migrate_oidc_columns(c, conn)
+        _migrate_crypto_columns(c, conn)
         conn.close()
         _IS_INIT = True

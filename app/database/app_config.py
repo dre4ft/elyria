@@ -52,7 +52,7 @@ _DEFAULTS = {
     "app.port":       "8000",
     "catcher.port":               "6767",
     "catcher.intercept_enabled":  "0",
-    "proxy.xor_key":  "elyria-proxy-k",
+    "proxy.xor_key":  "",  # generated randomly at first boot if left empty
     "ssl.cert_path":  "cert.pem",
     "ssl.key_path":   "key.pem",
     "db.backend":     "sqlite",
@@ -99,6 +99,12 @@ def _seed_defaults():
         )
     # Ensure oidc.enabled exists (but don't force-enable it)
     c.execute("INSERT OR IGNORE INTO app_config (key,value) VALUES('oidc.enabled','0')")
+    # Generate a random proxy XOR key if still empty / default
+    row = c.execute("SELECT value FROM app_config WHERE key='proxy.xor_key'").fetchone()
+    if not row or not row["value"] or row["value"] == "elyria-proxy-k":
+        import secrets
+        c.execute("INSERT OR REPLACE INTO app_config (key,value) VALUES('proxy.xor_key',?)",
+                  (secrets.token_hex(32),))
     for cat, hosts in _DEFAULT_FQDN.items():
         for h in hosts:
             c.execute("INSERT OR IGNORE INTO app_fqdn_whitelist (category,pattern) VALUES(?,?)", (cat, h))

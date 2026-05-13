@@ -112,6 +112,23 @@ def get_request_by_id(saved_request_id: str):
         if conn:
             conn.close()
 
+def _seal_saved_payload(method: str, url: str, headers_str, body_str, team_id: str) -> str:
+    """Encrypt sensitive columns into a payload_encrypted blob."""
+    from database.crypto_store import crypto_seal
+    payload = {"method": method, "url": url}
+    if headers_str: payload["headers"] = headers_str
+    if body_str: payload["body"] = body_str
+    return crypto_seal(payload, team_id)
+
+
+def _open_saved_payload(encrypted: str, team_id: str) -> dict:
+    """Decrypt payload_encrypted back into column values."""
+    from database.crypto_store import crypto_open
+    if not encrypted:
+        return {}
+    return crypto_open(encrypted, team_id)
+
+
 def create_saved_request(name: str, author_user_id: str, folder_id: str = None,
                          method: str = "GET", url: str = "",
                          headers: dict = None, body: str = None,
@@ -128,12 +145,18 @@ def create_saved_request(name: str, author_user_id: str, folder_id: str = None,
         if body:
             body_str, body_is_json = json_helper.serialize_body(body)
 
+        # Encrypt sensitive columns
+        tid = team_id or ""
+        payload_enc = _seal_saved_payload(method.upper(), url, headers_str, body_str, tid)
+
         now = datetime.now()
         cursor.execute(
             """INSERT INTO saved_requests
-               (saved_request_id, name, folder_id, method, url, headers, body, body_is_json, is_done_by_ai, author_user_id, team_id, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (saved_id, name, folder_id, method.upper(), url, headers_str, body_str, body_is_json, is_done_by_ai, author_user_id, team_id or "", now, now)
+               (saved_request_id, name, folder_id, method, url, headers, body, body_is_json,
+                is_done_by_ai, author_user_id, team_id, payload_encrypted, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (saved_id, name, folder_id, method.upper(), url, headers_str, body_str, body_is_json,
+             is_done_by_ai, author_user_id, tid, payload_enc, now, now)
         )
         conn.commit()
         return saved_id
@@ -154,7 +177,19 @@ def get_saved_requests_by_user(author_user_id: str):
             "SELECT * FROM saved_requests WHERE author_user_id=? ORDER BY created_at ASC",
             (author_user_id,)
         )
-        return [dict(row) for row in cursor.fetchall()]
+        rows = []
+        for row in cursor.fetchall():
+            d = dict(row)
+            # Decrypt payload if present
+            if d.get("payload_encrypted"):
+                tid = d.get("team_id", "")
+                opened = _open_saved_payload(d["payload_encrypted"], tid)
+                if opened.get("method"): d["method"] = opened["method"]
+                if opened.get("url"): d["url"] = opened["url"]
+                if opened.get("headers"): d["headers"] = opened["headers"]
+                if opened.get("body"): d["body"] = opened["body"]
+            rows.append(d)
+        return rows
     except Exception as e:
         print("get_saved_requests_by_user error:", e)
         return []
@@ -184,6 +219,21 @@ def update_saved_request(saved_request_id: str, author_user_id: str, **kwargs):
 
         if not updates:
             return False
+
+        # Re-encrypt payload if any sensitive field changed
+        sensitive = {"method", "url", "headers", "body"}
+        if sensitive & set(updates.keys()):
+            row = cursor.execute(
+                "SELECT method, url, headers, body, team_id FROM saved_requests WHERE saved_request_id=?",
+                (saved_request_id,)
+            ).fetchone()
+            if row:
+                tid = row["team_id"] or ""
+                m = updates.get("method", row["method"])
+                u = updates.get("url", row["url"])
+                h = updates.get("headers", row["headers"])
+                b = updates.get("body", row["body"])
+                updates["payload_encrypted"] = _seal_saved_payload(m, u, h, b, tid)
 
         updates["updated_at"] = datetime.now()
         set_clause = ", ".join(f"{k}=?" for k in updates.keys())

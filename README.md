@@ -1,340 +1,120 @@
 # Elyria
 
-**Le client HTTP conçu pour le test d'API — du test unitaire au pentest.**
+**Client HTTP pour le test d'API — du test fonctionnel au pentest.**
 
 ---
 
-## 🇫🇷 Pourquoi Elyria
+## Fonctionnalités
 
-**Workflows de requêtes** — La feature qui change la donne. Simulez des parcours client bout en bout, testez des vulnérabilités (identifiants prédictibles, BOLA) et automatisez des flux d'autorisation complexes. Là où les autres outils s'arrêtent à la requête, Elyria orchestre des scénarios.
+**Workflows** — Orchestrateur de requêtes avec moteur d'exécution local. Blocs Start, HTTP Request, Set Data, If/Else, For Loop, Assert, Delay. Sous-workflows, expressions `{{ctx.*}}`, exécution pas à pas. Import Arazzo → workflow exécutable.
 
-**IA Copilot intégré** — Un agent IA qui crée vos collections à partir d'une simple description, exécute vos tests et analyse les résultats. Pas de configuration, pas d'add-on.
+**Red Team** — Scanner OWASP API Top 10 en 2 phases (déterministe + IA deep scan). Fuzzing paramètres, tests BOLA, analyse JWT, diff de réponses. Rapports Markdown avec annexe requêtes/réponses.
 
-**Red Team / Pentest** — Scannez vos APIs avec le moteur OWASP API Top 10. Scanner déterministe + IA deep scan en 2 phases (exploration flash, analyse pro). ID lists pour tests BOLA, collections pour fuzzing. Rapports Markdown professionnels avec annexe requêtes/réponses.
+**Blue Team** — Analyse security-by-design de specs OpenAPI. L'IA audite auth, chiffrement, input validation, logging. Rapports SSDLC multi-rounds personnalisables.
 
-**Blue Team / SSDLC** — Analyse security-by-design de vos specs OpenAPI. L'IA audite votre surface d'API et votre documentation pour produire un rapport d'exigences de sécurité couvrant authentification, autorisation, chiffrement, input validation, logging et durcissement infrastructure. Profils SSDLC multi-rounds avec master prompt et documentation personnalisables.
+**IA Copilot** — Agent IA intégré (OpenAI, Anthropic, Ollama, LM Studio, DeepSeek). Création de collections, exécution de tests, analyse de résultats. Function calling natif.
 
-**Catcher** — Proxy intercepteur façon Burp Suite. Activez l'interception, envoyez vos requêtes via le proxy : elles sont mises en file d'attente pour inspection. Forward, Drop, ou Load dans le builder API. Historique complet avec réponses.
+**Catcher** — Proxy intercepteur HTTP. Forward, Drop, Load dans le builder. Historique avec réponses. Polling variable (500ms–10s).
 
-**Raw requests** — Forgez vos requêtes HTTP from scratch. Testez les edge cases et le comportement de votre stack face à des requêtes malformées.
+**Collections** — Arborescence dossiers/requêtes. Multi-teams avec permissions. Import OpenAPI, Postman. Export curl.
 
-**Collections collaboratives** — Vos équipes travaillent sur des collections partagées. Support multi-teams avec permissions et filtrage.
+**Éditeur JSON** — Auto-pairing `{}[]""`, validation en temps réel, formatage (Ctrl+Shift+F) sur tous les champs JSON.
+
+**Auth** — Login/password (SHA-512 → SHA3-512 + sel, JWT HS512 éphémère). Connecteur OIDC modulaire (Google, Azure, Keycloak…) avec découverte automatique et provisioning JIT.
+
+---
 
 ## Déploiement
-
-### Méthode 1 — Git clone + Uvicorn (recommandé pour le dev)
 
 ```bash
 git clone https://github.com/dreaft/elyria.git
 cd elyria
 pip install -r requirements.txt
-cd app
-python entrypoint.py
+cd app && python entrypoint.py
 ```
 
-L'application démarre sur `https://127.0.0.1:8000`. Le hot-reload est activé — les modifications Python sont prises en compte sans redémarrage.
+Démarre sur `https://127.0.0.1:8000`. Hot-reload activé.
 
-**Prérequis** : Python 3.12+, pip.
+**Docker** : `docker compose up --build` → `http://localhost:8000`. Volume `./data` pour la persistence.
 
-**Configuration** : tout se fait dans l'interface, en base de données. Aucun fichier `.env` requis.
+**Prérequis** : Python 3.12+.
 
-Lancez l'appli, allez dans **Hub > Admin Config** (ou interrogez l'API `GET /api/admin/config`) :
+---
+
+## Configuration
+
+Tout en base de données — pas de `.env`. Interface **Hub > Admin Config** ou API :
 
 ```json
 {
   "settings": {
-    "app.host": "127.0.0.1",
-    "app.port": "8000",
-    "catcher.port": "6767",
-    "ssl.cert_path": "cert.pem",
-    "ssl.key_path": "key.pem",
-    "db.backend": "sqlite",
-    "db.sqlite.path": "database.db",
-    "db.pg.host": "localhost",
-    "db.pg.port": "5432",
-    "db.pg.database": "elyria",
-    "db.pg.user": "elyria",
-    "db.pg.password": "elyria",
-    "proxy.xor_key": "elyria-proxy-k"
+    "app.host": "127.0.0.1",     "app.port": "8000",
+    "catcher.port": "6767",       "proxy.xor_key": "elyria-proxy-k",
+    "db.backend": "sqlite",       "db.sqlite.path": "database.db"
   },
   "fqdn_whitelist": [
     {"category": "fetch", "pattern": "localhost"},
-    {"category": "fetch", "pattern": "*.example.com"},
     {"category": "proxy", "pattern": "localhost"},
     {"category": "llm",   "pattern": "api.openai.com"}
   ],
   "provider_toggles": [
-    {"provider_type": "openai",    "enabled": 1},
-    {"provider_type": "ollama",    "enabled": 1},
-    {"provider_type": "lmstudio",  "enabled": 1},
-    {"provider_type": "anthropic", "enabled": 1},
-    {"provider_type": "deepseek",  "enabled": 1}
+    {"provider_type": "openai", "enabled": 1},
+    {"provider_type": "ollama", "enabled": 1}
   ],
-  "api_keys": [
-    {"key_name": "openai_api_key", "key_value": "***"}
-  ]
+  "api_keys": [{"key_name": "openai_api_key", "key_value": "***"}]
 }
 ```
 
-**Modification** : `PUT /api/admin/config/settings/app.port` avec `{"value": "8443"}`, ou utilisez l'UI Hub.
-
-**FQDN whitelist** : contrôle quels hosts sont autorisés pour les requêtes serveur (fetch), les proxies, et les providers LLM. Supporte les wildcards `*.domaine.com`.
-
-**Provider toggles** : activez/désactivez des types de providers sans supprimer leur configuration.
-
-**Clés API** : stockées chiffrées en base. Plus besoin de `.env`.
-
-### Méthode 2 — Docker
-
-```bash
-git clone https://github.com/dreaft/elyria.git
-cd elyria
-docker compose up --build
-```
-
-L'application est accessible sur `http://localhost:8000`.
-
-**Persistance des données** : la base SQLite et les fichiers sont stockés dans un volume Docker monté sur `./data` (le dossier `data/` à la racine du projet). Ce dossier survit aux `docker compose down` et aux rebuilds de l'image. Pour une sauvegarde :
-
-```bash
-cp -r data/ data-backup-$(date +%Y%m%d)/
-```
-
-Pour réinitialiser complètement les données :
-
-```bash
-docker compose down
-rm -rf data/
-docker compose up --build
-```
-
-**Connexion aux APIs locales (Ollama / LM Studio)** : dans le Hub > AI Agent, utilisez `http://host.docker.internal:11434` pour Ollama et `http://host.docker.internal:1234/v1` pour LM Studio. `host.docker.internal` résout vers l'IP de la machine hôte depuis le conteneur.
-
-### Léger et rapide — taillé pour le local-first
-
-- **SQLite** embarqué — zéro infra, un fichier
-- **Tout en Python** — `pip install` et c'est parti
-- **Moins de 100 Mo** de mémoire au repos
-- **Hot-reload** des templates et du code en développement
-
-Tourne sur un **MacBook M5 Pro 24 Go** avec des modèles locaux type **OpenAI/GPT-OSS-20B** via LM Studio sans aucun problème. L'inférence locale couvre à la fois les phases de scan (flash + pro) et l'assistant IA.
-
-Testé également avec un **Raspberry Pi 4 (carte SD 64 Go)** servant l'application et utilisant les API standars des provider d'AI 
-
-## Providers IA supportés
-
-| Local | Remote |
-|-------|--------|
-| Ollama | Anthropic |
-| LM Studio | OpenAI |
-| **Multi-provider** | OpenAI API |
-
-**Configuration multi-provider** — Hub > AI Agent. Définissez indépendamment vos modèles Flash (exploration rapide) et Pro (analyse profonde). Chaque slot peut utiliser un provider différent (ex: Flash sur Ollama local, Pro sur OpenAI API cloud). Support complet du function calling et du mode texte pour les modèles sans support natif des tools.
-
-## Base de données
-
-SQLite par défaut (zero-config). PostgreSQL supporté — configurez `db.backend=postgres` et les paramètres `db.pg.*` dans la config admin.
-
-## Authentification
-
-### Connexion classique
-Login/mot de passe avec hachage SHA-512 côté client et SHA3-512 côté serveur. Tokens JWT HS512 éphémères (durée 1h).
-
-### SSO / OIDC
-Connecteur OIDC modulaire intégré. Compatible avec tout fournisseur standard (Google, Azure AD, Keycloak, Authentik, Dex…).
-
-**Activation** — Hub > Admin Config (ou API) :
+### SSO OIDC
 
 ```json
 {
   "oidc.enabled": "1",
-  "oidc.provider_name": "google",
   "oidc.issuer": "https://accounts.google.com",
-  "oidc.client_id": "123456789-xxx.apps.googleusercontent.com",
-  "oidc.client_secret": "GOCSPX-xxx",
-  "oidc.scope": "openid profile email",
+  "oidc.client_id": "…",
+  "oidc.client_secret": "…",
   "oidc.button_label": "Google"
 }
 ```
 
-La découverte OIDC est automatique via `/.well-known/openid-configuration`. Les utilisateurs sont créés à la première connexion (just-in-time provisioning). Le token OIDC est converti en JWT HS512 éphémère — aucune modification du reste de l'app.
-
-**Test local** — un micro fournisseur OIDC est fourni pour les tests :
-
-```bash
-python tools/oidc_test_provider.py  # → http://localhost:9001
-```
-
-Puis activez `oidc.enabled` à `"1"`. Un bouton "Test SSO" apparaît sur la page de login. Utilisateur de test : `alice` / `password123`.
-
-## Interopérabilité
-
-Importez vos specs et collections existantes. Pas de lock-in.
-
-- Specifications OpenAI → collections Elyria
-- Specifications Arazzo → workflows de test
-- Import Postman, Bruno, captures réseau
-
-## SaaS (Bientôt)
-
-Une offre hébergée en France arrive bientôt. Zéro déploiement, zéro maintenance.
-
-Open source. Pour toujours.
+Test local : `python tools/oidc_test_provider.py` → user `alice` / `password123`.
 
 ---
 
-## 🇬🇧 Why Elyria
+## Architecture
 
-**Request workflows** — The game changer. Simulate end-to-end user journeys, test for vulnerabilities (predictable identifiers, BOLA), and automate complex authorization flows. Where other tools stop at the request, Elyria orchestrates scenarios.
+- **SQLite** embarqué (PostgreSQL supporté)
+- **Python** pur — moins de 100 Mo RAM au repos
+- **JWT HS512** éphémères (clés en DB, durée 1h, rotation par session)
+- **Static files** servis par FastAPI/Starlette
 
-**Built-in AI Copilot** — An AI agent that creates collections from a description, runs your tests, and analyzes results. No setup, no add-on.
+---
 
-**Red Team / Pentest** — Scan your APIs with the OWASP API Top 10 engine. Deterministic scanner + AI deep scan in 2 phases (flash exploration, pro analysis). ID lists for BOLA testing, collections for fuzzing. Professional Markdown reports with request/response appendix.
-
-**Blue Team / SSDLC** — Security-by-design analysis of your OpenAPI specs. The AI audits your API surface and documentation to produce a comprehensive security requirements report covering authentication, authorization, encryption, input validation, logging, and infrastructure hardening. Multi-round SSDLC profiles with customizable master prompts and documentation.
-
-**Catcher** — Burp Suite-style proxy interceptor. Enable interception, route requests through the proxy: they get queued for inspection. Forward, Drop, or Load into the API builder. Full history with responses.
-
-**Raw requests** — Forge HTTP requests from scratch. Test edge cases and how your stack handles malformed input.
-
-**Collaborative collections** — Teams work on shared collections. Multi-team support with permissions and filtering.
-
-## Deployment
-
-### Method 1 — Git clone + Uvicorn (recommended for dev)
-
-```bash
-git clone https://github.com/dreaft/elyria.git
-cd elyria
-pip install -r requirements.txt
-cd app
-python entrypoint.py
-```
-
-The app starts on `https://127.0.0.1:8000`. Hot-reload is enabled — Python changes are picked up without restart.
-
-**Requirements**: Python 3.12+, pip.
-
-**Configuration**: everything is managed through the UI, stored in the database. No `.env` file needed.
-
-Start the app, go to **Hub > Admin Config** (or query the API `GET /api/admin/config`):
-
-```json
-{
-  "settings": {
-    "app.host": "127.0.0.1",
-    "app.port": "8000",
-    "catcher.port": "6767",
-    "ssl.cert_path": "cert.pem",
-    "ssl.key_path": "key.pem",
-    "db.backend": "sqlite",
-    "db.sqlite.path": "database.db",
-    "db.pg.host": "localhost",
-    "db.pg.port": "5432",
-    "db.pg.database": "elyria",
-    "db.pg.user": "elyria",
-    "db.pg.password": "elyria",
-    "proxy.xor_key": "elyria-proxy-k"
-  },
-  "fqdn_whitelist": [
-    {"category": "fetch", "pattern": "localhost"},
-    {"category": "fetch", "pattern": "*.example.com"},
-    {"category": "proxy", "pattern": "localhost"},
-    {"category": "llm",   "pattern": "api.openai.com"}
-  ],
-  "provider_toggles": [
-    {"provider_type": "openai",    "enabled": 1},
-    {"provider_type": "ollama",    "enabled": 1},
-    {"provider_type": "lmstudio",  "enabled": 1},
-    {"provider_type": "anthropic", "enabled": 1},
-    {"provider_type": "deepseek",  "enabled": 1}
-  ],
-  "api_keys": [
-    {"key_name": "openai_api_key", "key_value": "***"}
-  ]
-}
-```
-
-**Modify**: `PUT /api/admin/config/settings/app.port` with `{"value": "8443"}`, or use the Hub UI.
-
-**FQDN whitelist**: controls which hosts are allowed for server-side requests (fetch), proxy targets, and LLM providers. Supports `*.domain.com` wildcards.
-
-**Provider toggles**: enable/disable provider types without deleting their configuration.
-
-**API keys**: stored in the database. No `.env` required.
-
-### Method 2 — Docker
-
-```bash
-git clone https://github.com/dreaft/elyria.git
-cd elyria
-docker compose up --build
-```
-
-The app is available at `http://localhost:8000`.
-
-**Data persistence**: the SQLite database and all files are stored in a Docker volume mounted at `./data` (the `data/` folder at the project root). This folder survives `docker compose down` and image rebuilds. To back up:
-
-```bash
-cp -r data/ data-backup-$(date +%Y%m%d)/
-```
-
-To fully reset all data:
-
-```bash
-docker compose down
-rm -rf data/
-docker compose up --build
-```
-
-**Connecting to local APIs (Ollama / LM Studio)**: in Hub > AI Agent, use `http://host.docker.internal:11434` for Ollama and `http://host.docker.internal:1234/v1` for LM Studio. `host.docker.internal` resolves to the host machine's IP from inside the container.
-
-### Lightweight & fast — built for local-first
-
-Elyria is designed to start **instantly** on any machine. No containers, no orchestrators, no heavy stack.
-
-- **SQLite** embedded — zero infra, a single file
-- **Pure Python** — `pip install` and you're running
-- **Under 100 MB** memory at idle
-- **Hot-reload** for templates and code in development
-
-Runs smoothly on an **M5 Pro MacBook with 24 GB RAM** using local models like **OpenAI/GPT-OSS-20B** via LM Studio. Local inference covers both scan phases (flash + pro) and the AI assistant — no external GPU required.
-
-Also tested with a **Raspberry Pi 4 (64 GB SD card)** hosting the server and calling regular AI provider api 
-
-## Supported AI providers
+## Providers IA
 
 | Local | Remote |
 |-------|--------|
-| Ollama | Anthropic |
-| LM Studio | OpenAI |
-| **Multi-provider** | OpenAI API |
+| Ollama | OpenAI |
+| LM Studio | Anthropic |
+| | DeepSeek |
 
-**Multi-provider configuration** — Hub > AI Agent. Independently define your Flash (fast exploration) and Pro (deep analysis) models. Each slot can use a different provider (e.g., Flash on local Ollama, Pro on OpenAI API cloud). Full function calling and text mode support for models without native tool support.
-
-## Database
-
-SQLite by default (zero-config). PostgreSQL supported — set `db.backend=postgres` and `db.pg.*` parameters in the admin config.
-
-## Interoperability
-
-Import your existing specs and collections. No lock-in.
-
-- OpenAI specs → Elyria collections
-- Arazzo specs → test workflows
-- Import Postman, Bruno, network captures
-
-## SaaS (coming Soon)
-
-A France-hosted offering is coming soon. Zero deployment, zero maintenance.
-
-Open source. Forever.
+Multi-provider : chaque slot (Flash/Pro) peut utiliser un provider différent.
 
 ---
 
-## TODO
+## Mon setup perso
 
-- test bout en bout
-- connecteur pour DB externe (MySQL)
-- stockage local des requêtes le temps du premier envoi
-- reload à l'envoi
+Elyria tourne sur un **Raspberry Pi 4 (carte SD 64 Go)** derrière ma box.
+
+- **LLM rapide / tests** → provider externe (OpenAI, Anthropic, DeepSeek)
+- **LLM local / hors-ligne** → **GPT-OSS-20B** via LM Studio sur mon poste principal — le Pi appelle `http://<ip-du-poste>:1234/v1`
+
+Le Pi gère le serveur, la DB, le proxy Catcher, et les workflows. L'inférence locale reste sur la machine principale qui a le GPU. Zero lag en usage solo.
+
+---
+
+## Interopérabilité
+
+- **OpenAPI** → collections
+- **Arazzo** → workflows
+- **Postman, Bruno** → import
