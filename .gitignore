@@ -28,4 +28,15 @@ build/
 *.claude/
 *test.*
 *.pem
+*.key
+*.crt
 weakapi/
+strike/
+# Données locales
+data/
+*.db
+# Fichiers de config avec secrets
+.env
+.env.*
+# Logs
+*.log

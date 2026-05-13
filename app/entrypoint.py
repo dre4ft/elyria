@@ -184,19 +184,20 @@ app.include_router(oidc_router)
 
 
 if __name__ == "__main__":
+    import os
     import uvicorn
     from database.app_config import get
 
     cert = get("ssl.cert_path")
     key = get("ssl.key_path")
     ssl_kwargs = {}
-    if cert and key:
+    if cert and key and os.path.isfile(cert) and os.path.isfile(key):
         ssl_kwargs = {"ssl_certfile": cert, "ssl_keyfile": key}
 
     uvicorn.run(
         "entrypoint:app",
         host=get("app.host", "127.0.0.1"),
         port=int(get("app.port", "8000")),
-        reload=True,
+        reload=os.getenv("ELYRIA_RELOAD", "").lower() in ("1", "true", "yes"),
         **ssl_kwargs,
     )

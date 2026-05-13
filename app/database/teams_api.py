@@ -28,6 +28,9 @@ def init_teams():
         CREATE TABLE IF NOT EXISTS user_followed_teams (user_id TEXT NOT NULL, team_id TEXT NOT NULL,
             PRIMARY KEY(user_id, team_id));
     """)
+    # Migration: add encrypted_team_key to teams
+    try: c.execute("ALTER TABLE teams ADD COLUMN encrypted_team_key TEXT NOT NULL DEFAULT ''")
+    except: pass
     # Migrations for team integration
     for tbl, col in [("folders", "team_id"), ("saved_requests", "team_id"), ("workflow_graphs", "team_id"), ("pentest_scan_profiles", "team_ids")]:
         try: c.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} TEXT DEFAULT ''")
@@ -74,8 +77,13 @@ async def create_team(request: Request):
     if not name: raise HTTPException(400, "name required")
     uid = get_auth_user(request)
     tid = str(uuid.uuid4())
+    # Generate and encrypt a team key
+    from database.crypto import generate_team_key, encrypt_team_key
+    team_key = generate_team_key()
+    encrypted_key = encrypt_team_key(team_key)
     c = _conn()
-    c.execute("INSERT INTO teams (team_id,name,creator_user_id,created_at) VALUES(?,?,?,?)", (tid, name, uid, _now()))
+    c.execute("INSERT INTO teams (team_id,name,creator_user_id,created_at,encrypted_team_key) VALUES(?,?,?,?,?)",
+              (tid, name, uid, _now(), encrypted_key))
     c.execute("INSERT INTO team_users (team_id,user_id) VALUES(?,?)", (tid, uid))
     c.execute("INSERT OR IGNORE INTO user_followed_teams (user_id,team_id) VALUES(?,?)", (uid, tid))
     c.commit(); c.close()
