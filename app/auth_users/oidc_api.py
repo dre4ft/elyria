@@ -135,6 +135,7 @@ def oidc_callback(request: Request, code: str = "", state: str = "", error: str 
     if not oidc or not code or not state:
         return RedirectResponse("/login?error=invalid_request")
 
+    _cleanup_sessions()
     session_data = _sessions.pop(state, None)
     if not session_data:
         return RedirectResponse("/login?error=invalid_state")
@@ -143,20 +144,26 @@ def oidc_callback(request: Request, code: str = "", state: str = "", error: str 
         meta = _discover(oidc["issuer"])
         redirect_uri = _redirect_uri(request)
 
-        session = OAuth2Session(
-            oidc["client_id"],
-            oidc["client_secret"],
-            scope=oidc["scope"],
-            redirect_uri=redirect_uri,
-        )
-        token = session.fetch_token(
+        # Exchange code for tokens — use raw POST to avoid authlib state mismatch
+        import requests as http_requests
+        token_resp = http_requests.post(
             meta["token_endpoint"],
-            authorization_response=str(request.url),
-            code=code,
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": oidc["client_id"],
+                "client_secret": oidc["client_secret"],
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Accept": "application/json"},
+            timeout=10,
         )
+        if token_resp.status_code != 200:
+            print(f"[oidc] token endpoint error: {token_resp.status_code} {token_resp.text[:200]}")
+            return RedirectResponse("/login?error=token_exchange_failed")
+        token = token_resp.json()
 
         # Validate id_token — fetch JWKS from provider
-        import requests as http_requests
         jwks_uri = meta.get("jwks_uri")
         if jwks_uri:
             jwks_client = jwt.PyJWKClient(jwks_uri, cache_keys=True)

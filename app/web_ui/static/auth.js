@@ -192,10 +192,11 @@ function initOidc() {
     .catch(function () { /* OIDC not available, hide button */ });
 }
 
-// Call on login pages
-var _isLoginPage = window.location.pathname.endsWith('/login') || window.location.pathname.endsWith('/login.html');
-if (_isLoginPage) {
+// initOidc handles both: SSO button on /login, and #token=xxx on /app callback
+if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initOidc);
+} else {
+  initOidc();
 }
 
 initAuth();

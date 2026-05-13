@@ -63,13 +63,15 @@ _DEFAULTS = {
     "db.pg.user":     "elyria",
     "db.pg.password": "elyria",
     # ── OIDC / SSO ──
-    "oidc.enabled":           "0",
-    "oidc.provider_name":     "",
-    "oidc.issuer":            "",
-    "oidc.client_id":         "",
-    "oidc.client_secret":     "",
+    # Pour tester : lancer `python tools/oidc_test_provider.py` puis passer
+    # oidc.enabled à "1"
+    "oidc.enabled":           "1",
+    "oidc.provider_name":     "test",
+    "oidc.issuer":            "http://localhost:9001",
+    "oidc.client_id":         "elyria-test",
+    "oidc.client_secret":     "test-secret",
     "oidc.scope":             "openid profile email",
-    "oidc.button_label":      "Connexion SSO",
+    "oidc.button_label":      "Test SSO",
 }
 
 _DEFAULT_FQDN = {
@@ -88,6 +90,15 @@ def _seed_defaults():
     # Fixup: ensure SSL defaults are set even for existing rows that got seeded with ""
     c.execute("UPDATE app_config SET value='cert.pem' WHERE key='ssl.cert_path' AND value=''")
     c.execute("UPDATE app_config SET value='key.pem' WHERE key='ssl.key_path' AND value=''")
+    # Fixup: seed OIDC defaults for rows that were created empty before defaults existed
+    for k in ("oidc.issuer", "oidc.client_id", "oidc.client_secret",
+              "oidc.provider_name", "oidc.scope", "oidc.button_label"):
+        c.execute(
+            "UPDATE app_config SET value = ? WHERE key = ? AND value = ''",
+            (_DEFAULTS[k], k),
+        )
+    # Ensure oidc.enabled exists (but don't force-enable it)
+    c.execute("INSERT OR IGNORE INTO app_config (key,value) VALUES('oidc.enabled','0')")
     for cat, hosts in _DEFAULT_FQDN.items():
         for h in hosts:
             c.execute("INSERT OR IGNORE INTO app_fqdn_whitelist (category,pattern) VALUES(?,?)", (cat, h))

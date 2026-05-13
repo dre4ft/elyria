@@ -135,6 +135,38 @@ Testé également avec un **Raspberry Pi 4 (carte SD 64 Go)** servant l'applicat
 
 SQLite par défaut (zero-config). PostgreSQL supporté — configurez `db.backend=postgres` et les paramètres `db.pg.*` dans la config admin.
 
+## Authentification
+
+### Connexion classique
+Login/mot de passe avec hachage SHA-512 côté client et SHA3-512 côté serveur. Tokens JWT HS512 éphémères (durée 1h).
+
+### SSO / OIDC
+Connecteur OIDC modulaire intégré. Compatible avec tout fournisseur standard (Google, Azure AD, Keycloak, Authentik, Dex…).
+
+**Activation** — Hub > Admin Config (ou API) :
+
+```json
+{
+  "oidc.enabled": "1",
+  "oidc.provider_name": "google",
+  "oidc.issuer": "https://accounts.google.com",
+  "oidc.client_id": "123456789-xxx.apps.googleusercontent.com",
+  "oidc.client_secret": "GOCSPX-xxx",
+  "oidc.scope": "openid profile email",
+  "oidc.button_label": "Google"
+}
+```
+
+La découverte OIDC est automatique via `/.well-known/openid-configuration`. Les utilisateurs sont créés à la première connexion (just-in-time provisioning). Le token OIDC est converti en JWT HS512 éphémère — aucune modification du reste de l'app.
+
+**Test local** — un micro fournisseur OIDC est fourni pour les tests :
+
+```bash
+python tools/oidc_test_provider.py  # → http://localhost:9001
+```
+
+Puis activez `oidc.enabled` à `"1"`. Un bouton "Test SSO" apparaît sur la page de login. Utilisateur de test : `alice` / `password123`.
+
 ## Interopérabilité
 
 Importez vos specs et collections existantes. Pas de lock-in.
