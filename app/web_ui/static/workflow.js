@@ -105,6 +105,7 @@ const BLOCK_DEFS = {
     fields: [
       { key: 'url', label: 'URL avec placeholder {{id}}', type: 'text', placeholder: 'https://api.target.com/users/{{id}}/profile' },
       { key: 'method', label: 'Methode HTTP', type: 'select', options: ['GET','POST','PUT','DELETE'], default: 'GET' },
+      { key: 'headers', label: 'Headers (JSON)', type: 'textarea', placeholder: '{"Authorization": "Bearer {{ctx.token}}", "X-Team": "red"}', rows: 2 },
       { key: 'idList', label: 'Liste d\'IDs a tester (JSON)', type: 'textarea', placeholder: '[\n  "user-1",\n  "user-2",\n  "user-3",\n  "admin-1",\n  "0",\n  "99999"\n]', rows: 4 },
       { key: 'saveTo', label: 'Variable de sortie', type: 'text', placeholder: 'bolaResults', default: 'bola' },
     ],
@@ -139,6 +140,7 @@ const BLOCK_DEFS = {
       { key: 'extractRegex', label: 'Regex d\'extraction (capture group 1)', type: 'text', placeholder: '"access_token"\\s*:\\s*"([^"]+)"' },
       { key: 'url', label: 'URL ou rejouer la valeur', type: 'text', placeholder: 'https://api.target.com/admin?token={{extracted}}' },
       { key: 'method', label: 'Methode HTTP', type: 'select', options: ['GET','POST','PUT'], default: 'GET' },
+      { key: 'headers', label: 'Headers (JSON)', type: 'textarea', placeholder: '{"Authorization": "Bearer {{ctx.token}}"}', rows: 2 },
       { key: 'saveTo', label: 'Variable de sortie', type: 'text', placeholder: 'replayResult', default: 'replay' },
     ],
   },
@@ -1617,9 +1619,11 @@ async function executeNode(nodeId, ctx) {
         let ids = [];
         try { ids = JSON.parse(interpolate(node.data.idList || '[]', ctx)); } catch {}
         const results = [];
+        let reqHeaders = {};
+        try { reqHeaders = JSON.parse(interpolate(node.data.headers || '{}', ctx)); } catch {}
         for (const id of ids) {
           const testUrl = urlTpl.replace(/\{\{id\}\}/g, id).replace(/\{\{ID\}\}/g, id);
-          const res = await fetch(API.structured, { method:'POST', headers:{'Content-Type':'application/json',...getAuthHeader()}, body:JSON.stringify({url:testUrl, method}) });
+          const res = await fetch(API.structured, { method:'POST', headers:{'Content-Type':'application/json',...getAuthHeader()}, body:JSON.stringify({url:testUrl, method, headers: reqHeaders}) });
           const data = await res.json();
           const sc = data.response?.status_code || 0;
           results.push({id, status:sc, body:data.response?.body?.substring(0,300)});
@@ -1692,7 +1696,9 @@ async function executeNode(nodeId, ctx) {
         }
         if (extracted) {
           const replayUrl = url.replace(/\{\{extracted\}\}/g, extracted);
-          const res = await fetch(API.structured, { method:'POST', headers:{'Content-Type':'application/json',...getAuthHeader()}, body:JSON.stringify({url:replayUrl, method}) });
+          let replayHeaders = {};
+          try { replayHeaders = JSON.parse(interpolate(node.data.headers || '{}', ctx)); } catch {}
+          const res = await fetch(API.structured, { method:'POST', headers:{'Content-Type':'application/json',...getAuthHeader()}, body:JSON.stringify({url:replayUrl, method, headers: replayHeaders}) });
           const data = await res.json();
           ctx[node.data.saveTo || 'replay'] = {extracted, url:replayUrl, response:data.response};
           addLog(`Extract "${extracted}" → ${method} ${replayUrl} → ${data.response?.status_code||'?'}`, 'success');

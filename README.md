@@ -14,6 +14,8 @@
 
 **Blue Team / SSDLC** — Analyse security-by-design de vos specs OpenAPI. L'IA audite votre surface d'API et votre documentation pour produire un rapport d'exigences de sécurité couvrant authentification, autorisation, chiffrement, input validation, logging et durcissement infrastructure. Profils SSDLC multi-rounds avec master prompt et documentation personnalisables.
 
+**Catcher** — Proxy intercepteur façon Burp Suite. Activez l'interception, envoyez vos requêtes via le proxy : elles sont mises en file d'attente pour inspection. Forward, Drop, ou Load dans le builder API. Historique complet avec réponses.
+
 **Raw requests** — Forgez vos requêtes HTTP from scratch. Testez les edge cases et le comportement de votre stack face à des requêtes malformées.
 
 **Collections collaboratives** — Vos équipes travaillent sur des collections partagées. Support multi-teams avec permissions et filtrage.
@@ -40,7 +42,7 @@ host=127.0.0.1
 port=8000
 cert_path=cert.pem
 key_path=key.pem
-deepseek=sk-votre-cle-api
+openai_api_key=sk-votre-cle-api
 ```
 
 ### Méthode 2 — Docker
@@ -86,9 +88,9 @@ Testé également avec un **Raspberry Pi 4 (carte SD 64 Go)** servant de serveur
 |-------|--------|
 | Ollama | Anthropic |
 | LM Studio | OpenAI |
-| **Multi-provider** | DeepSeek |
+| **Multi-provider** | OpenAI API |
 
-**Configuration multi-provider** — Hub > AI Agent. Définissez indépendamment vos modèles Flash (exploration rapide) et Pro (analyse profonde). Chaque slot peut utiliser un provider différent (ex: Flash sur Ollama local, Pro sur DeepSeek cloud). Support complet du function calling et du mode texte pour les modèles sans support natif des tools.
+**Configuration multi-provider** — Hub > AI Agent. Définissez indépendamment vos modèles Flash (exploration rapide) et Pro (analyse profonde). Chaque slot peut utiliser un provider différent (ex: Flash sur Ollama local, Pro sur OpenAI API cloud). Support complet du function calling et du mode texte pour les modèles sans support natif des tools.
 
 ## Base de données
 
@@ -120,6 +122,8 @@ Open source. Pour toujours.
 
 **Blue Team / SSDLC** — Security-by-design analysis of your OpenAPI specs. The AI audits your API surface and documentation to produce a comprehensive security requirements report covering authentication, authorization, encryption, input validation, logging, and infrastructure hardening. Multi-round SSDLC profiles with customizable master prompts and documentation.
 
+**Catcher** — Burp Suite-style proxy interceptor. Enable interception, route requests through the proxy: they get queued for inspection. Forward, Drop, or Load into the API builder. Full history with responses.
+
 **Raw requests** — Forge HTTP requests from scratch. Test edge cases and how your stack handles malformed input.
 
 **Collaborative collections** — Teams work on shared collections. Multi-team support with permissions and filtering.
@@ -146,7 +150,7 @@ host=127.0.0.1
 port=8000
 cert_path=cert.pem
 key_path=key.pem
-deepseek=sk-your-api-key
+openai_api_key=sk-your-api-key
 ```
 
 ### Method 2 — Docker
@@ -194,9 +198,9 @@ Also tested with a **Raspberry Pi 4 (64 GB SD card)** acting as a remote inferen
 |-------|--------|
 | Ollama | Anthropic |
 | LM Studio | OpenAI |
-| **Multi-provider** | DeepSeek |
+| **Multi-provider** | OpenAI API |
 
-**Multi-provider configuration** — Hub > AI Agent. Independently define your Flash (fast exploration) and Pro (deep analysis) models. Each slot can use a different provider (e.g., Flash on local Ollama, Pro on DeepSeek cloud). Full function calling and text mode support for models without native tool support.
+**Multi-provider configuration** — Hub > AI Agent. Independently define your Flash (fast exploration) and Pro (deep analysis) models. Each slot can use a different provider (e.g., Flash on local Ollama, Pro on OpenAI API cloud). Full function calling and text mode support for models without native tool support.
 
 ## Database
 
