@@ -94,6 +94,17 @@ function parseUserFromToken(token) {
 function getToken() { return _token; }
 function getUser() { return _user; }
 
+function initHeaderUser() {
+  var user = _user;
+  var el = document.getElementById('header-username');
+  var logoutBtn = document.getElementById('btn-logout');
+  if (user && el) {
+    el.textContent = user.username || user.userId || '';
+    el.classList.remove('hidden');
+  }
+  if (logoutBtn) logoutBtn.addEventListener('click', logout);
+}
+
 function getAuthHeader() {
   if (!_token) return {};
   return { Authorization: 'Bearer ' + _token };
@@ -143,6 +154,49 @@ async function registerUser(username, digest) {
     return { success: false, error: data.detail || "Échec de l'inscription" };
   }
   return { success: true };
+}
+
+// ── OIDC / SSO ──
+
+function initOidc() {
+  // Handle OIDC callback: /app#token=xxx → store token and clean URL
+  var hash = window.location.hash;
+  if (hash && hash.startsWith('#token=')) {
+    var token = hash.slice(7);
+    _token = token;
+    _user = parseUserFromToken(token);
+    sessionStorage.setItem(SESSION_KEY, token);
+    // Clean URL
+    window.location.hash = '';
+    window.location.reload();
+    return;
+  }
+
+  // Fetch OIDC config and show SSO button if enabled
+  fetch('/api/user/oidc/config')
+    .then(function (r) { return r.json(); })
+    .then(function (cfg) {
+      if (cfg.enabled) {
+        var section = document.getElementById('oidc-section');
+        var label = document.getElementById('oidc-btn-label');
+        var btn = document.getElementById('btn-oidc-login');
+        if (section) section.classList.remove('hidden');
+        if (label) label.textContent = cfg.button_label || 'Connexion SSO';
+        if (btn) {
+          btn.addEventListener('click', function () {
+            window.location.href = '/api/user/oidc/login';
+          });
+        }
+      }
+    })
+    .catch(function () { /* OIDC not available, hide button */ });
+}
+
+// initOidc handles both: SSO button on /login, and #token=xxx on /app callback
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initOidc);
+} else {
+  initOidc();
 }
 
 initAuth();

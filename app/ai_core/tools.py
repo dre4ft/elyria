@@ -130,8 +130,10 @@ def handle_tool_call(current_user_id, tool_name, parameters):
         return send_request_by_id(current_user_id, request_id=parameters["request_id"])
     elif tool_name == "send_raw_request":
         return send_raw_request(current_user_id, url=parameters["url"], request=parameters["request"])
+    elif tool_name == "get_users_last_five_requests":
+        return get_users_last_five_requests(current_user_id)
     else:
-        raise ValueError(f"Unknown tool: {tool_name}")
+        return json.dumps({"error": f"Unknown tool '{tool_name}'. Available tools: get_collections, get_requests, get_request_by_id, create_request, create_folder, delete_request, delete_folder, get_sent_request_response, send_request, send_request_by_id, send_raw_request. Use one of these instead."})
 
 def create_structured_request(current_user_id, name,  url, method,folder_id=None, headers=None, body=None):
     headers = json_helper.from_json(headers) if headers else None

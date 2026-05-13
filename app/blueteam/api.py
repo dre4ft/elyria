@@ -23,21 +23,7 @@ _running = set()  # profile_ids currently analyzing
 _analysis_progress = {}  # profile_id → {"pct": int, "msg": str, "status": str}
 
 
-def _get_user(r: Request):
-    token = getattr(r.state, "token", None)
-    if not token or token == "anonymous":
-        raise HTTPException(401, "Authentication required")
-    return token
-
-
-def _get_teams(r: Request):
-    try:
-        payload = getattr(r.state, "token_obj", None)
-        if isinstance(payload, dict):
-            return payload.get("teams", "")
-    except Exception:
-        pass
-    return ""
+from database.auth_utils import get_auth_user, get_auth_user_teams
 
 
 def _verify_ownership(resource, user_id, user_teams=""):
@@ -60,7 +46,7 @@ def _verify_ownership(resource, user_id, user_teams=""):
 @app.post("/profiles/{profile_id}/stop")
 async def api_stop_analysis(profile_id: str, request: Request):
     p = get_profile(profile_id)
-    _verify_ownership(p, _get_user(request), _get_teams(request))
+    _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
     _running.discard(profile_id)
     update_profile(profile_id, status="stopped")
     publish(profile_id, "done", {"status": "stopped"})
@@ -75,10 +61,10 @@ async def api_create_profile(request: Request):
         raise HTTPException(400, "name is required")
     team_ids = body.get("team_ids", "")
     if not team_ids:
-        team_ids = _get_teams(request)
+        team_ids = get_auth_user_teams(request)
     pid = create_profile(
         name=name, target_url=target_url,
-        user_id=_get_user(request), team_ids=team_ids,
+        user_id=get_auth_user(request), team_ids=team_ids,
         description=body.get("description", ""),
         master_prompt=body.get("master_prompt", ""),
         documentation=body.get("documentation", ""),
@@ -96,14 +82,14 @@ async def api_create_profile(request: Request):
 async def api_list_profiles(request: Request, team_id: str = ""):
     if team_id:
         return list_profiles(team_filter=team_id)
-    return list_profiles(user_id=_get_user(request), team_ids=_get_teams(request))
+    return list_profiles(user_id=get_auth_user(request), team_ids=get_auth_user_teams(request))
 
 
 @app.get("/profiles/{profile_id}")
 async def api_get_profile(profile_id: str, request: Request):
     """Full profile — use only when selecting/displaying a profile."""
     p = get_profile(profile_id)
-    _verify_ownership(p, _get_user(request), _get_teams(request))
+    _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
     p["reports"] = get_reports(profile_id)
     prog = _analysis_progress.get(profile_id, {})
     p["progress_msg"] = prog.get("msg", "")
@@ -116,7 +102,7 @@ async def api_get_profile(profile_id: str, request: Request):
 async def api_get_profile_status(profile_id: str, request: Request):
     """Lightweight — only status + progress. Uses in-memory dict for coherence."""
     p = get_profile(profile_id)
-    _verify_ownership(p, _get_user(request), _get_teams(request))
+    _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
     prog = _analysis_progress.get(profile_id, {})
     return {
         "profile_id": p["profile_id"],
@@ -130,7 +116,7 @@ async def api_get_profile_status(profile_id: str, request: Request):
 @app.put("/profiles/{profile_id}")
 async def api_update_profile(profile_id: str, request: Request):
     p = get_profile(profile_id)
-    _verify_ownership(p, _get_user(request), _get_teams(request))
+    _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
     body = await request.json()
     update_profile(profile_id, **{k: v for k, v in body.items() if v is not None})
     return {"status": "updated"}
@@ -139,7 +125,7 @@ async def api_update_profile(profile_id: str, request: Request):
 @app.delete("/profiles/{profile_id}")
 async def api_delete_profile(profile_id: str, request: Request):
     p = get_profile(profile_id)
-    _verify_ownership(p, _get_user(request), _get_teams(request))
+    _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
     delete_profile(profile_id)
     return {"status": "deleted"}
 
@@ -162,7 +148,7 @@ async def api_import_from_pentest(request: Request):
         c = get_campaign(campaign_id)
         if not c:
             raise HTTPException(404, "Campaign not found")
-        _verify_ownership(c, _get_user(request), _get_teams(request))
+        _verify_ownership(c, get_auth_user(request), get_auth_user_teams(request))
     except HTTPException:
         raise
     except Exception:
@@ -198,12 +184,12 @@ TA MISSION:
 
 Le rapport original du pentest est fourni dans la documentation ci-dessous."""
 
-    user_id = _get_user(request)
+    user_id = get_auth_user(request)
     pid = create_profile(
-        name=f"🔴 Remediation — {c.get('name','Pentest')[:50]}",
+        name=f"Remediation — {c.get('name','Pentest')[:50]}",
         target_url=c.get('target_url', ''),
         user_id=user_id,
-        team_ids=_get_teams(request),
+        team_ids=get_auth_user_teams(request),
         description=f"Analyse de remediation importee depuis le pentest (campagne {campaign_id[:8]}...)",
         master_prompt=master_prompt,
         documentation=documentation,
@@ -213,9 +199,8 @@ Le rapport original du pentest est fourni dans la documentation ci-dessous."""
 
     # Start analysis immediately
     from database.ai_config_mgmt import get_default_config
-    import os as _os
     pro_cfg = get_default_config("pro")
-    pro_model = pro_cfg.get("model") if pro_cfg else _os.getenv("deepseek_model") or "deepseek-v4-pro"
+    pro_model = pro_cfg.get("model") if pro_cfg else "gpt-4o"
     update_profile(pid, status="running", pro_model=pro_model)
 
     def _progress(pct, msg):
@@ -273,18 +258,17 @@ async def api_start_analysis(profile_id: str, request: Request):
     p = get_profile(profile_id)
     if not p:
         raise HTTPException(404, "Profile not found")
-    _verify_ownership(p, _get_user(request), _get_teams(request))
+    _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
 
     if profile_id in _running:
         raise HTTPException(400, "Analysis already in progress for this profile")
 
-    scan_user_id = _get_user(request)
+    scan_user_id = get_auth_user(request)
 
     # Resolve pro model
     from database.ai_config_mgmt import get_default_config
-    import os as _os
     pro_cfg = get_default_config("pro")
-    pro_model = pro_cfg.get("model") if pro_cfg else _os.getenv("deepseek_model") or "deepseek-v4-pro"
+    pro_model = pro_cfg.get("model") if pro_cfg else "gpt-4o"
     update_profile(profile_id, status="running", pro_model=pro_model)
 
     # Load spec content
@@ -306,7 +290,7 @@ async def api_start_analysis(profile_id: str, request: Request):
     if collection_id:
         try:
             from database.collection_mgmt import get_collection_tree
-            tree = get_collection_tree(author_user_id=_get_user(request))
+            tree = get_collection_tree(author_user_id=get_auth_user(request))
             def _find(nodes, fid):
                 for n in nodes:
                     if n.get("id") == fid or n.get("folder_id") == fid:
@@ -403,7 +387,7 @@ async def api_stop_analysis(profile_id: str, request: Request):
 @app.get("/profiles/{profile_id}/reports")
 async def api_list_reports(profile_id: str, request: Request):
     p = get_profile(profile_id)
-    _verify_ownership(p, _get_user(request), _get_teams(request))
+    _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
     return get_reports(profile_id)
 
 
@@ -413,7 +397,7 @@ async def api_get_report(report_id: str, request: Request):
     if not r:
         raise HTTPException(404, "Report not found")
     p = get_profile(r["profile_id"])
-    _verify_ownership(p, _get_user(request), _get_teams(request))
+    _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
     return r
 
 
@@ -423,7 +407,7 @@ async def api_download_report(report_id: str, request: Request):
     if not r:
         raise HTTPException(404, "Report not found")
     p = get_profile(r["profile_id"])
-    _verify_ownership(p, _get_user(request), _get_teams(request))
+    _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
     return Response(
         content=r["report_markdown"],
         media_type="text/markdown",

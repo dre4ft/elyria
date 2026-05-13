@@ -16,8 +16,12 @@ def _validate_file(file : File):
 
     raise  HTTPException(status_code=400,detail="invalid file format !")
 
+class UploadReq(BaseModel):
+    target_url: str = "http://localhost:9000"
+    team_id: str = ""
+
 @app.post("/openapi")
-async def upload(request : Request, target_url: str="http://localhost:9000", file: UploadFile = File(...)):
+async def upload(request : Request, target_url: str="http://localhost:9000", team_id: str = "", inputs_values: str = "", openapi_url: str = "", file: UploadFile = File(...), openapi_file: UploadFile = None):
     user_id = request.state.token
     file_type = _validate_file(file)
     try:
@@ -39,10 +43,46 @@ async def upload(request : Request, target_url: str="http://localhost:9000", fil
 
         # Route to Arazzo parser
         if arazzo_parser.validate_wrapper(content_as_dict):
-            parsed = arazzo_parser.parse_arazzo(content_as_dict)
+            # Parse optional inputs_values overrides from query param (JSON string)
+            inputs_vals = None
+            try:
+                inputs_vals = json.loads(inputs_values) if inputs_values else None
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            # Load OpenAPI specs if provided (file takes priority over URL)
+            openapi_specs = {}
+            if openapi_file:
+                try:
+                    ofc = openapi_file.file.read()
+                    if openapi_file.filename.endswith(".json"):
+                        openapi_specs[openapi_file.filename] = json.loads(ofc)
+                    else:
+                        openapi_specs[openapi_file.filename] = safe_load(ofc)
+                except Exception as e:
+                    print(f"OpenAPI file parse error: {e}")
+            elif openapi_url:
+                try:
+                    import requests as req
+                    r = req.get(openapi_url, timeout=10)
+                    if r.status_code == 200:
+                        try:
+                            openapi_specs[openapi_url] = r.json()
+                        except Exception:
+                            openapi_specs[openapi_url] = safe_load(r.text)
+                except Exception as e:
+                    print(f"OpenAPI URL fetch error: {e}")
+
+            parsed = arazzo_parser.parse_arazzo(
+                content_as_dict,
+                openapi_specs=openapi_specs if openapi_specs else None,
+                target_server=target_url,
+            )
             result = arazzo_parser.import_to_db(
                 parsed_workflows=parsed,
                 author_user_id=user_id,
+                team_id=team_id,
+                inputs_values=inputs_vals,
             )
             return JSONResponse(status_code=201, content=result)
 

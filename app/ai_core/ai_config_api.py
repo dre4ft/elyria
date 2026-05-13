@@ -66,7 +66,7 @@ def _fetch_models(provider_type, base_url, api_key):
         # LM Studio exposes /api/v1/models (not /v1/models like vanilla OpenAI)
         return _fetch_lmstudio_models(base_url)
 
-    # OpenAI-compatible (openai, deepseek, etc.)
+    # OpenAI-compatible providers
     try:
         from openai import OpenAI
         client = OpenAI(api_key=api_key or "not-needed", base_url=base_url or "https://api.openai.com/v1")

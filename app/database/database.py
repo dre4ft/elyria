@@ -33,10 +33,18 @@ INIT_USER = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT UNIQUE NOT NULL,
-    hashed_digest TEXT NOT NULL,
-    salt TEXT NOT NULL,
+    hashed_digest TEXT NOT NULL DEFAULT '',
+    salt TEXT NOT NULL DEFAULT '',
     username TEXT UNIQUE NOT NULL,
-    teams TEXT
+    teams TEXT,
+    oidc_sub TEXT DEFAULT '',
+    oidc_provider TEXT DEFAULT '',
+    oidc_id_token TEXT DEFAULT '',
+    oidc_access_token TEXT DEFAULT '',
+    oidc_refresh_token TEXT DEFAULT '',
+    oidc_expires_at REAL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_login_at DATETIME
 )
 """
 
@@ -97,6 +105,25 @@ def connect():
     return get_connection()
 
 
+def _migrate_oidc_columns(cursor, conn):
+    """Add OIDC columns to users table if they don't exist (safe to call multiple times)."""
+    oidc_cols = [
+        ("oidc_sub", "TEXT DEFAULT ''"),
+        ("oidc_provider", "TEXT DEFAULT ''"),
+        ("oidc_id_token", "TEXT DEFAULT ''"),
+        ("oidc_access_token", "TEXT DEFAULT ''"),
+        ("oidc_refresh_token", "TEXT DEFAULT ''"),
+        ("oidc_expires_at", "REAL DEFAULT 0"),
+        ("created_at", "TEXT DEFAULT ''"),
+        ("last_login_at", "TEXT DEFAULT ''"),
+    ]
+    existing = {row[1] for row in cursor.execute("PRAGMA table_info(users)").fetchall()}
+    for col_name, col_def in oidc_cols:
+        if col_name not in existing:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+    conn.commit()
+
+
 def init_db():
     global _IS_INIT
     if _IS_INIT:
@@ -113,5 +140,7 @@ def init_db():
         c.execute(INIT_SAVED_REQUESTS)
         c.execute(INIT_KEYS)
         conn.commit()
+        # ── Migrations: add columns that didn't exist in older schemas ──
+        _migrate_oidc_columns(c, conn)
         conn.close()
         _IS_INIT = True

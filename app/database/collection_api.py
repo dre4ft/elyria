@@ -9,11 +9,7 @@ from database.connection import get_connection
 
 app = APIRouter(prefix="/api/collections")
 
-def _get_user(r: Request):
-    token = getattr(r.state, "token", None)
-    if not token or token == "anonymous":
-        raise HTTPException(401, "Authentication required")
-    return token
+from database.auth_utils import get_auth_user
 
 def _get_followed_team_ids(user_id: str) -> list:
     try:

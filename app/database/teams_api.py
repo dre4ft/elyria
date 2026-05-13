@@ -13,11 +13,7 @@ app = APIRouter(prefix="/api", tags=["teams"])
 def _now(): return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 def _conn():
     return get_connection()
-def _uid(r: Request):
-    token = getattr(r.state, "token", None)
-    if not token or token == "anonymous":
-        raise HTTPException(401, "Authentication required")
-    return token
+from database.auth_utils import get_auth_user
 
 def init_teams():
     c = _conn()
@@ -43,29 +39,30 @@ init_teams()
 # ── Hub ──
 @app.get("/user/hub")
 def user_hub(request: Request):
-    uid = _uid(request)
+    uid = get_auth_user(request)
     c = _conn()
     # Teams the user belongs to
     teams = c.execute("SELECT t.*, (SELECT COUNT(*) FROM team_users WHERE team_id=t.team_id) as member_count FROM teams t JOIN team_users tu ON t.team_id=tu.team_id WHERE tu.user_id=?", (uid,)).fetchall()
     teams_data = []
     for t in teams:
-        members = c.execute("SELECT user_id FROM team_users WHERE team_id=?", (t["team_id"],)).fetchall()
+        members = c.execute("SELECT tu.user_id, u.username FROM team_users tu LEFT JOIN users u ON tu.user_id=u.user_id WHERE tu.team_id=?", (t["team_id"],)).fetchall()
         pendings = c.execute("SELECT * FROM pending_team_requests WHERE team_id=?", (t["team_id"],)).fetchall()
         teams_data.append({
             "team_id": t["team_id"], "name": t["name"], "creator": t["creator_user_id"],
             "member_count": t["member_count"], "created_at": t["created_at"],
-            "members": [m["user_id"] for m in members],
+            "members": [{"user_id": m["user_id"], "username": (m["username"] or m["user_id"])} for m in members],
             "pending": [{"user_id": p["user_id"], "validators": json.loads(p["validators"]), "needed": p["needed_validator"]} for p in pendings],
         })
     # User's proxies
     proxies = c.execute("SELECT * FROM proxies WHERE user_id=? OR user_id=''", (uid,)).fetchall()
-    fav = c.execute("SELECT proxy_id FROM user_favorite_proxy WHERE user_id=?", (uid,)).fetchone()
+    fav = c.execute("SELECT proxy_id, enabled FROM user_favorite_proxy WHERE user_id=?", (uid,)).fetchone()
     c.close()
     return {
         "user_id": uid,
         "teams": teams_data,
         "proxies": [dict(p) for p in proxies],
         "favorite_proxy_id": fav["proxy_id"] if fav else None,
+        "proxy_enabled": bool(fav["enabled"]) if fav else False,
     }
 
 
@@ -75,7 +72,7 @@ async def create_team(request: Request):
     body = await request.json()
     name = body.get("name", "").strip()
     if not name: raise HTTPException(400, "name required")
-    uid = _uid(request)
+    uid = get_auth_user(request)
     tid = str(uuid.uuid4())
     c = _conn()
     c.execute("INSERT INTO teams (team_id,name,creator_user_id,created_at) VALUES(?,?,?,?)", (tid, name, uid, _now()))
@@ -87,7 +84,7 @@ async def create_team(request: Request):
 
 @app.get("/teams")
 def list_my_teams(request: Request):
-    uid = _uid(request)
+    uid = get_auth_user(request)
     c = _conn()
     rows = c.execute("SELECT t.*, (SELECT COUNT(*) FROM team_users WHERE team_id=t.team_id) as member_count FROM teams t JOIN team_users tu ON t.team_id=tu.team_id WHERE tu.user_id=?", (uid,)).fetchall()
     c.close()
@@ -96,11 +93,11 @@ def list_my_teams(request: Request):
 
 @app.get("/teams/{team_id}")
 def get_team(team_id: str, request: Request):
-    uid = _uid(request)
+    uid = get_auth_user(request)
     c = _conn()
     t = c.execute("SELECT * FROM teams WHERE team_id=?", (team_id,)).fetchone()
     if not t: raise HTTPException(404, "Team not found")
-    members = c.execute("SELECT user_id FROM team_users WHERE team_id=?", (team_id,)).fetchall()
+    members = c.execute("SELECT tu.user_id, u.username FROM team_users tu LEFT JOIN users u ON tu.user_id=u.user_id WHERE tu.team_id=?", (team_id,)).fetchall()
     is_member = any(m["user_id"] == uid for m in members)
     pendings = []
     if is_member:
@@ -115,7 +112,7 @@ def get_team(team_id: str, request: Request):
     return {
         "team_id": t["team_id"], "name": t["name"], "creator": t["creator_user_id"],
         "created_at": t["created_at"],
-        "members": [m["user_id"] for m in members],
+        "members": [{"user_id": m["user_id"], "username": (m["username"] or m["user_id"])} for m in members],
         "member_count": len(members),
         "pending": [{"user_id": p["user_id"], "validators": json.loads(p["validators"]), "needed": p["needed_validator"]} for p in pendings],
         "is_member": True,
@@ -125,7 +122,7 @@ def get_team(team_id: str, request: Request):
 # ── Join request (silent — no confirmation if team exists) ──
 @app.post("/teams/{team_id}/join")
 async def request_join(team_id: str, request: Request):
-    uid = _uid(request)
+    uid = get_auth_user(request)
     c = _conn()
     t = c.execute("SELECT * FROM teams WHERE team_id=?", (team_id,)).fetchone()
     if not t:
@@ -153,7 +150,7 @@ async def request_join(team_id: str, request: Request):
 # ── Validate a pending request (only team members can validate) ──
 @app.post("/teams/{team_id}/validate/{target_user_id}")
 async def validate_request(team_id: str, target_user_id: str, request: Request):
-    uid = _uid(request)
+    uid = get_auth_user(request)
     c = _conn()
     # Check requester is member of the team
     member = c.execute("SELECT 1 FROM team_users WHERE team_id=? AND user_id=?", (team_id, uid)).fetchone()
@@ -181,7 +178,7 @@ async def validate_request(team_id: str, target_user_id: str, request: Request):
 # ── Followed teams ──
 @app.get("/user/followed-teams")
 def list_followed(request: Request):
-    uid = _uid(request)
+    uid = get_auth_user(request)
     c = _conn()
     # Return teams the user follows, but also auto-include teams they belong to
     member_teams = c.execute("SELECT team_id FROM team_users WHERE user_id=?", (uid,)).fetchall()
@@ -194,7 +191,7 @@ def list_followed(request: Request):
 
 @app.post("/user/followed-teams/{team_id}")
 def follow_team(team_id: str, request: Request):
-    uid = _uid(request)
+    uid = get_auth_user(request)
     c = _conn()
     # Must be a member of the team to follow it
     member = c.execute("SELECT 1 FROM team_users WHERE team_id=? AND user_id=?", (team_id, uid)).fetchone()
@@ -205,7 +202,7 @@ def follow_team(team_id: str, request: Request):
 
 @app.delete("/user/followed-teams/{team_id}")
 def unfollow_team(team_id: str, request: Request):
-    uid = _uid(request)
+    uid = get_auth_user(request)
     c = _conn()
     c.execute("DELETE FROM user_followed_teams WHERE user_id=? AND team_id=?", (uid, team_id))
     c.commit(); c.close()
@@ -216,7 +213,7 @@ def unfollow_team(team_id: str, request: Request):
 @app.put("/user/proxy-favorite")
 async def set_fav_proxy(request: Request):
     body = await request.json()
-    uid = _uid(request)
+    uid = get_auth_user(request)
     pid = body.get("proxy_id")
     c = _conn()
     if pid:

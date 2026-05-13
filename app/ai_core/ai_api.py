@@ -3,16 +3,18 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from .ai_wrapper import AIWrapper
 from database import ai_mgmt
-import os
-from dotenv import load_dotenv
-load_dotenv()
+
+
+def _get_fallback_api_key():
+    from database.app_config import get_api_key
+    return get_api_key("openai_api_key")
 
 
 def _init_provider_from_db():
     from database.ai_config_mgmt import get_default_config
     cfg = get_default_config("pro")
     if cfg:
-        url = cfg["base_url"] or "https://api.deepseek.com"
+        url = cfg["base_url"] or "https://api.openai.com/v1"
         api_key = cfg.get("api_key", "")
         if cfg["provider_type"] == "lmstudio":
             url = url.rstrip("/").replace("/api/v1", "/v1")
@@ -20,22 +22,20 @@ def _init_provider_from_db():
                 url = url.rstrip("/") + "/v1"
             if not api_key:
                 api_key = "not-needed"
-        # Fallback to env if config has no key
         if not api_key:
-            api_key = os.getenv("deepseek") or os.getenv("deepseek_api_key", "")
+            api_key = _get_fallback_api_key()
         return AIWrapper(
             provider_type=cfg["provider_type"],
             url=url,
             api_key=api_key,
-            model=cfg["model"] or "deepseek-v4-flash",
+            model=cfg["model"] or "gpt-4o-mini",
         )
-    # Fallback to env
-    api_key = os.getenv("deepseek") or os.getenv("deepseek_api_key", "")
+    api_key = _get_fallback_api_key()
     return AIWrapper(
         provider_type='openai',
-        url='https://api.deepseek.com',
+        url='https://api.openai.com/v1',
         api_key=api_key,
-        model='deepseek-v4-flash',
+        model='gpt-4o-mini',
     )
 
 
