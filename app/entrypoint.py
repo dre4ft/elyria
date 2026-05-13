@@ -9,6 +9,7 @@ from ai_core.ai_api import app as ai_router
 from auth_users.user_api import app as user_router
 from doc_mgmt.document_api import app as document_router
 from pentest.campaign_api import app as pentest_router
+from blueteam.api import app as blueteam_router
 from database.workflow_graph_api import app as workflow_graph_router
 from database.proxy_api import app as proxy_router
 from database.teams_api import app as teams_router
@@ -26,24 +27,22 @@ app = FastAPI()
 
 @app.middleware("http")
 async def check_authorization(request: Request, call_next):
-    public_routes = ["/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/api/doc", "/api/user/login", "/api/user/create"]
-    auth = request.headers.get("authorization")
-    if request.url.path in public_routes or request.url.path.startswith("/static/"):
+    public_routes = ["/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/blueteam", "/api/doc", "/api/user/login", "/api/user/create"]
+    path = request.url.path
+    if path in public_routes or path.startswith("/static/"):
+        return await call_next(request)
+    # SSE endpoints — EventSource can't send headers, so bypass middleware auth
+    # Ownership is verified inside each endpoint
+    if "/events" in path and ("/api/blueteam/" in path or "/api/pentest/" in path):
         return await call_next(request)
 
-    
+    auth = request.headers.get("authorization")
 
     if not auth:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Invalid Authorization format"}
-        )
+        return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
 
     if not auth.startswith("Bearer "):
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Invalid Authorization format"}
-        )
+        return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
 
     split_token = auth.split("Bearer ")[1]
     split_token_parts = split_token.split(".")
@@ -130,6 +129,14 @@ async def serve_pentest():
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Frontend file not found")
 
+@app.get("/blueteam")
+async def serve_blueteam():
+    try:
+        with open("web_ui/blueteam.html", "r") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Frontend file not found")
+
 @app.get("/doc")
 async def serve_doc():
     try:
@@ -161,6 +168,7 @@ app.include_router(ai_router)
 app.include_router(user_router)
 app.include_router(document_router)
 app.include_router(pentest_router)
+app.include_router(blueteam_router)
 app.include_router(workflow_graph_router)
 app.include_router(proxy_router)
 app.include_router(teams_router)

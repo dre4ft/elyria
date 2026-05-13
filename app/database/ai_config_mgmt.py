@@ -2,19 +2,13 @@
 AI Provider configuration persistence — flash and pro slots, multi-provider.
 """
 
-import sqlite3
 import uuid
 from datetime import datetime, timezone
-
-DB_PATH = "database.db"
+from database.connection import get_connection
 
 
 def _connect():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    return get_connection()
 
 
 def _now():

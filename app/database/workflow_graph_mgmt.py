@@ -3,19 +3,13 @@ Workflow graph storage — full canvas state as JSON.
 """
 
 import json
-import sqlite3
 import uuid
 from datetime import datetime, timezone
-
-DB_PATH = "database.db"
+from database.connection import get_connection
 
 
 def _connect():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    return get_connection()
 
 
 def _now():
@@ -63,8 +57,7 @@ def list_workflows(user_id=None, team_id=""):
     conn = _connect()
     if team_id == "__followed__":
         # Personal + followed teams
-        import sqlite3 as _sq
-        tc = _sq.connect(DB_PATH)
+        tc = get_connection()
         followed = [r[0] for r in tc.execute("SELECT team_id FROM user_followed_teams WHERE user_id=?", (user_id,)).fetchall()]
         tc.close()
         if followed:

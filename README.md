@@ -12,6 +12,8 @@
 
 **Red Team / Pentest** — Scannez vos APIs avec le moteur OWASP API Top 10. Scanner déterministe + IA deep scan en 2 phases (exploration flash, analyse pro). ID lists pour tests BOLA, collections pour fuzzing. Rapports Markdown professionnels avec annexe requêtes/réponses.
 
+**Blue Team / SSDLC** — Analyse security-by-design de vos specs OpenAPI. L'IA audite votre surface d'API et votre documentation pour produire un rapport d'exigences de sécurité couvrant authentification, autorisation, chiffrement, input validation, logging et durcissement infrastructure. Profils SSDLC multi-rounds avec master prompt et documentation personnalisables.
+
 **Raw requests** — Forgez vos requêtes HTTP from scratch. Testez les edge cases et le comportement de votre stack face à des requêtes malformées.
 
 **Collections collaboratives** — Vos équipes travaillent sur des collections partagées. Support multi-teams avec permissions et filtrage.
@@ -50,6 +52,20 @@ docker compose up --build
 ```
 
 L'application est accessible sur `http://localhost:8000`.
+
+**Persistance des données** : la base SQLite et les fichiers sont stockés dans un volume Docker monté sur `./data` (le dossier `data/` à la racine du projet). Ce dossier survit aux `docker compose down` et aux rebuilds de l'image. Pour une sauvegarde :
+
+```bash
+cp -r data/ data-backup-$(date +%Y%m%d)/
+```
+
+Pour réinitialiser complètement les données :
+
+```bash
+docker compose down
+rm -rf data/
+docker compose up --build
+```
 
 **Connexion aux APIs locales (Ollama / LM Studio)** : dans le Hub > AI Agent, utilisez `http://host.docker.internal:11434` pour Ollama et `http://host.docker.internal:1234/v1` pour LM Studio. `host.docker.internal` résout vers l'IP de la machine hôte depuis le conteneur.
 
@@ -102,6 +118,8 @@ Open source. Pour toujours.
 
 **Red Team / Pentest** — Scan your APIs with the OWASP API Top 10 engine. Deterministic scanner + AI deep scan in 2 phases (flash exploration, pro analysis). ID lists for BOLA testing, collections for fuzzing. Professional Markdown reports with request/response appendix.
 
+**Blue Team / SSDLC** — Security-by-design analysis of your OpenAPI specs. The AI audits your API surface and documentation to produce a comprehensive security requirements report covering authentication, authorization, encryption, input validation, logging, and infrastructure hardening. Multi-round SSDLC profiles with customizable master prompts and documentation.
+
 **Raw requests** — Forge HTTP requests from scratch. Test edge cases and how your stack handles malformed input.
 
 **Collaborative collections** — Teams work on shared collections. Multi-team support with permissions and filtering.
@@ -140,6 +158,20 @@ docker compose up --build
 ```
 
 The app is available at `http://localhost:8000`.
+
+**Data persistence**: the SQLite database and all files are stored in a Docker volume mounted at `./data` (the `data/` folder at the project root). This folder survives `docker compose down` and image rebuilds. To back up:
+
+```bash
+cp -r data/ data-backup-$(date +%Y%m%d)/
+```
+
+To fully reset all data:
+
+```bash
+docker compose down
+rm -rf data/
+docker compose up --build
+```
 
 **Connecting to local APIs (Ollama / LM Studio)**: in Hub > AI Agent, use `http://host.docker.internal:11434` for Ollama and `http://host.docker.internal:1234/v1` for LM Studio. `host.docker.internal` resolves to the host machine's IP from inside the container.
 
@@ -190,6 +222,6 @@ Open source. Forever.
 
 - dockerfile
 - test bout en bout
-- connecteur pour DB externe
+- connecteur pour DB externe (MySQL)
 - stockage local des requêtes le temps du premier envoi
 - reload à l'envoi

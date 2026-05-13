@@ -24,7 +24,10 @@ init_db()
 
 
 def _get_user(request: Request):
-    return getattr(request.state, "token", "anonymous")
+    token = getattr(request.state, "token", None)
+    if not token or token == "anonymous":
+        raise HTTPException(401, "Authentication required")
+    return token
 
 
 def _get_user_teams(request: Request):
@@ -53,8 +56,8 @@ def _verify_team_membership(team_id, user_id):
     if not team_id:
         return
     try:
-        import sqlite3
-        conn = sqlite3.connect("database.db")
+        from database.connection import get_connection
+        conn = get_connection()
         row = conn.execute(
             "SELECT 1 FROM team_users WHERE team_id=? AND user_id=?",
             (team_id, user_id),

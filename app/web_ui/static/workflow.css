@@ -144,3 +144,9 @@
 /* ── Load Modal Items ── */
 .wf-load-item { padding:.6rem .75rem;border-radius:.5rem;cursor:pointer;transition:all .15s;border:1px solid transparent; }
 .wf-load-item:hover { background:rgba(255,255,255,.03);border-color:rgba(255,255,255,.06); }
+
+/* ── Palette Drag & Drop ── */
+.wf-palette-item, .wf-saved-item { cursor: grab; user-select: none; }
+.wf-palette-item:active, .wf-saved-item:active { cursor: grabbing; opacity: 0.7; }
+.wf-container-body { position: relative; z-index: 1; }
+.wf-container-body.drag-over { border-color: rgba(239,68,68,.6) !important; background: rgba(239,68,68,.05) !important; }

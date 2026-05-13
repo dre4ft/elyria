@@ -84,8 +84,9 @@ async def login(request: LoginRequest):
         # Look up proxy, XOR-encrypt with server key for JWT embed
         proxy_xor = ""
         try:
-            import sqlite3, os, base64
-            conn = sqlite3.connect("database.db")
+            import os, base64
+            from database.connection import get_connection
+            conn = get_connection()
             row = conn.execute("SELECT p.url FROM user_favorite_proxy u JOIN proxies p ON u.proxy_id=p.proxy_id WHERE u.user_id=?", (user["user_id"],)).fetchone()
             conn.close()
             if row and row[0]:

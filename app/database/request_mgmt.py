@@ -1,7 +1,7 @@
 from .database import connect
 from database import json_helper
-import sqlite3
-from datetime import  datetime
+from database.connection import is_postgres
+from datetime import datetime
 """
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 request_id TEXT UNIQUE NOT NULL,
@@ -63,13 +63,12 @@ def add_request(request_uuid:str, author:str,  request:dict,response:dict,is_don
         conn.commit()
         return cursor.lastrowid
 
-    except sqlite3.IntegrityError as e:
-        print("Integrity error ! :", e)
-        return None 
-
     except Exception as e:
-        print("Unexpected error ? :", e)
-        return None 
+        if type(e).__name__ in ("IntegrityError", "UniqueViolation"):
+            print("Integrity error ! :", e)
+        else:
+            print("Unexpected error ? :", e)
+        return None
 
     finally:
         if conn:

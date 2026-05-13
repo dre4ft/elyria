@@ -1,5 +1,6 @@
 import sqlite3
 from threading import Lock
+from database.connection import get_connection
 
 DATABASE_NAME = "database.db"
 
@@ -91,46 +92,26 @@ CREATE TABLE IF NOT EXISTS saved_requests (
 
 def connect():
     global _IS_INIT
-
     if not _IS_INIT:
         init_db()
-
-    conn = sqlite3.connect(
-        DATABASE_NAME,
-        check_same_thread=False
-    )
-    conn.row_factory = sqlite3.Row
-
-
-
-    return conn
+    return get_connection()
 
 
 def init_db():
     global _IS_INIT
-
     if _IS_INIT:
         return
-
     with _db_lock:
         if _IS_INIT:
             return
-
-        conn = sqlite3.connect(
-            DATABASE_NAME,
-            check_same_thread=False
-        )
-        conn.row_factory = sqlite3.Row
-
-        cursor = conn.cursor()
-
-        cursor.execute(INIT_USER)
-        cursor.execute(INIT_AI_MESSAGES)
-        cursor.execute(INIT_REQUEST)
-        cursor.execute(INIT_FOLDERS)
-        cursor.execute(INIT_SAVED_REQUESTS)
-        cursor.execute(INIT_KEYS)
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute(INIT_USER)
+        c.execute(INIT_AI_MESSAGES)
+        c.execute(INIT_REQUEST)
+        c.execute(INIT_FOLDERS)
+        c.execute(INIT_SAVED_REQUESTS)
+        c.execute(INIT_KEYS)
         conn.commit()
         conn.close()
-
         _IS_INIT = True

@@ -90,12 +90,11 @@ const BLOCK_DEFS = {
   },
   // ── Red Team blocks ──
   fuzz_params: {
-    label: 'Fuzz Requete', color: 'red', icon: 'fuzz', isContainer: true,
-    desc: 'Glissez un bloc HTTP Request dans la zone ci-dessous. Placez $FUZZ$ dans ses champs (URL, headers, body). Chaque ligne de la wordlist = 1 iteration.',
-    ports: { in: ['in'], out: ['out'] },
+    label: 'Fuzz Requete', color: 'red', icon: 'fuzz',
+    desc: 'Boucle de fuzzing : chaque ligne de la wordlist → ctx.fuzz → sortie body (branchez a une requete et faites-la revenir ici) → une fois epuise → sortie done (ctx[saveTo] = tous les resultats).',
+    ports: { in: ['in'], out: ['out_body', 'out_done'] },
     fields: [
       { key: 'wordlist', label: 'Wordlist (1 valeur par ligne = 1 iteration)', type: 'textarea', placeholder: 'admin\nuser\ntest\n../../../etc/passwd\n<script>alert(1)</script>', rows: 5 },
-      { key: 'childNodeId', label: '', type: 'hidden', default: '' },
       { key: 'saveTo', label: 'Variable de sortie (resultats)', type: 'text', placeholder: 'fuzzResults', default: 'fuzz' },
     ],
   },
@@ -647,23 +646,25 @@ async function loadSavedRequests(force = false) {
   }
 }
 
-function renderSavedTreeNode(node) {
+function renderSavedTreeNode(node, depth = 0) {
   if (node.type === 'folder') {
-    return renderSavedFolderNode(node);
+    return renderSavedFolderNode(node, depth);
   }
-  return renderSavedRequestItem(node);
+  return renderSavedRequestItem(node, depth);
 }
 
-function renderSavedFolderNode(folder) {
+function renderSavedFolderNode(folder, depth = 0) {
   const wrapper = document.createElement('div');
   wrapper.className = 'wf-saved-folder';
   wrapper.dataset.id = folder.id;
+  const indent = Math.min(depth, 4) * 12; // 12px per level, max 4 levels
 
   const header = document.createElement('div');
   header.className = 'wf-saved-folder-header';
+  header.style.paddingLeft = (indent + 4) + 'px';
   header.innerHTML = `
-    <svg class="wf-saved-folder-chevron ${folder.expanded ? 'open' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
-    <svg class="wf-saved-folder-icon ${folder.expanded ? 'open' : 'closed'}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+    <svg class="wf-saved-folder-chevron ${folder.expanded ? 'open' : ''} w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+    <svg class="wf-saved-folder-icon ${folder.expanded ? 'open' : 'closed'} w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
       ${folder.expanded
         ? '<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776"/>'
         : '<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/>'
@@ -682,7 +683,7 @@ function renderSavedFolderNode(folder) {
   }
 
   (folder.children || []).forEach(child => {
-    childrenContainer.appendChild(renderSavedTreeNode(child));
+    childrenContainer.appendChild(renderSavedTreeNode(child, depth + 1));
   });
 
   // Toggle expand/collapse
@@ -716,11 +717,13 @@ function renderSavedFolderNode(folder) {
   return wrapper;
 }
 
-function renderSavedRequestItem(req) {
+function renderSavedRequestItem(req, depth = 0) {
   const item = document.createElement('div');
   item.className = 'wf-saved-item';
   item.dataset.savedId = req.id;
   item.draggable = true;
+  const indent = Math.min(depth, 4) * 12 + 16; // 12px/level + 16px to align with folder text (not chevron)
+  item.style.paddingLeft = indent + 'px';
 
   const methodLower = (req.method || 'GET').toLowerCase();
   const aiBadge = req.isDoneByAI
@@ -807,30 +810,47 @@ function renderNode(node) {
     el.querySelector('.wf-detach-child')?.addEventListener('click', (e) => {
       e.stopPropagation();
       const child = wf.nodes.find(n => n.id === node.data.childNodeId);
-      if (child) { child._embedded = false; child.x = node.x + 350; child.y = node.y; renderNode(child); }
+      if (child) {
+        child._embedded = false;
+        child.x = node.x + 350; child.y = node.y;
+        // Remove stale inline child HTML from old container rendering
+        const oldChildEl = document.getElementById(`node-${child.id}`);
+        if (oldChildEl) oldChildEl.remove();
+      }
       node.data.childNodeId = '';
       refreshNodeDisplay(node);
+      if (child) renderNode(child);
     });
     // Container drop zone
     const body = el.querySelector('.wf-container-body');
     if (body) {
       body.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); body.style.borderColor = 'rgba(239,68,68,.6)'; body.style.background = 'rgba(239,68,68,.05)'; });
-      body.addEventListener('dragleave', (e) => { e.preventDefault(); body.style.borderColor = node.data.childNodeId ? 'rgba(239,68,68,.2)' : 'rgba(239,68,68,.3)'; body.style.background = 'transparent'; });
+      body.addEventListener('dragleave', (e) => { body.style.borderColor = node.data.childNodeId ? 'rgba(239,68,68,.2)' : 'rgba(239,68,68,.3)'; body.style.background = 'transparent'; });
       body.addEventListener('drop', (e) => {
         e.preventDefault(); e.stopPropagation();
         body.style.borderColor = node.data.childNodeId ? 'rgba(239,68,68,.2)' : 'rgba(239,68,68,.3)';
         body.style.background = 'transparent';
         const blockType = e.dataTransfer.getData('block-type');
-        if (blockType === 'http_request' || blockType === 'raw_request') {
+        if (!blockType) return;
+        if (blockType !== 'http_request' && blockType !== 'raw_request') return;
+        try {
           // Detach previous child if any
           if (node.data.childNodeId) {
             const prev = wf.nodes.find(n => n.id === node.data.childNodeId);
-            if (prev) { prev._embedded = false; prev.x = node.x + 350; prev.y = node.y; }
+            if (prev) {
+              prev._embedded = false;
+              prev.x = node.x + 350; prev.y = node.y;
+              // Remove any stale DOM for the old child
+              const oldEl = document.getElementById(`node-${prev.id}`);
+              if (oldEl) oldEl.remove();
+            }
+            node.data.childNodeId = '';
           }
-          // Create child node (embedded — rendered inline inside container, not on canvas)
-          const def = BLOCK_DEFS[blockType];
+          // Create embedded child
+          const childDef = BLOCK_DEFS[blockType];
+          if (!childDef) return;
           const data = {};
-          def.fields.forEach(f => { data[f.key] = f.default || ''; });
+          childDef.fields.forEach(f => { data[f.key] = f.default || ''; });
           const child = {
             id: 'n' + (wf.nextId++),
             type: blockType,
@@ -842,12 +862,11 @@ function renderNode(node) {
           };
           wf.nodes.push(child);
           node.data.childNodeId = child.id;
-          // Only refresh container — child is rendered inline in childHTML
           refreshNodeDisplay(node);
           updateNodeCount();
-          // Remove any leftover DOM element from previous standalone child
-          const oldEl = document.getElementById(`node-${child.id}`);
-          if (oldEl) oldEl.remove();
+        } catch (err) {
+          console.error('fuzz drop failed', err);
+          refreshNodeDisplay(node);
         }
       });
     }
@@ -1204,11 +1223,17 @@ function renderConfigPanel(nodeId) {
 
 function refreshNodeDisplay(node) {
   const el = $(`#node-${node.id}`);
-  if (!el) return;
+  if (!el) { renderNode(node); return; }
   el.remove();
-  renderNode(node);
+  try {
+    renderNode(node);
+  } catch (e) {
+    console.error('refreshNodeDisplay render failed', e);
+    renderNode(node); // retry once
+  }
   if (wf.selectedId === node.id) {
-    $(`#node-${node.id}`).classList.add('selected');
+    const newEl = $(`#node-${node.id}`);
+    if (newEl) newEl.classList.add('selected');
   }
   renderConnections();
 }
@@ -1567,60 +1592,29 @@ async function executeNode(nodeId, ctx) {
 
       case 'fuzz_params': {
         const wordlist = (node.data.wordlist || '').split('\n').map(l => l.trim()).filter(l => l);
-        if (!wordlist.length) { addLog('Fuzz: wordlist vide', 'warn'); break; }
-        // Get request config from embedded child node
-        let method = 'GET', urlTpl = '', headersTpl = '{}', bodyTpl = '';
-        if (node.data.childNodeId) {
-          const child = wf.nodes.find(n => n.id === node.data.childNodeId);
-          if (child) {
-            if (child.type === 'raw_request') {
-              // Parse raw HTTP request to extract method/url/headers/body
-              const raw = interpolate(child.data.rawRequest || '', ctx);
-              const lines = raw.split('\n');
-              const firstLine = lines[0]?.trim() || '';
-              const parts = firstLine.split(' ');
-              method = parts[0] || 'GET';
-              urlTpl = parts[1] || child.data.url || '';
-              let inHeaders = true;
-              let hdrLines = [], bodyLines = [];
-              for (let i = 1; i < lines.length; i++) {
-                const l = lines[i].trim();
-                if (inHeaders && l === '') { inHeaders = false; continue; }
-                if (inHeaders) hdrLines.push(l);
-                else bodyLines.push(l);
-              }
-              hdrLines.forEach(l => { const idx = l.indexOf(':'); if (idx > 0) headersTpl = (headersTpl === '{}' ? '{' : headersTpl.slice(0,-1)) + (headersTpl.length > 2 ? ',' : '') + `"${l.substring(0,idx).trim()}":"${l.substring(idx+1).trim()}"}`; });
-              if (headersTpl === '{}') headersTpl = '{}';
-              bodyTpl = bodyLines.join('\n');
-            } else {
-              method = child.data.method || 'GET';
-              urlTpl = interpolate(child.data.url || '', ctx);
-              headersTpl = interpolate(child.data.headers || '{}', ctx);
-              bodyTpl = interpolate(child.data.body || '', ctx);
-            }
-          }
-        }
-        if (!urlTpl) { addLog('Fuzz: aucune URL dans la requete imbriquee', 'error'); break; }
-        addLog(`Fuzz: ${wordlist.length} iterations sur ${method} $FUZZ$ → ${truncate(urlTpl,40)}`, 'step');
+        if (!wordlist.length) { addLog('Fuzz: wordlist vide', 'warn'); nextPort = 'out_done'; break; }
+        addLog(`Fuzz: ${wordlist.length} iterations sur $FUZZ$`, 'step');
+
+        const bodyConn = wf.connections.find(c => c.from === node.id && c.fromPort === 'out_body');
+        if (!bodyConn) { addLog('Fuzz: branchez la sortie BODY a une requete', 'error'); nextPort = 'out_done'; break; }
+
         const allResults = [];
         for (const word of wordlist) {
-          const fuzzUrl = urlTpl.replace(/\$FUZZ\$/gi, encodeURIComponent(word));
-          const fuzzHeadersStr = headersTpl.replace(/\$FUZZ\$/gi, word);
-          const fuzzBodyStr = bodyTpl.replace(/\$FUZZ\$/gi, word);
-          let fuzzHeaders = {};
-          try { fuzzHeaders = JSON.parse(fuzzHeadersStr); } catch {}
-          const res = await fetch(API.structured, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-            body: JSON.stringify({ url: fuzzUrl, method, headers: fuzzHeaders, body: fuzzBodyStr || undefined }),
-          });
-          const data = await res.json();
-          const sc = data.response?.status_code || 0;
-          allResults.push({ word, url: fuzzUrl, status: sc, body: data.response?.body?.substring(0, 200) });
-          addLog(`$FUZZ$="${word}" → ${sc}`, sc >= 400 ? 'warn' : 'info');
+          if (runAbort) break;
+          ctx.fuzz = word;
+          addLog(`  $FUZZ$="${word}" → execute`, 'info');
+          try {
+            await executeNode(bodyConn.to, ctx);
+          } catch (e) {
+            addLog(`  Erreur iteration "${word}": ${e.message}`, 'error');
+          }
+          if (ctx._lastResponse) {
+            allResults.push({ word, status: ctx._lastResponse.status_code, body: (ctx._lastResponse.body || '').substring(0, 200) });
+          }
         }
-        ctx[node.data.saveTo || 'fuzz'] = allResults;
-        addLog(`Fuzz termine : ${allResults.length} requetes`, 'success');
+        ctx[node.data.saveTo || 'fuzz'] = { iterations: wordlist.length, results: allResults };
+        addLog(`Fuzz termine : ${allResults.length}/${wordlist.length} requetes`, 'success');
+        nextPort = 'out_done';
         break;
       }
 

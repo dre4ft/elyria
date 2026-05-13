@@ -3,17 +3,21 @@ Team management + User Hub API.
 Decentralized governance: any user can create teams, join requests require 80% approval.
 """
 
-import json, uuid, math, sqlite3
+import json, uuid, math
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException
+from database.connection import get_connection
 
 app = APIRouter(prefix="/api", tags=["teams"])
-DB = "database.db"
 
 def _now(): return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 def _conn():
-    c = sqlite3.connect(DB); c.row_factory = sqlite3.Row; c.execute("PRAGMA foreign_keys=ON"); return c
-def _uid(r: Request): return getattr(r.state, "token", "anonymous")
+    return get_connection()
+def _uid(r: Request):
+    token = getattr(r.state, "token", None)
+    if not token or token == "anonymous":
+        raise HTTPException(401, "Authentication required")
+    return token
 
 def init_teams():
     c = _conn()
@@ -98,18 +102,23 @@ def get_team(team_id: str, request: Request):
     if not t: raise HTTPException(404, "Team not found")
     members = c.execute("SELECT user_id FROM team_users WHERE team_id=?", (team_id,)).fetchall()
     is_member = any(m["user_id"] == uid for m in members)
-    # Only members can see pending requests
     pendings = []
     if is_member:
         pendings = c.execute("SELECT * FROM pending_team_requests WHERE team_id=?", (team_id,)).fetchall()
     c.close()
+    if not is_member:
+        return {
+            "team_id": t["team_id"], "name": t["name"],
+            "member_count": len(members),
+            "is_member": False,
+        }
     return {
         "team_id": t["team_id"], "name": t["name"], "creator": t["creator_user_id"],
         "created_at": t["created_at"],
         "members": [m["user_id"] for m in members],
         "member_count": len(members),
-        "pending": [{"user_id": p["user_id"], "validators": json.loads(p["validators"]), "needed": p["needed_validator"]} for p in pendings] if is_member else [],
-        "is_member": is_member,
+        "pending": [{"user_id": p["user_id"], "validators": json.loads(p["validators"]), "needed": p["needed_validator"]} for p in pendings],
+        "is_member": True,
     }
 
 

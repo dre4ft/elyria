@@ -29,7 +29,6 @@ const state = {
   currentRequestId: null,
   history: [],
   chatOpen: false,
-  sidebarTab: 'collections',  // 'collections' | 'history'
   collections: [],             // tree: [{ id, name, type:'folder', children:[], expanded }, { id, name, type:'request', method, url }]
   activeCollectionId: null,   // ID de la requête de collection actuellement chargée
 };
@@ -114,10 +113,6 @@ const dom = {
   respBodyContent:  $('#resp-body-content'),
   respHeadersContent: $('#resp-headers-content'),
 
-  // Sidebar — tabs
-  sidebarTabBtns: $$('.sidebar-tab-btn'),
-  sidebarPanels:  $$('.sidebar-panel'),
-
   // Sidebar — collections
   collectionsTree:  $('#collections-tree'),
   collectionsEmpty: $('#collections-empty'),
@@ -126,12 +121,6 @@ const dom = {
   btnNewRequest:    $('#btn-new-request'),
   btnRefreshCol:    $('#btn-refresh-collections'),
   btnCreateFirst:   $('#btn-create-first-collection'),
-
-  // Sidebar — history
-  historyList:   $('#history-list'),
-  historyEmpty:  $('#history-empty'),
-  searchHistory: $('#search-history'),
-  btnRefresh:    $('#btn-refresh-history'),
 
   // Chat
   chatPanel:     $('#chat-panel'),
@@ -187,7 +176,6 @@ function init() {
     logoutBtn.addEventListener('click', logout);
   }
 
-  setupSidebarTabs();
   setupTabs();
   setupSubtabs();
   setupRespTabs();
@@ -228,24 +216,6 @@ function init() {
 
   // Load user's past requests from backend
   loadHistory();
-}
-
-// ─────────────────────────────────────────────
-// SIDEBAR TABS (Collections / History)
-// ─────────────────────────────────────────────
-function setupSidebarTabs() {
-  dom.sidebarTabBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const target = btn.dataset.sidebar;
-      state.sidebarTab = target;
-      dom.sidebarTabBtns.forEach(b => b.classList.toggle('active', b.dataset.sidebar === target));
-      dom.sidebarPanels.forEach(p => {
-        const isTarget = p.id === `sidebar-${target}`;
-        p.classList.toggle('hidden', !isTarget);
-        p.classList.toggle('active', isTarget);
-      });
-    });
-  });
 }
 
 // ─────────────────────────────────────────────
@@ -657,7 +627,7 @@ async function sendStructured() {
       reqParams: getParams(),
       timestamp: Date.now(),
     };
-    addToHistory(entry);
+    _notifyRequestComplete(entry);
     displayResponse(entry, elapsed);
 
     // Sync collection request if anything changed
@@ -719,7 +689,7 @@ async function sendRaw() {
       reqParams: [],
       timestamp: Date.now(),
     };
-    addToHistory(entry);
+    _notifyRequestComplete(entry);
     displayResponse(entry, elapsed);
 
     // Switch to structured tab and populate with parsed info
@@ -1255,11 +1225,11 @@ async function showCreateModal(title, placeholder, callback) {
   dom.btnModalOk.callback = callback;
   // Populate team dropdown
   const teamSel = $('#modal-team');
-  if(teamSel) { teamSel.innerHTML = '<option value="">👤 Personnel</option>';
+  if(teamSel) { teamSel.innerHTML = '<option value="">Personnel</option>';
     try {
       const r = await fetch('/api/teams', {headers:{...getAuthHeader()}});
       const teams = r.ok ? await r.json() : [];
-      teams.forEach(t => { teamSel.innerHTML += `<option value="${t.team_id}">👥 ${escapeHtml(t.name)}</option>`; });
+      teams.forEach(t => { teamSel.innerHTML += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; });
     } catch {} }
   dom.createModal.classList.remove('hidden');
   dom.createModal.classList.add('flex');
@@ -1291,6 +1261,13 @@ function removeNodeById(nodes, id) {
 }
 
 // ─────────────────────────────────────────────
+// REQUEST WATCHER — event-driven, no polling
+// ─────────────────────────────────────────────
+const _reqWatchers = [];
+function onRequestComplete(fn) { _reqWatchers.push(fn); }
+function _notifyRequestComplete(entry) { _reqWatchers.forEach(fn => { try { fn(entry); } catch {} }); }
+
+// ─────────────────────────────────────────────
 // HISTORY
 // ─────────────────────────────────────────────
 function setupHistory() {
@@ -1298,10 +1275,7 @@ function setupHistory() {
   const btnToggle = $('#btn-toggle-history');
   const btnClose = $('#btn-close-history');
   const btnClear = $('#btn-clear-history');
-  const logList = $('#history-log-list');
   const searchInput = $('#history-search');
-  const emptyState = $('#history-empty-state');
-  const countBadge = $('#history-count-badge');
 
   if (!historyPanel) return;
 
@@ -1309,6 +1283,13 @@ function setupHistory() {
   btnClose.addEventListener('click', () => toggleHistoryPanel(false));
   btnClear.addEventListener('click', () => { state.history = []; renderHistoryLog(); });
   searchInput.addEventListener('input', () => renderHistoryLog());
+
+  // Watch all completed requests — update history in real time
+  onRequestComplete((entry) => {
+    state.history = state.history.filter(h => h.id !== entry.id);
+    state.history.unshift(entry);
+    renderHistoryLog();
+  });
 }
 
 function toggleHistoryPanel(show) {
@@ -1317,7 +1298,7 @@ function toggleHistoryPanel(show) {
   const open = typeof show === 'boolean' ? show : panel.classList.contains('hidden');
   panel.classList.toggle('hidden', !open);
   panel.classList.toggle('flex', open);
-  if (open) { loadHistory(); renderHistoryLog(); }
+  if (open) { loadHistory(true); }
 }
 
 async function loadHistory(forceRefresh) {
@@ -1347,12 +1328,6 @@ async function loadHistory(forceRefresh) {
     state.history.sort((a, b) => b.timestamp - a.timestamp);
     renderHistoryLog();
   } catch {}
-}
-
-function addToHistory(entry) {
-  state.history = state.history.filter(h => h.id !== entry.id);
-  state.history.unshift(entry);
-  renderHistoryLog();
 }
 
 function renderHistoryLog() {
@@ -1493,7 +1468,7 @@ function setupQuickViewButtons(qvEl, entry) {
       const statusCode = resp.status_code || 0;
       const respBody = resp.body || '';
       if (resultEl) resultEl.innerHTML = `<span class="${statusCode >= 400 ? 'text-red-400' : 'text-green-400'} font-bold">${statusCode}</span> — ${respBody.substring(0, 500)}`;
-      addToHistory({
+      _notifyRequestComplete({
         id: data.request_uuid || generateId(), method, url, statusCode,
         reqHeaders: headers, reqBody: body, reqParams: [],
         headers: resp.headers || {}, body: respBody,
