@@ -4,7 +4,7 @@
 
 ---
 
-## Pourquoi Elyria
+## 🇫🇷 Pourquoi Elyria
 
 **Workflows de requêtes** — La feature qui change la donne. Simulez des parcours client bout en bout, testez des vulnérabilités (identifiants prédictibles, BOLA) et automatisez des flux d'autorisation complexes. Là où les autres outils s'arrêtent à la requête, Elyria orchestre des scénarios.
 
@@ -78,7 +78,7 @@ docker compose up --build
 
 Tourne sur un **MacBook M5 Pro 24 Go** avec des modèles locaux type **OpenAI/GPT-OSS-20B** via LM Studio sans aucun problème. L'inférence locale couvre à la fois les phases de scan (flash + pro) et l'assistant IA.
 
-Testé également avec un **Raspberry Pi 4 (carte SD 64 Go)** servant de serveur d'inférence distant : le modèle tourne sur le Pi, Elyria s'y connecte via l'API OpenAI-compatible.
+Testé également avec un **Raspberry Pi 4 (carte SD 64 Go)** servant l'application et utilisant les API standars des provider d'AI 
 
 ## Providers IA supportés
 
@@ -110,7 +110,7 @@ Open source. Pour toujours.
 
 ---
 
-## Why Elyria
+## 🇬🇧 Why Elyria
 
 **Request workflows** — The game changer. Simulate end-to-end user journeys, test for vulnerabilities (predictable identifiers, BOLA), and automate complex authorization flows. Where other tools stop at the request, Elyria orchestrates scenarios.
 
@@ -186,7 +186,7 @@ Elyria is designed to start **instantly** on any machine. No containers, no orch
 
 Runs smoothly on an **M5 Pro MacBook with 24 GB RAM** using local models like **OpenAI/GPT-OSS-20B** via LM Studio. Local inference covers both scan phases (flash + pro) and the AI assistant — no external GPU required.
 
-Also tested with a **Raspberry Pi 4 (64 GB SD card)** acting as a remote inference server: the model runs on the Pi, and Elyria connects via its OpenAI-compatible API. Performance stays smooth for the AI assistant and scan phases alike.
+Also tested with a **Raspberry Pi 4 (64 GB SD card)** hosting the server and calling regular AI provider api 
 
 ## Supported AI providers
 
@@ -220,7 +220,7 @@ Open source. Forever.
 
 ## TODO
 
-- parser pour raw HTTP
+- dockerfile
 - test bout en bout
 - connecteur pour DB externe (MySQL)
 - stockage local des requêtes le temps du premier envoi
