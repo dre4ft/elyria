@@ -23,13 +23,25 @@ def init():
     c.commit(); c.close()
 init()
 
-def _get_user(r: Request): return getattr(r.state, "token", "anonymous")
+def _get_user(r: Request):
+    token = getattr(r.state, "token", None)
+    if not token or token == "anonymous":
+        raise HTTPException(401, "Authentication required")
+    return token
 
 @app.get("")
 def list_proxies(request: Request):
     uid = _get_user(request)
+    # Gather user's teams for team-scoped proxies
     c = _conn()
-    rows = c.execute("SELECT * FROM proxies WHERE user_id=? OR user_id='' ORDER BY name", (uid,)).fetchall()
+    teams = [r[0] for r in c.execute("SELECT team_id FROM user_followed_teams WHERE user_id=?", (uid,)).fetchall()]
+    q = "SELECT * FROM proxies WHERE user_id=? OR user_id=''"
+    args = [uid]
+    for t in teams:
+        q += " OR team_ids LIKE ?"
+        args.append(f"%{t}%")
+    q += " ORDER BY name"
+    rows = c.execute(q, args).fetchall()
     c.close()
     return [dict(r) for r in rows]
 

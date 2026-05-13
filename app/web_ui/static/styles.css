@@ -759,3 +759,23 @@ textarea {
 #pentest-sidebar[data-collapsed="true"] { width: 0 !important; min-width: 0 !important; padding: 0 !important; border: none !important; overflow: hidden !important; }
 #sidebar[data-collapsed="true"] > *,
 #pentest-sidebar[data-collapsed="true"] > * { display: none !important; }
+
+/* ── Workflow sidebar — folder tree ── */
+.wf-cat-header { display:flex; align-items:center; gap:.35rem; padding:.35rem .5rem; cursor:pointer; user-select:none; border-radius:.35rem; transition:background .15s; }
+.wf-cat-header:hover { background:rgba(255,255,255,.03); }
+.wf-cat-header span { font-size:10px; font-weight:600; color:#9ca3af; text-transform:uppercase; letter-spacing:.05em; }
+.wf-cat-chevron { color:#6b7280; transition:transform .2s ease; }
+.wf-cat-header.collapsed .wf-cat-chevron { transform:rotate(-90deg); }
+
+.wf-saved-folder { }
+.wf-saved-folder-header { display:flex; align-items:center; gap:.35rem; padding:.3rem .5rem; cursor:pointer; user-select:none; border-radius:.3rem; transition:background .12s; }
+.wf-saved-folder-header:hover { background:rgba(255,255,255,.03); }
+.wf-saved-folder-chevron { color:#6b7280; transition:transform .2s ease; }
+.wf-saved-folder-chevron.open { transform:rotate(90deg); }
+.wf-saved-folder-icon { color:#6b7280; }
+.wf-saved-folder-icon.open { color:#93c5fd; }
+.wf-saved-folder-children { overflow:hidden; transition:max-height .25s ease; }
+.wf-saved-folder-children.collapsed { max-height:0 !important; }
+
+.wf-saved-item { display:flex; align-items:center; gap:.35rem; padding:.25rem .5rem; cursor:pointer; user-select:none; border-radius:.3rem; transition:background .12s; font-size:10px; color:#9ca3af; }
+.wf-saved-item:hover { background:rgba(255,255,255,.03); }

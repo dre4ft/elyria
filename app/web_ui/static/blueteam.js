@@ -409,12 +409,18 @@ function renderReport(report) {
       if (mermaidEls.length > 0 && typeof mermaid !== 'undefined') {
         mermaidEls.forEach(el => {
           const pre = el.parentElement;
+          // Decode HTML entities that marked.js may have escaped in code blocks
+          let code = el.textContent || '';
+          code = code.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
           const div = document.createElement('div');
           div.className = 'mermaid bg-base-900/50 rounded-lg p-4 my-4';
-          div.textContent = el.textContent;
+          div.textContent = code;
           pre.replaceWith(div);
         });
-        mermaid.run({ querySelector: '.mermaid' });
+        mermaid.run({ querySelector: '.mermaid' }).catch(() => {
+          // Mermaid syntax error — keep code block visible as text
+          console.warn('Mermaid render failed, showing code blocks instead');
+        });
       }
     } catch(e) { console.log('mermaid render skipped', e); }
   } else if (rendered) {

@@ -230,15 +230,22 @@ Use Mermaid diagrams (```mermaid ... ```) to illustrate:
 - Attack surface mapping (graph LR)
 - Risk matrices (pie charts)
 - Sequence diagrams for auth/remediation flows
-At least 3-4 diagrams throughout the report."""}
+At least 3-4 diagrams throughout the report.
+
+Mermaid syntax rules:
+- Node labels containing spaces or special chars MUST be wrapped in quotes: A["API Gateway"]
+- Use --- for links, --> for directed edges, -.-&gt; for dotted
+- No empty lines inside mermaid code blocks
+- No trailing semicolons
+- Pie chart: pie title "Risk Distribution"\n    "Critical" : 3\n    "High" : 7"""}
 
         report_msgs = [report_system]
         report_prompts = [
-            "Report round 1: Write the executive summary (Resume Executif) and scope (Perimetre d'Analyse). Be precise and impactful.",
-            "Report round 2: Write the domain-by-domain analysis (Analyse par Domaine). Cover all 7 domains with strengths, weaknesses, and risks.",
-            "Report round 3: Write the security requirements table (Exigences de Securite). Every requirement must have an ID, priority, and ASVS/NIST reference.",
-            "Report round 4: Write the action plan (Plan d'Action Priorise) and compliance matrix (Matrice de Conformite). Be specific about timelines.",
-            "Report round 5: Write the architectural recommendations and annexes. Review the entire report for completeness and consistency.",
+            "ONLY write section 1 (Resume Executif) and section 2 (Perimetre d'Analyse). Do NOT write other sections. Start with '# Rapport d'Analyse SSDLC — Security by Design' then '## 1. Resume Executif'.",
+            "ONLY write section 3 (Analyse par Domaine). Cover all 7 domains. Do NOT repeat sections 1-2. Start with '## 3. Analyse par Domaine'.",
+            "ONLY write section 4 (Exigences de Securite) with the full requirements table. Do NOT repeat previous sections. Start with '## 4. Exigences de Securite'.",
+            "ONLY write section 5 (Plan d'Action Priorise) and section 6 (Matrice de Conformite). Do NOT repeat previous sections. Start with '## 5. Plan d'Action Priorise'.",
+            "ONLY write section 7 (Recommandations Architecturelles) and section 8 (Annexes). Do NOT repeat previous sections. Start with '## 7. Recommandations Architecturelles'.",
         ]
 
         for ri, rp in enumerate(report_prompts[:self.report_rounds]):
@@ -257,7 +264,7 @@ At least 3-4 diagrams throughout the report."""}
                 print(f"[BLUETEAM] Report round {ri+1} FAILED: {e}", flush=True)
                 report_msgs.append({"role": "assistant", "content": f"[Error: {e}]"})
 
-        # Collect final report — concatenate all assistant messages from report phase
+        # Collect final report — concatenate sections in order (each round = one section)
         report_parts = []
         for msg in report_msgs:
             if msg.get("role") == "assistant" and msg.get("content") and "Error:" not in str(msg.get("content", "")):

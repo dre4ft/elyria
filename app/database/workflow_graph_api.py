@@ -24,7 +24,10 @@ init_db()
 
 
 def _get_user(request: Request):
-    return getattr(request.state, "token", "anonymous")
+    token = getattr(request.state, "token", None)
+    if not token or token == "anonymous":
+        raise HTTPException(401, "Authentication required")
+    return token
 
 
 def _get_user_teams(request: Request):

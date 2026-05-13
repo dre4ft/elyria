@@ -7,7 +7,7 @@ import threading
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pentest.scan_events import publish, subscribe, cleanup as events_cleanup
+from pentest.scan_events import publish, cleanup as events_cleanup
 
 from blueteam.database import (
     init_blueteam_db, create_profile, list_profiles, get_profile,
@@ -24,7 +24,10 @@ _analysis_progress = {}  # profile_id → {"pct": int, "msg": str, "status": str
 
 
 def _get_user(r: Request):
-    return r.state.token
+    token = getattr(r.state, "token", None)
+    if not token or token == "anonymous":
+        raise HTTPException(401, "Authentication required")
+    return token
 
 
 def _get_teams(r: Request):
@@ -104,35 +107,24 @@ async def api_get_profile(profile_id: str, request: Request):
     p["reports"] = get_reports(profile_id)
     prog = _analysis_progress.get(profile_id, {})
     p["progress_msg"] = prog.get("msg", "")
+    if prog.get("pct"):
+        p["scan_progress"] = prog["pct"]
     return p
 
 
 @app.get("/profiles/{profile_id}/status")
 async def api_get_profile_status(profile_id: str, request: Request):
-    """Lightweight — only status + progress."""
+    """Lightweight — only status + progress. Uses in-memory dict for coherence."""
     p = get_profile(profile_id)
     _verify_ownership(p, _get_user(request), _get_teams(request))
     prog = _analysis_progress.get(profile_id, {})
     return {
         "profile_id": p["profile_id"],
         "status": p.get("status", "pending"),
-        "scan_progress": p.get("scan_progress", 0),
+        "scan_progress": prog.get("pct", p.get("scan_progress", 0)),
         "pro_model": p.get("pro_model", ""),
         "progress_msg": prog.get("msg", ""),
     }
-
-
-@app.get("/profiles/{profile_id}/events")
-async def api_analysis_events(profile_id: str, request: Request):
-    """SSE stream of analysis progress events. Auth bypassed at middleware (EventSource limitation)."""
-    p = get_profile(profile_id)
-    if not p:
-        raise HTTPException(404, "Profile not found")
-    return StreamingResponse(
-        subscribe(profile_id),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
-    )
 
 
 @app.put("/profiles/{profile_id}")
@@ -164,13 +156,15 @@ async def api_import_from_pentest(request: Request):
     if not campaign_id:
         raise HTTPException(400, "campaign_id is required")
 
-    # Fetch campaign data
+    # Fetch campaign data — verify ownership
     try:
         from pentest.database import get_campaign, get_campaign_findings
-        from pentest.campaign_api import _scan_configs
         c = get_campaign(campaign_id)
         if not c:
             raise HTTPException(404, "Campaign not found")
+        _verify_ownership(c, _get_user(request), _get_teams(request))
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(404, "Campaign not found")
 
@@ -400,66 +394,6 @@ async def api_stop_analysis(profile_id: str, request: Request):
         update_profile(profile_id, status="stopped")
         return {"status": "stopped"}
     return {"status": "not_running"}
-
-
-@app.get("/profiles/{profile_id}/progress")
-async def api_progress_stream(profile_id: str, request: Request):
-    """SSE endpoint — streams analysis progress events in real time."""
-    import asyncio
-    from fastapi.responses import StreamingResponse
-
-    async def event_stream():
-        last_pct = -1
-        sent_done = False
-        idle_ticks = 0
-        while True:
-            p = _analysis_progress.get(profile_id)
-            if p is None:
-                # Check if analysis never started or already done
-                db_profile = get_profile(profile_id)
-                if db_profile and db_profile.get("status") in ("completed", "failed", "stopped"):
-                    if not sent_done:
-                        yield f"data: {json.dumps({'type': 'done', 'status': db_profile['status']})}\n\n"
-                        sent_done = True
-                    # Stay open a few seconds then close gracefully
-                    idle_ticks += 1
-                    if idle_ticks > 10:
-                        return
-                    await asyncio.sleep(1)
-                    continue
-                if profile_id not in _running:
-                    idle_ticks += 1
-                    if idle_ticks > 10:
-                        return
-                    await asyncio.sleep(1)
-                    continue
-                # Still running but no progress yet — keepalive
-                idle_ticks += 1
-                if idle_ticks > 10:
-                    return
-                await asyncio.sleep(1)
-                continue
-
-            idle_ticks = 0
-            if p["pct"] != last_pct:
-                last_pct = p["pct"]
-                yield f"data: {json.dumps({'type': 'progress', 'pct': p['pct'], 'msg': p.get('msg',''), 'status': p['status']})}\n\n"
-
-            # Mark done on completion
-            if p.get("status") == "completed" and not sent_done:
-                sent_done = True
-
-            await asyncio.sleep(1)
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 # ═══════════════════════════════════════════

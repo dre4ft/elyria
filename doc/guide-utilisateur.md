@@ -275,7 +275,7 @@ Glissez-déposez les briques depuis la palette vers le canvas. Connectez-les en 
 |--------|------|-----------------|
 | **Start** | Point d'entrée obligatoire du workflow | `out` |
 | **If / Else** | Branchement conditionnel (expression JavaScript) | `TRUE`, `FALSE` |
-| **For Loop** | Boucle sur N itérations avec variable d'index | `BODY` (chaque itération), `DONE` (après la boucle) |
+| **For Loop** | Boucle sur N itérations. Variable `ctx.i` = index courant. | `BODY` (chaque itération — branchez sur une requête et faites-la revenir au `in`), `DONE` (après la boucle) |
 | **Delay** | Pause en millisecondes | `out` |
 
 #### Données
@@ -305,6 +305,44 @@ Chaque brique de requête possède un champ **Sauver réponse dans** qui déterm
 
 Le panneau de config du bloc Assert propose des snippets d'exemples prêts à l'emploi.
 
+#### Red Team / Sécurité
+
+| Brique | Rôle | Ports de sortie |
+|--------|------|-----------------|
+| **Fuzz Requête** | Boucle de fuzzing sur une wordlist | `BODY` (chaque itération), `DONE` (après la boucle) |
+| **BOLA Test** | Test IDOR — substitue `{{ctx.id_list}}` dans l'URL | `VULN` (si 200), `SAFE` (sinon) |
+| **JWT Analyze** | Analyse un token JWT : décode le header/payload, vérifie l'expiration | `out` |
+| **Response Diff** | Compare deux réponses HTTP (status, headers, body) | `out_diff` (différentes), `out_same` (identiques) |
+| **Extract & Replay** | Extrait une valeur d'une réponse et la rejoue dans une nouvelle requête | `out` |
+
+**Fuzz Requête** — Boucle de fuzzing
+- Champ **Wordlist** : une valeur par ligne. À chaque itération, `ctx.fuzz` contient la valeur courante.
+- Sortie `BODY` : reliez-la à une requête HTTP. Dans la requête, utilisez `{{ctx.fuzz}}` dans l'URL, les headers ou le body.
+- La sortie de la requête DOIT revenir sur l'entrée `in` du Fuzz (boucle).
+- Sortie `DONE` : une fois la wordlist épuisée. `ctx[saveTo]` contient `{ iterations: N, results: [...] }`.
+- Exemple : wordlist = `admin\nuser\ntest`, URL = `https://api.example.com/users/{{ctx.fuzz}}`
+
+**BOLA Test** — Test IDOR (Insecure Direct Object Reference)
+- Champ **ID List (JSON)** : mapping d'IDs à substituer.
+- Placez `{{id}}` dans l'URL de la requête connectée en amont. La brique substitue chaque ID et vérifie si la ressource est accessible (HTTP 200).
+- Sortie `VULN` si une ressource d'un autre utilisateur est accessible.
+- Sortie `SAFE` si toutes les requêtes retournent 403/404.
+
+**JWT Analyze** — Décodeur de JWT
+- Décode le header et le payload d'un token JWT présent dans `ctx.jwt` ou `ctx.response.body`.
+- Vérifie l'expiration (`exp`) et la date d'émission (`iat`).
+- Stocke les résultats dans `ctx.jwt_analysis` : `{ header, payload, expired, issued_at, expires_at }`.
+
+**Response Diff** — Comparaison de réponses
+- Compare les deux dernières réponses stockées dans `ctx`. Détecte les différences de status, headers, et body.
+- Utile pour comparer la réponse avant/après un changement (ex: requête admin vs user normal).
+- Sortie `out_diff` si les réponses diffèrent, `out_same` si elles sont identiques.
+
+**Extract & Replay** — Extraction et réexécution
+- Extrait une valeur d'une réponse avec une expression régulière et la réinjecte dans une nouvelle requête.
+- Utile pour extraire un token CSRF, un ID de ressource, ou un token JWT et le réutiliser.
+- Stocke la valeur extraite dans `ctx.extracted_value`.
+
 ### 9.2. Le contexte (ctx)
 
 Toutes les briques partagent un objet `ctx` qui circule à travers le workflow.
@@ -319,6 +357,17 @@ Toutes les briques partagent un objet `ctx` qui circule à travers le workflow.
 | `{{ctx.response.url}}` | URL de la réponse |
 | `{{ctx.nomDataset.champ}}` | Champ d'un dataset nommé (Set Data avec nom) |
 | `{{ctx.maVariable}}` | Variable racine définie par Set Data |
+
+**Variables injectées par les briques Red Team :**
+
+| Variable | Injectée par | Description |
+|----------|-------------|-------------|
+| `{{ctx.fuzz}}` | Fuzz Requête | Valeur courante de la wordlist (une par itération) |
+| `{{ctx.fuzzResults}}` | Fuzz Requête | Résultats complets après la boucle : `{ iterations, results }` |
+| `{{ctx.id_list}}` | BOLA Test | Un ID de la liste à chaque itération (substitué dans `{{id}}`) |
+| `{{ctx.jwt_analysis}}` | JWT Analyze | Résultat du décodage : `{ header, payload, expired }` |
+| `{{ctx.extracted_value}}` | Extract & Replay | Valeur extraite par la regex |
+| `{{ctx._lastResponse}}` | Toute requête | Dernière réponse complète (interne) |
 
 **Snippets ctx** : dans le panneau de configuration des briques HTTP Request, Raw Request, Set Data et If/Else, une section *ctx — Contexte du workflow* affiche des snippets cliquables qui s'insèrent à la position du curseur dans le champ actif.
 
