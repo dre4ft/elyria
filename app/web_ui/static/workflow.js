@@ -168,10 +168,10 @@ const ICON_SVG = {
   send:      '<path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/>',
   code:      '<path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"/>',
   database:  '<path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/>',
-  condition: '<path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"/>',
+  condition: '<path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75"/><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 17.25h.008v.008H12v-.008z"/>',
   loop:      '<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3"/>',
-  clock:     '<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/>',
-  check:     '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 016 0z"/>',
+  clock:     '<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5"/><circle cx="12" cy="12" r="9"/>',
+  check:     '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75"/><circle cx="12" cy="12" r="9"/>',
   fuzz:      '<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3"/><circle cx="12" cy="12" r="1.5" fill="currentColor" opacity=".5"/>',
   bola:      '<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 7.5l15 0M4.5 12h15M4.5 16.5h15" stroke-width="1" opacity=".3"/>',
   jwt:       '<path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/><circle cx="12" cy="16.5" r="1.5" fill="currentColor"/>',
@@ -189,6 +189,7 @@ const wf = {
   selectedConnIdx: null,
   dragging: null,      // { nodeId, offsetX, offsetY }
   connecting: null,    // { fromId, fromPort, startX, startY }
+  panning: null,       // { startX, startY, panX, panY }
   zoom: 1,
   panX: 0, panY: 0,
   running: false,
@@ -213,6 +214,8 @@ const dom = {
   zoomLevel:     $('#wf-zoom-level'),
   panelTabs:     $$('.wf-panel-tab'),
   panels:        $$('.wf-rpanel'),
+  ctxContent:     $('#wf-ctx-content'),
+  ctxBlockName:   $('#wf-ctx-block-name'),
   btnRun:        $('#btn-run-workflow'),
   btnStop:       $('#btn-stop-workflow'),
   btnClear:      $('#btn-clear-canvas'),
@@ -222,6 +225,21 @@ const dom = {
   btnZoomFit:    $('#btn-zoom-fit'),
   btnSave:       $('#btn-save-workflow'),
   btnLoad:       $('#btn-load-workflow'),
+  btnImportArazzo: $('#btn-import-arazzo'),
+  arazzoModal:     $('#arazzo-import-modal'),
+  arazzoModalClose: $('#btn-arazzo-modal-close'),
+  arazzoDropZone:  $('#arazzo-drop-zone'),
+  arazzoFileInput: $('#arazzo-modal-file-input'),
+  arazzoFileLabel: $('#arazzo-file-label'),
+  arazzoTargetServer: $('#arazzo-target-server'),
+  arazzoOpenapiUrl: $('#arazzo-openapi-url'),
+  arazzoOpenapiFile: $('#arazzo-openapi-file'),
+  arazzoOpenapiStatus: $('#arazzo-openapi-status'),
+  arazzoTeamSelect: $('#arazzo-team-select'),
+  arazzoInputsValues: $('#arazzo-inputs-values'),
+  arazzoInputsStatus: $('#arazzo-inputs-status'),
+  arazzoImportBtn: $('#btn-arazzo-import'),
+  arazzoImportStatus: $('#arazzo-import-status'),
   wfName:        $('#wf-name'),
   loadModal:     $('#wf-load-modal'),
   loadList:      $('#wf-load-list'),
@@ -245,10 +263,12 @@ function init() {
   setupToolbar();
   setupSavedRequests();
   setupWorkflowCRUD();
+  setupArazzoImport();
   loadWfTeamFilter();
   loadWfSaveTeams();
   loadSavedRequests();
   loadSavedWorkflows();
+  applyTransform();
   updateNodeCount();
 }
 
@@ -472,6 +492,8 @@ function getGraph() {
 function loadGraph(graph) {
   clearCanvasSilent();
   wf.nextId = 1;
+  // Reposition nodes to avoid overlaps
+  autoLayout(graph);
   const idMap = {};
   (graph.nodes || []).forEach(n => {
     const newNode = {
@@ -496,6 +518,92 @@ function loadGraph(graph) {
   });
   renderConnections();
   updateNodeCount();
+}
+
+// ── Auto-layout: staircase positioning (↓ + →) to avoid overlaps ──
+
+function autoLayout(graph) {
+  const nodes = graph.nodes || [];
+  const connections = graph.connections || [];
+  if (nodes.length === 0) return;
+
+  // Build adjacency
+  const children = {};
+  const parents = {};
+  nodes.forEach(n => { children[n.id] = []; parents[n.id] = []; });
+  connections.forEach(c => {
+    if (children[c.from]) children[c.from].push(c.to);
+    if (parents[c.to]) parents[c.to].push(c.from);
+  });
+
+  // Find the Start node
+  const startNode = nodes.find(n => n.type === 'start');
+  const rootId = startNode ? startNode.id : nodes[0].id;
+
+  // Walk the main chain: at each node, follow the FIRST child that has "out" port
+  // (the main flow), other children are branches (asserts, etc.)
+  const placed = new Set();
+  const STEP_X = 240;
+  const STEP_Y = 100;
+  const START_X = 50;
+  const START_Y = 50;
+
+  let idx = 0;
+  let currentId = rootId;
+
+  // Walk main chain
+  while (currentId && !placed.has(currentId)) {
+    const node = nodes.find(n => n.id === currentId);
+    if (!node) break;
+    node.x = START_X + idx * STEP_X;
+    node.y = START_Y + idx * STEP_Y;
+    placed.add(currentId);
+    idx++;
+
+    // Place branch children (nodes that split off) to the right of the main node
+    const kids = children[currentId] || [];
+    kids.forEach(cid => {
+      if (placed.has(cid)) return;
+      // Check if this child is the main continuation (also has children going forward)
+      // or a terminal branch (assert, etc.)
+      const childKids = children[cid] || [];
+      const isBranch = childKids.length === 0; // terminal = branch
+      if (isBranch) {
+        const childNode = nodes.find(n => n.id === cid);
+        if (childNode) {
+          childNode.x = node.x + STEP_X;
+          childNode.y = node.y + 80;
+          placed.add(cid);
+        }
+      }
+    });
+
+    // Follow the main continuation (first non-terminal child)
+    let nextId = null;
+    for (const cid of kids) {
+      if (!placed.has(cid) && (children[cid] || []).length > 0) {
+        nextId = cid;
+        break;
+      }
+    }
+    // If no non-terminal child found, try any unplaced child
+    if (!nextId) {
+      for (const cid of kids) {
+        if (!placed.has(cid)) { nextId = cid; break; }
+      }
+    }
+    currentId = nextId;
+  }
+
+  // Place any remaining unplaced nodes (disconnected)
+  nodes.forEach(n => {
+    if (!placed.has(n.id)) {
+      n.x = START_X + idx * STEP_X;
+      n.y = START_Y + idx * STEP_Y;
+      placed.add(n.id);
+      idx++;
+    }
+  });
 }
 
 async function saveWorkflow() {
@@ -575,12 +683,522 @@ async function openLoadModal() {
         if (!confirm(`Supprimer "${wf.name}" ?`)) return;
         await fetch(`/api/workflows/${wf.workflow_id}`, { method: 'DELETE', headers: { ...getAuthHeader() } });
         if (savedWorkflowId === wf.workflow_id) { savedWorkflowId = null; dom.wfName.value = 'Mon workflow de test'; }
+        await loadSavedWorkflows();
         openLoadModal();
       });
       dom.loadList.appendChild(item);
     });
   } catch (e) {
     dom.loadList.innerHTML = '<div class="text-xs text-red-400 text-center py-8">Erreur de chargement</div>';
+  }
+}
+
+// ARAZZO IMPORT MODAL
+// ─────────────────────────────────────────────
+let arazzoSelectedFile = null;
+let arazzoOpenapiSelectedFile = null;
+
+function setupArazzoImport() {
+  if (!dom.btnImportArazzo || !dom.arazzoModal) return;
+
+  // Open modal
+  dom.btnImportArazzo.addEventListener('click', () => {
+    openArazzoModal();
+  });
+
+  // Close modal
+  dom.arazzoModalClose.addEventListener('click', () => closeArazzoModal());
+  dom.arazzoModal.addEventListener('click', (e) => {
+    if (e.target === dom.arazzoModal) closeArazzoModal();
+  });
+
+  // Arazzo inputs: auto-pair + format button + validation
+  dom.arazzoInputsValues.addEventListener('keydown', (e) => {
+    if (handleAutoPair(dom.arazzoInputsValues, e)) return;
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+      e.preventDefault();
+      formatJsonTextarea(dom.arazzoInputsValues, 'arazzo-inputs-values');
+    }
+  });
+  dom.arazzoInputsValues.addEventListener('input', () => {
+    validateJsonFieldById('arazzo-inputs-values');
+  });
+  // Format button
+  const arazzoFmtBtn = dom.arazzoModal.querySelector('[data-json-fmt="arazzo-inputs-values"]');
+  if (arazzoFmtBtn) {
+    arazzoFmtBtn.addEventListener('click', () => {
+      formatJsonTextarea(dom.arazzoInputsValues, 'arazzo-inputs-values');
+    });
+  }
+
+  // Arazzo file input change
+  dom.arazzoFileInput.addEventListener('change', () => {
+    const file = dom.arazzoFileInput.files[0];
+    if (file) selectArazzoFile(file);
+  });
+
+  // OpenAPI file input change
+  dom.arazzoOpenapiFile.addEventListener('change', () => {
+    const file = dom.arazzoOpenapiFile.files[0];
+    if (file) {
+      arazzoOpenapiSelectedFile = file;
+      dom.arazzoOpenapiStatus.textContent = file.name;
+      dom.arazzoOpenapiStatus.className = 'text-[9px] text-emerald-400';
+      dom.arazzoOpenapiStatus.classList.remove('hidden');
+      dom.arazzoOpenapiUrl.value = ''; // clear URL when file selected
+    }
+  });
+
+  // OpenAPI URL input: clear file when URL entered
+  dom.arazzoOpenapiUrl.addEventListener('input', () => {
+    if (dom.arazzoOpenapiUrl.value.trim()) {
+      arazzoOpenapiSelectedFile = null;
+      dom.arazzoOpenapiFile.value = '';
+      dom.arazzoOpenapiStatus.classList.add('hidden');
+    }
+  });
+
+  // Drag & drop
+  const dropZone = dom.arazzoDropZone;
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('border-emerald-400/60', 'bg-emerald-500/[0.08]');
+  });
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('border-emerald-400/60', 'bg-emerald-500/[0.08]');
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('border-emerald-400/60', 'bg-emerald-500/[0.08]');
+    const file = e.dataTransfer.files[0];
+    if (file) selectArazzoFile(file);
+  });
+
+  // Import button
+  dom.arazzoImportBtn.addEventListener('click', () => doArazzoImport());
+}
+
+function openArazzoModal() {
+  arazzoSelectedFile = null;
+  arazzoOpenapiSelectedFile = null;
+  dom.arazzoFileInput.value = '';
+  dom.arazzoFileLabel.textContent = 'Déposer un fichier .yaml ou .json';
+  dom.arazzoImportBtn.disabled = true;
+  dom.arazzoImportStatus.classList.add('hidden');
+  dom.arazzoTargetServer.value = 'http://localhost:9000';
+  dom.arazzoOpenapiUrl.value = '';
+  dom.arazzoOpenapiFile.value = '';
+  dom.arazzoOpenapiStatus.classList.add('hidden');
+  dom.arazzoInputsValues.value = '';
+  dom.arazzoInputsStatus.classList.add('hidden');
+  loadArazzoTeams();
+  dom.arazzoModal.classList.remove('hidden');
+  dom.arazzoModal.classList.add('flex');
+}
+
+function closeArazzoModal() {
+  dom.arazzoModal.classList.add('hidden');
+  dom.arazzoModal.classList.remove('flex');
+}
+
+async function selectArazzoFile(file) {
+  arazzoSelectedFile = file;
+  dom.arazzoFileLabel.textContent = file.name;
+  dom.arazzoImportBtn.disabled = false;
+  await extractArazzoInputs(file);
+}
+
+async function extractArazzoInputs(file) {
+  try {
+    const text = await file.text();
+    let inputs = null;
+    // Try JSON first
+    try {
+      const json = JSON.parse(text);
+      inputs = extractInputsFromArazzo(json);
+    } catch {
+      // Try YAML — simple extraction of inputs block
+      inputs = extractInputsFromYamlText(text);
+    }
+    if (inputs) {
+      dom.arazzoInputsValues.value = JSON.stringify(inputs, null, 2);
+      dom.arazzoInputsStatus.textContent = 'Détectés — remplissez les valeurs';
+      dom.arazzoInputsStatus.className = 'text-[9px] text-emerald-400';
+    } else {
+      dom.arazzoInputsValues.value = '';
+      dom.arazzoInputsStatus.textContent = 'Aucun input détecté';
+      dom.arazzoInputsStatus.className = 'text-[9px] text-gray-600';
+    }
+    dom.arazzoInputsStatus.classList.remove('hidden');
+  } catch (e) {
+    console.error('[arazzo] extractInputs error:', e);
+    dom.arazzoInputsStatus.classList.add('hidden');
+  }
+}
+
+// ── Smart sample value generation ──
+
+const SMART_DEFAULTS = {
+  // Noms / identité
+  username:        'alice',      name: 'Alice',       firstname: 'Alice',
+  lastname:        'Dupont',     fullname: 'Alice Dupont',  nickname: 'alice42',
+  email:           'alice@mail.com',  mail: 'alice@mail.com',
+  // Auth
+  password:        'Test123!',   pass: 'Test123!',    token: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGljZSJ9.demo',
+  apikey:          'sk-demo-1234567890',  api_key: 'sk-demo-1234567890',
+  secret:          '********',   auth: 'Bearer eyJhbGciOiJIUzI1NiJ9.demo',
+  // IDs
+  id:              1,            userid: 42,          user_id: 42,
+  uid:             'a1b2c3d4',   uuid: '550e8400-e29b-41d4-a716-446655440000',
+  // Web
+  url:             'https://example.com',  endpoint: 'https://api.example.com/v1',
+  host:            'api.example.com',  port: 443,
+  // Dates
+  date:            '2025-06-15',  startdate: '2025-06-01',  enddate: '2025-12-31',
+  // Pagination
+  page:            1,            limit: 10,           offset: 0,
+  size:            20,           count: 100,
+  // Divers
+  role:            'user',       status: 'active',    type: 'standard',
+  q:               'search',     query: 'test',       search: 'demo',
+  lang:            'fr',         locale: 'fr-FR',     currency: 'EUR',
+  phone:           '+33612345678',  description: 'Lorem ipsum dolor sit amet.',
+  title:           'Test',       message: 'Hello World',
+};
+
+function extractInputsFromArazzo(json) {
+  const inputs = {};
+  for (const wf of json.workflows || []) {
+    const wfInputs = wf.inputs;
+    if (!wfInputs || !wfInputs.properties) continue;
+    for (const [key, prop] of Object.entries(wfInputs.properties)) {
+      inputs[key] = smartSampleValue(key, prop);
+    }
+  }
+  return Object.keys(inputs).length > 0 ? inputs : null;
+}
+
+function smartSampleValue(name, prop) {
+  // Explicit example or default wins
+  if (prop.example !== undefined) return prop.example;
+  if (prop.default !== undefined) return prop.default;
+
+  const type = (prop.type || 'string').toLowerCase();
+
+  // Enum: pick first
+  if (prop.enum && Array.isArray(prop.enum)) return prop.enum[0];
+
+  // Boolean
+  if (type === 'boolean') return false;
+
+  // Array / Object
+  if (type === 'array') {
+    const itemType = (prop.items && prop.items.type) || 'string';
+    if (itemType === 'integer' || itemType === 'number') return [1, 2, 3];
+    return ['item1', 'item2'];
+  }
+  if (type === 'object') return {};
+
+  // Integer / Number — check constraints
+  if (type === 'integer' || type === 'number') {
+    const min = prop.minimum ?? prop.min ?? null;
+    const max = prop.maximum ?? prop.max ?? null;
+    if (min !== null && min !== undefined) return type === 'integer' ? Math.ceil(min) : min;
+    if (name in SMART_DEFAULTS && typeof SMART_DEFAULTS[name] === 'number') return SMART_DEFAULTS[name];
+    return max !== null && max !== undefined ? Math.floor(Math.min(max, 42)) : 42;
+  }
+
+  // String — check smart defaults by name
+  const nameLower = name.toLowerCase().replace(/[_-]/g, '');
+  if (SMART_DEFAULTS[nameLower] !== undefined && typeof SMART_DEFAULTS[nameLower] !== 'number') {
+    return SMART_DEFAULTS[nameLower];
+  }
+
+  // String — check format
+  const fmt = (prop.format || '').toLowerCase();
+  if (fmt === 'email') return 'alice@mail.com';
+  if (fmt === 'uri' || fmt === 'url') return 'https://example.com';
+  if (fmt === 'uuid') return '550e8400-e29b-41d4-a716-446655440000';
+  if (fmt === 'date') return '2025-06-15';
+  if (fmt === 'date-time') return '2025-06-15T10:30:00Z';
+  if (fmt === 'ipv4') return '192.168.1.1';
+  if (fmt === 'ipv6') return '::1';
+  if (fmt === 'hostname') return 'api.example.com';
+  if (fmt === 'byte') return 'ZGVtbw==';
+
+  // String — generate respecting pattern / length constraints
+  return randomStringFromConstraints(prop);
+}
+
+function randomStringFromConstraints(prop) {
+  const minLen = prop.minLength || 0;
+  const maxLen = prop.maxLength || 32;
+  const pattern = prop.pattern || null;
+  const targetLen = Math.max(minLen, Math.min(maxLen, 8));
+
+  // If a regex pattern is provided, try to generate a string that matches (simple approach)
+  if (pattern) {
+    try {
+      const generated = generateFromPattern(pattern, targetLen);
+      if (generated) return generated;
+    } catch {}
+  }
+
+  // Fallback: random alphanum coherent with length
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let s = '';
+  for (let i = 0; i < targetLen; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+function generateFromPattern(pattern, len) {
+  // Simple pattern interpreter — handles common regex constructs
+  let result = '';
+  let i = 0;
+  let lastGen = ''; // last generated segment (for quantifier repeat)
+  const maxIter = 500;
+  let iter = 0;
+  while (result.length < len && i < pattern.length && iter < maxIter) {
+    iter++;
+    if (pattern[i] === '^') { i++; continue; }
+    if (pattern[i] === '$') { i++; continue; }
+    // Quantifiers {n} or {n,m} — repeat last generated segment
+    if (pattern[i] === '{') {
+      const close = pattern.indexOf('}', i);
+      if (close > i) {
+        const q = pattern.substring(i + 1, close);
+        const comma = q.indexOf(',');
+        const n = parseInt(comma >= 0 ? q.substring(0, comma) : q, 10) || 1;
+        const m = comma >= 0 ? parseInt(q.substring(comma + 1), 10) || n + 5 : n;
+        const repeat = Math.max(n, Math.min(m, Math.floor(len / Math.max(1, (typeof lastGen === 'string' ? 1 : 1)))));
+        for (let r = 1; r < repeat && result.length < len; r++) {
+          if (typeof lastGen === 'string' && lastGen.startsWith('__charclass__')) {
+            result += randomFromCharClass(lastGen.slice(14));
+          } else {
+            result += (lastGen || 'x');
+          }
+        }
+        i = close + 1;
+        continue;
+      }
+    }
+    // Escape sequences
+    if (pattern[i] === '\\' && i + 1 < pattern.length) {
+      const next = pattern[i + 1];
+      if (next === 'd') lastGen = String(Math.floor(Math.random() * 10));
+      else if (next === 'w') lastGen = 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)];
+      else if (next === 's') lastGen = ' ';
+      else lastGen = next;
+      result += lastGen;
+      i += 2;
+      continue;
+    }
+    // Wildcards
+    if (pattern[i] === '.') {
+      if (pattern[i + 1] === '*') { lastGen = 'abc'; result += lastGen; i += 2; continue; }
+      if (pattern[i + 1] === '+') { lastGen = 'a'; result += lastGen; i += 2; continue; }
+      lastGen = 'x'; result += lastGen; i++; continue;
+    }
+    // Character classes [a-z], [0-9], etc.
+    if (pattern[i] === '[') {
+      const close = pattern.indexOf(']', i);
+      if (close > i) {
+        const cls = pattern.substring(i + 1, close);
+        lastGen = '__charclass__' + cls; // store class for +/* repeat
+        result += randomFromCharClass(cls);
+        i = close + 1;
+        continue;
+      }
+    }
+    if (pattern[i] === '*' || pattern[i] === '+') {
+      const extra = pattern[i] === '+' ? Math.min(10, len - result.length) : Math.min(3, len - result.length);
+      for (let r = 0; r < extra && result.length < len; r++) {
+        if (typeof lastGen === 'string' && lastGen.startsWith('__charclass__')) {
+          result += randomFromCharClass(lastGen.slice(14));
+        } else {
+          result += (lastGen || 'x');
+        }
+      }
+      i++; continue;
+    }
+    if (pattern[i] === '?') { i++; continue; }
+    // Parentheses / pipes — skip groups, keep first alt
+    if (pattern[i] === '(') {
+      const close = pattern.indexOf(')', i);
+      if (close > i) {
+        const group = pattern.substring(i + 1, close);
+        // Pick first alternative before |
+        const alt = group.split('|')[0];
+        result += alt;
+        i = close + 1;
+        continue;
+      }
+    }
+    if (pattern[i] === ')') { i++; continue; }
+    if (pattern[i] === '|') {
+      const endGroup = pattern.indexOf(')', i);
+      if (endGroup > i) { i = endGroup; continue; }
+      i++; continue;
+    }
+    // Regular char
+    lastGen = pattern[i];
+    result += pattern[i];
+    i++;
+  }
+  return result || 'demo';
+}
+
+function randomFromCharClass(cls) {
+  // Expand ranges like a-z, 0-9, A-Z
+  let chars = '';
+  let j = 0;
+  while (j < cls.length) {
+    if (j + 2 < cls.length && cls[j + 1] === '-') {
+      const start = cls.charCodeAt(j);
+      const end = cls.charCodeAt(j + 2);
+      for (let c = start; c <= end; c++) chars += String.fromCharCode(c);
+      j += 3;
+    } else {
+      chars += cls[j];
+      j++;
+    }
+  }
+  return chars ? chars[Math.floor(Math.random() * chars.length)] : 'x';
+}
+
+function extractInputsFromYamlText(text) {
+  const inputs = {};
+  // Find inputs block for each workflow
+  const wfRegex = /^[- ]+workflowId:\s*(.+)$/gm;
+  // Simpler: find all properties blocks under inputs
+  const propsRegex = /^[ \t]+properties:\s*\n([\s\S]*?)(?=\n[ \t]{0,2}\w|\n\w|$)/gm;
+  let propsMatch;
+  while ((propsMatch = propsRegex.exec(text)) !== null) {
+    const propsBlock = propsMatch[1];
+    const entries = parseYamlProperties(propsBlock);
+    for (const [key, prop] of Object.entries(entries)) {
+      inputs[key] = smartSampleValue(key, prop);
+    }
+  }
+  return Object.keys(inputs).length > 0 ? inputs : null;
+}
+
+function parseYamlProperties(block) {
+  const props = {};
+  const lines = block.split('\n');
+  let currentKey = null;
+  let currentProp = {};
+  let baseIndent = null; // first property's indent sets the baseline
+  const META_KEYS = new Set(['type','format','example','default','minimum','maximum','min','max','enum','minLength','maxLength','pattern','description','items']);
+  for (const line of lines) {
+    const propMatch = line.match(/^[ \t]+(\w+):\s*(.*)/);
+    if (!propMatch) continue;
+    const indent = line.search(/\S/);
+    const key = propMatch[1];
+    const value = propMatch[2].trim();
+    if (baseIndent === null && !META_KEYS.has(key)) baseIndent = indent;
+    if (!META_KEYS.has(key) && indent <= (baseIndent || 2)) {
+      // New property at base indentation level
+      if (currentKey) { props[currentKey] = currentProp; }
+      currentKey = key;
+      currentProp = {};
+      if (value) currentProp.type = value;
+    } else if (currentKey) {
+      if (key === 'type') currentProp.type = value;
+      else if (key === 'format') currentProp.format = value;
+      else if (key === 'example') currentProp.example = value;
+      else if (key === 'default') currentProp.default = value;
+      else if (key === 'minimum' || key === 'min') currentProp.minimum = Number(value);
+      else if (key === 'maximum' || key === 'max') currentProp.maximum = Number(value);
+      else if (key === 'enum') currentProp.enum = parseYamlArray(value);
+      else if (key === 'minLength') currentProp.minLength = Number(value);
+      else if (key === 'maxLength') currentProp.maxLength = Number(value);
+      else if (key === 'pattern') currentProp.pattern = parseYamlPattern(value);
+    }
+  }
+  if (currentKey) { props[currentKey] = currentProp; }
+  return props;
+}
+
+function parseYamlArray(val) {
+  // Parse YAML inline array: [a, b, c] or multi-line
+  const match = val.match(/^\[(.+)\]$/);
+  if (match) return match[1].split(',').map(s => s.trim().replace(/^['"]|['"]$/g, ''));
+  return [val];
+}
+
+function parseYamlPattern(val) {
+  // Strip YAML quotes: '^[a-z]+$' → ^[a-z]+$
+  return val.replace(/^['"]|['"]$/g, '');
+}
+
+async function loadArazzoTeams() {
+  const sel = dom.arazzoTeamSelect;
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Personnel</option>';
+  try {
+    const res = await fetch('/api/teams', { headers: { ...getAuthHeader() } });
+    if (res.ok) {
+      const teams = await res.json();
+      teams.forEach(t => {
+        sel.innerHTML += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`;
+      });
+    }
+  } catch {}
+}
+
+async function doArazzoImport() {
+  if (!arazzoSelectedFile) return;
+  const targetServer = dom.arazzoTargetServer.value.trim() || 'http://localhost:9000';
+  const teamId = dom.arazzoTeamSelect.value;
+  const inputsRaw = dom.arazzoInputsValues.value.trim();
+  const openapiUrl = dom.arazzoOpenapiUrl.value.trim();
+
+  dom.arazzoImportBtn.disabled = true;
+  dom.arazzoImportBtn.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity=".25"/><path stroke-linecap="round" d="M12 2a10 10 0 019.95 8.9" opacity=".8"/></svg> Importation...`;
+  dom.arazzoImportStatus.classList.add('hidden');
+
+  try {
+    const formData = new FormData();
+    formData.append('file', arazzoSelectedFile);
+    // Attach OpenAPI spec if provided
+    if (arazzoOpenapiSelectedFile) {
+      formData.append('openapi_file', arazzoOpenapiSelectedFile);
+    }
+    let qs = `target_url=${encodeURIComponent(targetServer)}&team_id=${encodeURIComponent(teamId)}`;
+    if (openapiUrl) {
+      qs += `&openapi_url=${encodeURIComponent(openapiUrl)}`;
+    }
+    if (inputsRaw) {
+      try {
+        JSON.parse(inputsRaw); // validate
+        qs += `&inputs_values=${encodeURIComponent(inputsRaw)}`;
+      } catch { /* ignore invalid JSON */ }
+    }
+    const res = await fetch(`/api/document/openapi?${qs}`, {
+      method: 'POST',
+      headers: { ...getAuthHeader() },
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const result = await res.json();
+    dom.arazzoImportStatus.textContent = `${result.collection_name || 'Import réussi'} — ${(result.workflow_ids || []).length} workflow(s)`;
+    dom.arazzoImportStatus.className = 'text-[10px] text-center mt-2 text-emerald-400';
+    dom.arazzoImportStatus.classList.remove('hidden');
+    dom.arazzoImportBtn.disabled = true;
+    dom.arazzoImportBtn.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg> Importé`;
+    await loadSavedWorkflows();
+    loadWfSaveTeams();
+    setTimeout(() => closeArazzoModal(), 1200);
+  } catch (e) {
+    dom.arazzoImportStatus.textContent = `Erreur : ${e.message}`;
+    dom.arazzoImportStatus.className = 'text-[10px] text-center mt-2 text-red-400';
+    dom.arazzoImportStatus.classList.remove('hidden');
+    dom.arazzoImportBtn.disabled = false;
+    dom.arazzoImportBtn.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg> Importer les workflows`;
   }
 }
 
@@ -883,11 +1501,14 @@ function renderNode(node) {
   // Events
   el.addEventListener('mousedown', (e) => {
     if (e.target.closest('.wf-port') || e.target.closest('.wf-node-delete') || e.target.closest('.wf-container-body') || e.target.closest('.wf-detach-child')) return;
+    // Cancel any pending connection
+    if (wf.connecting) { cancelConnecting(); renderConnections(); }
     selectNode(node.id);
+    const wrapperRect = dom.canvasWrapper.getBoundingClientRect();
     wf.dragging = {
       nodeId: node.id,
-      offsetX: e.clientX / wf.zoom - node.x,
-      offsetY: e.clientY / wf.zoom - node.y,
+      offsetX: (e.clientX - wrapperRect.left - wf.panX) / wf.zoom - node.x,
+      offsetY: (e.clientY - wrapperRect.top - wf.panY) / wf.zoom - node.y,
     };
     e.preventDefault();
   });
@@ -932,20 +1553,52 @@ function createPort(dir, portName, nodeId) {
   if (portName === 'out_body') port.innerHTML = '<span class="wf-port-label" style="color:#60a5fa">BODY</span>';
   if (portName === 'out_done') port.innerHTML = '<span class="wf-port-label" style="color:#a78bfa">DONE</span>';
 
-  // Drag to connect
+  // Click-to-click connection from output port
   port.addEventListener('mousedown', (e) => {
     e.stopPropagation();
+    e.preventDefault();
     if (dir === 'out') {
+      if (wf.connecting) {
+        // Already connecting — cancel
+        cancelConnecting();
+        return;
+      }
       const rect = port.getBoundingClientRect();
-      const canvasRect = dom.canvas.getBoundingClientRect();
+      const wrapperRect = dom.canvasWrapper.getBoundingClientRect();
+      port.classList.add('connecting');
       wf.connecting = {
         fromId: nodeId,
         fromPort: portName,
-        startX: (rect.left + rect.width / 2 - canvasRect.left) / wf.zoom,
-        startY: (rect.top + rect.height / 2 - canvasRect.top) / wf.zoom,
+        startX: rect.left + rect.width / 2 - wrapperRect.left,
+        startY: rect.top + rect.height / 2 - wrapperRect.top,
       };
+      // Highlight canvas to show we're in connect mode
+      dom.canvasWrapper.classList.add('connecting-mode');
     }
   });
+
+  // Click on input port to complete connection
+  if (dir === 'in') {
+    port.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (wf.connecting) {
+        const toId = nodeId;
+        const toPort = portName;
+        if (toId !== wf.connecting.fromId) {
+          wf.connections = wf.connections.filter(c => !(c.to === toId && c.toPort === toPort));
+          wf.connections.push({
+            from: wf.connecting.fromId,
+            fromPort: wf.connecting.fromPort,
+            to: toId,
+            toPort: toPort,
+          });
+        }
+        cancelConnecting();
+        renderConnections();
+      }
+    });
+  }
 
   return port;
 }
@@ -959,13 +1612,12 @@ function setupCanvasInteractions() {
     if (wf.dragging) {
       const node = wf.nodes.find(n => n.id === wf.dragging.nodeId);
       if (!node) return;
-      const canvasRect = dom.canvas.getBoundingClientRect();
-      node.x = Math.round(((e.clientX - canvasRect.left) / wf.zoom - wf.dragging.offsetX + wf.dragging.offsetX) / 24) * 24;
-      node.x = Math.round((e.clientX / wf.zoom - wf.dragging.offsetX));
-      node.y = Math.round((e.clientY / wf.zoom - wf.dragging.offsetY));
-      // Snap
-      node.x = Math.round(node.x / 24) * 24;
-      node.y = Math.round(node.y / 24) * 24;
+      const wrapperRect = dom.canvasWrapper.getBoundingClientRect();
+      // Convert screen → canvas coords accounting for pan & zoom
+      const cx = (e.clientX - wrapperRect.left - wf.panX) / wf.zoom;
+      const cy = (e.clientY - wrapperRect.top - wf.panY) / wf.zoom;
+      node.x = Math.round((cx - wf.dragging.offsetX) / 24) * 24;
+      node.y = Math.round((cy - wf.dragging.offsetY) / 24) * 24;
       const el = $(`#node-${node.id}`);
       if (el) {
         el.style.left = node.x + 'px';
@@ -974,51 +1626,89 @@ function setupCanvasInteractions() {
       renderConnections();
     }
 
-    // Connection drawing
+    // Connection drawing — screen-space (SVG is not zoomed)
     if (wf.connecting) {
-      const canvasRect = dom.canvas.getBoundingClientRect();
-      const mx = (e.clientX - canvasRect.left) / wf.zoom;
-      const my = (e.clientY - canvasRect.top) / wf.zoom;
+      const wrapperRect = dom.canvasWrapper.getBoundingClientRect();
+      const mx = e.clientX - wrapperRect.left;
+      const my = e.clientY - wrapperRect.top;
       renderTempConnection(wf.connecting.startX, wf.connecting.startY, mx, my);
     }
   });
 
   document.addEventListener('mouseup', (e) => {
-    if (wf.connecting) {
-      // Check if dropped on an input port
-      const target = e.target.closest('.wf-port[data-port-dir="in"]');
-      if (target) {
-        const toId = target.dataset.nodeId;
-        const toPort = target.dataset.portName;
-        if (toId !== wf.connecting.fromId) {
-          // Remove existing connection to this input
-          wf.connections = wf.connections.filter(c => !(c.to === toId && c.toPort === toPort));
-          wf.connections.push({
-            from: wf.connecting.fromId,
-            fromPort: wf.connecting.fromPort,
-            to: toId,
-            toPort: toPort,
-          });
-        }
-      }
-      wf.connecting = null;
-      removeTempConnection();
-      renderConnections();
-    }
+    // Connecting is now click-to-click — mouseup just ends node drag
     wf.dragging = null;
   });
 
-  // Deselect on canvas click
+  // Click on canvas background → cancel connection or deselect
   dom.canvas.addEventListener('mousedown', (e) => {
+    if (wf.connecting) {
+      // Clicked outside any port → cancel
+      if (!e.target.closest('.wf-port')) {
+        cancelConnecting();
+        renderConnections();
+      }
+    }
     if (e.target === dom.canvas) {
       selectNode(null);
       selectConnection(null);
     }
   });
 
-  // Delete on key
+  // Pan: middle-click drag on canvas wrapper
+  dom.canvasWrapper.addEventListener('mousedown', (e) => {
+    if (e.button === 1) {
+      e.preventDefault();
+      wf.panning = { startX: e.clientX, startY: e.clientY, panX: wf.panX, panY: wf.panY };
+    }
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (wf.panning) {
+      const dx = e.clientX - wf.panning.startX;
+      const dy = e.clientY - wf.panning.startY;
+      wf.panX = wf.panning.panX + dx;
+      wf.panY = wf.panning.panY + dy;
+      applyTransform();
+      renderConnections();
+    }
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (e.button === 1 && wf.panning) {
+      wf.panning = null;
+      renderConnections();
+    }
+  });
+
+  // Zoom: Ctrl+wheel centered on cursor
+  dom.canvasWrapper.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const rect = dom.canvasWrapper.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const delta = -e.deltaY * 0.005;
+      setZoom(wf.zoom + delta, cx, cy);
+    }
+  }, { passive: false });
+
+  // Keyboard navigation & shortcuts
   document.addEventListener('keydown', (e) => {
-    if ((e.key === 'Delete' || e.key === 'Backspace') && !e.target.closest('input, textarea, select')) {
+    // Don't intercept when typing in inputs
+    if (e.target.closest('input, textarea, select')) return;
+
+    // Pan: WASD / arrow keys
+    const STEP = 40;
+    switch (e.key) {
+      case 'ArrowLeft': case 'a': case 'q': panBy(-STEP, 0); e.preventDefault(); break;
+      case 'ArrowRight': case 'd':          panBy(STEP, 0);  e.preventDefault(); break;
+      case 'ArrowUp':   case 'w': case 'z': panBy(0, -STEP); e.preventDefault(); break;
+      case 'ArrowDown': case 's':           panBy(0, STEP);  e.preventDefault(); break;
+    }
+
+    // Delete
+    if ((e.key === 'Delete' || e.key === 'Backspace')) {
       if (wf.selectedConnIdx !== null) {
         removeConnection(wf.selectedConnIdx);
       } else if (wf.selectedId) {
@@ -1036,6 +1726,123 @@ function selectNode(id) {
   selectConnection(null);
   $$('.wf-node').forEach(el => el.classList.toggle('selected', el.id === `node-${id}`));
   renderConfigPanel(id);
+  renderContextPanel(id);
+}
+
+// ── Context panel: show ctx variables for selected node ──
+
+function renderContextPanel(nodeId) {
+  if (!nodeId) {
+    dom.ctxContent.innerHTML = '<div class="text-gray-600 text-center py-8 text-xs">Sélectionnez un bloc pour voir ses variables ctx</div>';
+    dom.ctxBlockName.textContent = '';
+    return;
+  }
+  const node = wf.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+
+  const def = BLOCK_DEFS[node.type];
+  dom.ctxBlockName.textContent = (def && def.label) || node.type;
+
+  // Determine what this node produces and consumes
+  const produces = []; // ctx keys this node writes
+  const consumes = []; // ctx keys this node reads (from templates)
+
+  // What this node produces (saveTo)
+  if (node.data.saveTo) produces.push(node.data.saveTo);
+
+  // Extract ctx.* references from template fields
+  const re = /\{\{ctx\.(\w+)/g;
+  const textFields = ['url', 'headers', 'body', 'variables', 'expression', 'condition'];
+  textFields.forEach(field => {
+    const val = node.data[field];
+    if (!val || typeof val !== 'string') return;
+    const matches = val.matchAll(re);
+    for (const m of matches) {
+      const key = m[1];
+      if (key && !consumes.includes(key)) consumes.push(key);
+    }
+  });
+
+  // Build HTML
+  let html = '';
+
+  // Produces section
+  html += '<div class="mb-3"><div class="text-[9px] uppercase tracking-wider text-emerald-400 font-semibold mb-1.5">Produit</div>';
+  if (produces.length) {
+    produces.forEach(key => {
+      const val = ctxValue(key);
+      html += '<div class="bg-base-700/50 rounded-md p-2 mb-1 border border-white/5">' +
+        '<div class="text-[10px] text-emerald-300 font-medium">ctx.' + escapeHtml(key) + '</div>' +
+        (val !== undefined
+          ? '<pre class="text-[10px] text-gray-400 mt-1 max-h-32 overflow-y-auto">' + escapeHtml(truncate(formatCtxVal(val), 500)) + '</pre>'
+          : '<div class="text-[9px] text-gray-600 mt-0.5">pas encore exécuté</div>') +
+        '</div>';
+    });
+  } else {
+    html += '<div class="text-[10px] text-gray-600">—</div>';
+  }
+  html += '</div>';
+
+  // Consumes section
+  html += '<div><div class="text-[9px] uppercase tracking-wider text-amber-400 font-semibold mb-1.5">Consomme</div>';
+  if (consumes.length) {
+    consumes.forEach(key => {
+      const val = ctxValue(key);
+      html += '<div class="bg-base-700/50 rounded-md p-2 mb-1 border border-white/5">' +
+        '<div class="text-[10px] text-amber-300 font-medium">ctx.' + escapeHtml(key) + '</div>' +
+        (val !== undefined
+          ? '<pre class="text-[10px] text-gray-400 mt-1 max-h-32 overflow-y-auto">' + escapeHtml(truncate(formatCtxVal(val), 300)) + '</pre>'
+          : '<div class="text-[9px] text-gray-600 mt-0.5">non défini</div>') +
+        '</div>';
+    });
+  } else {
+    html += '<div class="text-[10px] text-gray-600">—</div>';
+  }
+  html += '</div>';
+
+  dom.ctxContent.innerHTML = html;
+}
+
+// Helper: get a value from the global ctx (populated during execution)
+function ctxValue(key) {
+  // ctx is a global object set during workflow execution
+  if (typeof window.__wfCtx === 'undefined') return undefined;
+  const ctx = window.__wfCtx;
+  if (key === 'inputs' && ctx.inputs) return ctx.inputs;
+  // Direct match: ctx.loginStep, ctx.getPetStep, etc.
+  if (ctx[key] !== undefined) return ctx[key];
+  // Nested: ctx.loginStep.status_code
+  const dot = key.indexOf('.');
+  if (dot > 0) {
+    const parent = key.substring(0, dot);
+    const child = key.substring(dot + 1);
+    if (ctx[parent] && ctx[parent][child] !== undefined) return ctx[parent][child];
+  }
+  return undefined;
+}
+
+function formatCtxVal(val) {
+  if (val === null || val === undefined) return 'null';
+  if (typeof val === 'object') {
+    // Safe serialize: limit body size
+    try {
+      const safe = JSON.parse(JSON.stringify(val, (k, v) => {
+        if (k === 'body' && typeof v === 'string') {
+          if (v.length > 2000) return v.substring(0, 2000) + '…[tronqué]';
+          // Try to pretty-print JSON bodies
+          try { return JSON.parse(v); } catch { return v; }
+        }
+        return v;
+      }));
+      return JSON.stringify(safe, null, 2);
+    } catch { return String(val).substring(0, 500); }
+  }
+  const s = String(val);
+  // Try to parse JSON strings for pretty display
+  if ((s.startsWith('{') || s.startsWith('[')) && s.length < 5000) {
+    try { return JSON.stringify(JSON.parse(s), null, 2); } catch {}
+  }
+  return s.length > 2000 ? s.substring(0, 2000) + '…[tronqué]' : s;
 }
 
 function removeNode(id) {
@@ -1143,7 +1950,20 @@ function renderConfigPanel(nodeId) {
       html += `<input class="wf-config-input" data-field="${f.key}" value="${escapeAttr(val)}" placeholder="${f.placeholder || ''}" />`;
     } else if (f.type === 'textarea') {
       const rows = f.rows || 2;
-      html += `<textarea class="wf-config-textarea" data-field="${f.key}" placeholder="${f.placeholder || ''}" rows="${rows}">${escapeHtml(val)}</textarea>`;
+      // JSON fields: headers, body, variables, idList, and anything labeled JSON
+      const jsonKeys = ['headers', 'body', 'variables', 'idList', 'headersA', 'headersB'];
+      const isJson = jsonKeys.includes(f.key) || f.label.toLowerCase().includes('json');
+      if (isJson) {
+        html += '<div class="json-editor">';
+        html += '<div class="json-editor-toolbar">';
+        html += '<span class="json-editor-status" data-json-status="' + f.key + '"></span>';
+        html += '<button class="json-editor-fmt" data-json-fmt="' + f.key + '" title="Formatter (Ctrl+Shift+F)">{ }</button>';
+        html += '</div>';
+        html += `<textarea class="wf-config-textarea json-editor-textarea" data-field="${f.key}" placeholder="${f.placeholder || ''}" rows="${rows}" spellcheck="false">${escapeHtml(val)}</textarea>`;
+        html += '</div>';
+      } else {
+        html += `<textarea class="wf-config-textarea" data-field="${f.key}" placeholder="${f.placeholder || ''}" rows="${rows}" spellcheck="false">${escapeHtml(val)}</textarea>`;
+      }
     } else if (f.type === 'select') {
       html += `<select class="wf-config-select" data-field="${f.key}">`;
       (f.options || []).forEach(opt => {
@@ -1155,6 +1975,9 @@ function renderConfigPanel(nodeId) {
   });
 
   dom.configForm.innerHTML = html;
+
+  // Wire JSON editors
+  setupJsonEditors();
 
   // Add ctx template snippets for blocks that use expressions
   if (['http_request', 'raw_request', 'set_data', 'if_else'].includes(node.type)) {
@@ -1236,6 +2059,19 @@ function refreshNodeDisplay(node) {
 // ─────────────────────────────────────────────
 // CONNECTIONS RENDERING
 // ─────────────────────────────────────────────
+function cancelConnecting() {
+  if (wf.connecting) {
+    const fromEl = $(`#node-${wf.connecting.fromId}`);
+    if (fromEl) {
+      const port = fromEl.querySelector(`.wf-port[data-port-name="${wf.connecting.fromPort}"]`);
+      if (port) port.classList.remove('connecting');
+    }
+  }
+  wf.connecting = null;
+  removeTempConnection();
+  dom.canvasWrapper.classList.remove('connecting-mode');
+}
+
 function renderConnections() {
   let html = '';
   wf.connections.forEach((conn, idx) => {
@@ -1247,15 +2083,16 @@ function renderConnections() {
     const toPort = toEl.querySelector(`.wf-port[data-port-name="${conn.toPort}"]`);
     if (!fromPort || !toPort) return;
 
-    const canvasRect = dom.canvas.getBoundingClientRect();
+    // SVG origin is the wrapper (stable), not the canvas (moves with pan)
+    const wrapperRect = dom.canvasWrapper.getBoundingClientRect();
     const fp = fromPort.getBoundingClientRect();
     const tp = toPort.getBoundingClientRect();
 
-    const x1 = (fp.left + fp.width / 2 - canvasRect.left) / wf.zoom;
-    const y1 = (fp.top + fp.height / 2 - canvasRect.top) / wf.zoom;
-    const x2 = (tp.left + tp.width / 2 - canvasRect.left) / wf.zoom;
-    const y2 = (tp.top + tp.height / 2 - canvasRect.top) / wf.zoom;
-
+    // Port screen positions already include pan+zoom via getBoundingClientRect
+    const x1 = fp.left + fp.width / 2 - wrapperRect.left;
+    const y1 = fp.top + fp.height / 2 - wrapperRect.top;
+    const x2 = tp.left + tp.width / 2 - wrapperRect.left;
+    const y2 = tp.top + tp.height / 2 - wrapperRect.top;
     const dy = Math.abs(y2 - y1);
     const cp = Math.max(40, dy * 0.4);
 
@@ -1302,22 +2139,43 @@ function removeTempConnection() {
 // ─────────────────────────────────────────────
 // TOOLBAR
 // ─────────────────────────────────────────────
+function applyTransform() {
+  dom.canvas.style.transform = `translate(${wf.panX}px, ${wf.panY}px) scale(${wf.zoom})`;
+  dom.canvas.style.transformOrigin = '0 0';
+}
+
+function setZoom(z, cx, cy) {
+  const wrapperRect = dom.canvasWrapper.getBoundingClientRect();
+  // Default: zoom toward center of viewport
+  if (cx === undefined || cy === undefined) {
+    cx = wrapperRect.width / 2;
+    cy = wrapperRect.height / 2;
+  }
+  const oldZoom = wf.zoom;
+  wf.zoom = Math.max(0.3, Math.min(2, z));
+  const scale = wf.zoom / oldZoom;
+  wf.panX = cx - (cx - wf.panX) * scale;
+  wf.panY = cy - (cy - wf.panY) * scale;
+  applyTransform();
+  dom.zoomLevel.textContent = Math.round(wf.zoom * 100) + '%';
+  renderConnections();
+}
+
+function panBy(dx, dy) {
+  wf.panX += dx;
+  wf.panY += dy;
+  applyTransform();
+  renderConnections();
+}
+
 function setupToolbar() {
   dom.btnZoomIn.addEventListener('click', () => setZoom(wf.zoom + 0.1));
   dom.btnZoomOut.addEventListener('click', () => setZoom(wf.zoom - 0.1));
-  dom.btnZoomFit.addEventListener('click', () => setZoom(1));
+  dom.btnZoomFit.addEventListener('click', () => { wf.panX = 0; wf.panY = 0; setZoom(1); });
   dom.btnClear.addEventListener('click', clearCanvas);
   dom.btnClearLogs.addEventListener('click', clearLogs);
   dom.btnRun.addEventListener('click', runWorkflow);
   dom.btnStop.addEventListener('click', stopWorkflow);
-}
-
-function setZoom(z) {
-  wf.zoom = Math.max(0.3, Math.min(2, z));
-  dom.canvas.style.transform = `scale(${wf.zoom})`;
-  dom.canvas.style.transformOrigin = 'top left';
-  dom.zoomLevel.textContent = Math.round(wf.zoom * 100) + '%';
-  renderConnections();
 }
 
 function clearCanvas() {
@@ -1397,6 +2255,7 @@ async function runWorkflow() {
   addLog('Démarrage du workflow…', 'step');
 
   const ctx = {}; // shared context for variables
+  window.__wfCtx = ctx; // expose for context panel
 
   try {
     await executeNode(startNode.id, ctx);
@@ -1827,6 +2686,13 @@ function interpolateValue(value, ctx) {
 }
 
 function evalExpression(expr, ctx) {
+  // Reject dangerous patterns — defense-in-depth against stored XSS
+  if (!expr || typeof expr !== 'string' || expr.length > 512) {
+    throw new Error('Expression invalide');
+  }
+  if (/[`$<>]|=>|\\u[0-9a-fA-F]{4}|(?:\b(?:eval|Function|constructor|__proto__|import|require|fetch|XMLHttpRequest|document|window|self|top|parent|alert|prompt|confirm|setTimeout|setInterval|location|open|close|write|writeln|execScript|execCommand|expression|chrome|browser|process|global|globalThis)\b)/i.test(expr)) {
+    throw new Error('Expression contient un motif interdit');
+  }
   const fn = new Function('ctx', `with(ctx) { return (${expr}); }`);
   return fn(ctx);
 }
@@ -1834,6 +2700,116 @@ function evalExpression(expr, ctx) {
 // ─────────────────────────────────────────────
 // UTILITIES
 // ─────────────────────────────────────────────
+// ── JSON Editor helpers ──
+
+function setupJsonEditors() {
+  // Format buttons
+  dom.configForm.querySelectorAll('.json-editor-fmt').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.jsonFmt;
+      const textarea = dom.configForm.querySelector(`textarea[data-field="${key}"]`);
+      if (!textarea) return;
+      formatJsonTextarea(textarea, key);
+    });
+  });
+
+  // Validate on input + keyboard shortcut + auto-pairing
+  dom.configForm.querySelectorAll('.json-editor-textarea').forEach(textarea => {
+    const key = textarea.dataset.field;
+    let debounce;
+    textarea.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => validateJsonField(key), 400);
+    });
+    textarea.addEventListener('blur', () => validateJsonField(key));
+    textarea.addEventListener('keydown', (e) => {
+      // Auto-pair brackets, braces, quotes
+      if (handleAutoPair(textarea, e)) return;
+      // Ctrl+Shift+F → format
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+        e.preventDefault();
+        formatJsonTextarea(textarea, key);
+      }
+    });
+    // Initial validation
+    validateJsonField(key);
+  });
+}
+
+// ── Auto-pair: insert closing bracket/quote, wrap selection ──
+
+const AUTO_PAIRS = { '{': '}', '[': ']', '(': ')', '"': '"', "'": "'" };
+
+function handleAutoPair(textarea, e) {
+  const pair = AUTO_PAIRS[e.key];
+  if (!pair) return false;
+
+  e.preventDefault();
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const val = textarea.value;
+  const hasSelection = start !== end;
+
+  if (hasSelection) {
+    // Wrap selection: "hello" → {"hello"}
+    const wrapped = e.key + val.substring(start, end) + pair;
+    textarea.setRangeText(wrapped, start, end, 'select');
+    textarea.selectionStart = start + 1;
+    textarea.selectionEnd = start + wrapped.length - 1;
+  } else if (e.key === pair) {
+    // Same char for open/close (quotes): if next char is same quote, just move cursor
+    if (val.charAt(start) === pair) {
+      textarea.selectionStart = textarea.selectionEnd = start + 1;
+      return true;
+    }
+    // Insert pair and place cursor inside
+    textarea.setRangeText(e.key + pair, start, start, 'end');
+    textarea.selectionStart = textarea.selectionEnd = start + 1;
+  } else {
+    // Brackets/braces: always insert pair and place cursor inside
+    textarea.setRangeText(e.key + pair, start, start, 'end');
+    textarea.selectionStart = textarea.selectionEnd = start + 1;
+  }
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  return true;
+}
+
+function validateJsonField(key) {
+  const textarea = dom.configForm.querySelector(`textarea[data-field="${key}"]`);
+  if (!textarea) return;
+  const val = textarea.value.trim();
+  if (!val) { updateJsonStatus(key, 'empty'); return; }
+  try { JSON.parse(val); updateJsonStatus(key, 'ok'); } catch { updateJsonStatus(key, 'err'); }
+}
+
+function updateJsonStatus(key, state) {
+  const status = document.querySelector(`[data-json-status="${key}"]`);
+  if (!status) return;
+  status.className = 'json-editor-status';
+  if (state === 'ok') { status.textContent = '✓'; status.classList.add('ok'); }
+  else if (state === 'err') { status.textContent = '✗'; status.classList.add('err'); }
+  else { status.textContent = ''; }
+}
+
+function formatJsonTextarea(textarea, statusKey) {
+  try {
+    const parsed = JSON.parse(textarea.value);
+    textarea.value = JSON.stringify(parsed, null, 2);
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    updateJsonStatus(statusKey, 'ok');
+  } catch {
+    updateJsonStatus(statusKey, 'err');
+  }
+}
+
+function validateJsonFieldById(textareaId) {
+  const textarea = document.getElementById(textareaId);
+  if (!textarea) return;
+  const val = textarea.value.trim();
+  if (!val) { updateJsonStatus(textareaId, 'empty'); return; }
+  try { JSON.parse(val); updateJsonStatus(textareaId, 'ok'); } catch { updateJsonStatus(textareaId, 'err'); }
+}
+
 function escapeHtml(s) {
   const d = document.createElement('div');
   d.textContent = s || '';

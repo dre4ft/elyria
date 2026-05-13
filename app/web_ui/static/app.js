@@ -19,6 +19,7 @@ const API = {
   deleteRequest: 'api/collections/request',   // DELETE /:id
   deleteFolder:  'api/collections/folder',    // DELETE /:id
   uploadOpenAPI: 'api/document/openapi',       // POST multipart file upload
+  proxyToggle:   'api/proxies/toggle',          // GET/PUT proxy enabled state
 };
 
 // ─────────────────────────────────────────────
@@ -32,6 +33,7 @@ const state = {
   chatOpen: false,
   collections: [],             // tree: [{ id, name, type:'folder', children:[], expanded }, { id, name, type:'request', method, url }]
   activeCollectionId: null,   // ID de la requête de collection actuellement chargée
+  proxyEnabled: false,
 };
 
 // ─────────────────────────────────────────────
@@ -94,6 +96,8 @@ const dom = {
   headersList:   $('#headers-list'),
   btnAddHeader:  $('#btn-add-header'),
   btnSendStruct: $('#btn-send-structured'),
+  btnToggleProxy: $('#btn-toggle-proxy'),
+  proxyToggleLabel: $('#proxy-toggle-label'),
 
   // Query Params
   paramsList:      $('#params-list'),
@@ -176,6 +180,7 @@ function init() {
   setupHeaders();
   setupChat();
   setupSend();
+  fetchProxyState();
   setupHistory();
   setupCollections();
   setupResizeHandle();
@@ -565,6 +570,7 @@ function populateStructuredFromParsed(method, url, headers, body) {
 function setupSend() {
   dom.btnSendStruct.addEventListener('click', sendStructured);
   dom.btnSendRaw.addEventListener('click', sendRaw);
+  if (dom.btnToggleProxy) dom.btnToggleProxy.addEventListener('click', toggleProxy);
   const btnCurl = $('#btn-export-curl');
   if (btnCurl) btnCurl.addEventListener('click', () => exportAsCurl());
   const btnCopyCurl = $('#btn-copy-curl');
@@ -572,6 +578,43 @@ function setupSend() {
     const curl = $('#curl-content')?.textContent;
     if (curl) { navigator.clipboard.writeText(curl); btnCopyCurl.textContent = 'Copie !'; setTimeout(()=>btnCopyCurl.textContent='Copier', 1500); }
   });
+}
+
+async function fetchProxyState() {
+  try {
+    const res = await fetch(API.proxyToggle, { headers: getAuthHeader() });
+    if (res.ok) {
+      const data = await res.json();
+      state.proxyEnabled = data.enabled;
+      updateProxyToggleUI();
+    }
+  } catch {}
+}
+
+async function toggleProxy() {
+  const next = !state.proxyEnabled;
+  try {
+    const res = await fetch(API.proxyToggle, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ enabled: next }),
+    });
+    if (res.ok) {
+      state.proxyEnabled = next;
+      updateProxyToggleUI();
+    }
+  } catch {}
+}
+
+function updateProxyToggleUI() {
+  if (!dom.btnToggleProxy || !dom.proxyToggleLabel) return;
+  if (state.proxyEnabled) {
+    dom.btnToggleProxy.className = 'h-9 px-3 rounded-lg bg-green-500/15 hover:bg-green-500/25 border border-green-500/25 hover:border-green-500/40 text-green-400 hover:text-green-300 text-xs font-medium transition-all flex items-center gap-1.5';
+    dom.proxyToggleLabel.textContent = 'Proxy ON';
+  } else {
+    dom.btnToggleProxy.className = 'h-9 px-3 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-500 hover:text-gray-300 text-xs font-medium transition-all flex items-center gap-1.5';
+    dom.proxyToggleLabel.textContent = 'Proxy';
+  }
 }
 
 async function sendStructured() {

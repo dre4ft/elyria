@@ -33,10 +33,18 @@ INIT_USER = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT UNIQUE NOT NULL,
-    hashed_digest TEXT NOT NULL,
-    salt TEXT NOT NULL,
+    hashed_digest TEXT NOT NULL DEFAULT '',
+    salt TEXT NOT NULL DEFAULT '',
     username TEXT UNIQUE NOT NULL,
-    teams TEXT
+    teams TEXT,
+    oidc_sub TEXT DEFAULT '',
+    oidc_provider TEXT DEFAULT '',
+    oidc_id_token TEXT DEFAULT '',
+    oidc_access_token TEXT DEFAULT '',
+    oidc_refresh_token TEXT DEFAULT '',
+    oidc_expires_at REAL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_login_at DATETIME
 )
 """
 

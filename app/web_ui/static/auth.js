@@ -156,4 +156,46 @@ async function registerUser(username, digest) {
   return { success: true };
 }
 
+// ── OIDC / SSO ──
+
+function initOidc() {
+  // Handle OIDC callback: /app#token=xxx → store token and clean URL
+  var hash = window.location.hash;
+  if (hash && hash.startsWith('#token=')) {
+    var token = hash.slice(7);
+    _token = token;
+    _user = parseUserFromToken(token);
+    sessionStorage.setItem(SESSION_KEY, token);
+    // Clean URL
+    window.location.hash = '';
+    window.location.reload();
+    return;
+  }
+
+  // Fetch OIDC config and show SSO button if enabled
+  fetch('/api/user/oidc/config')
+    .then(function (r) { return r.json(); })
+    .then(function (cfg) {
+      if (cfg.enabled) {
+        var section = document.getElementById('oidc-section');
+        var label = document.getElementById('oidc-btn-label');
+        var btn = document.getElementById('btn-oidc-login');
+        if (section) section.classList.remove('hidden');
+        if (label) label.textContent = cfg.button_label || 'Connexion SSO';
+        if (btn) {
+          btn.addEventListener('click', function () {
+            window.location.href = '/api/user/oidc/login';
+          });
+        }
+      }
+    })
+    .catch(function () { /* OIDC not available, hide button */ });
+}
+
+// Call on login pages
+var _isLoginPage = window.location.pathname.endsWith('/login') || window.location.pathname.endsWith('/login.html');
+if (_isLoginPage) {
+  document.addEventListener('DOMContentLoaded', initOidc);
+}
+
 initAuth();

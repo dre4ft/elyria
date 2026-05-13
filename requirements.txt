@@ -9,3 +9,4 @@ openai>=1.12
 ollama>=0.4
 PyYAML>=6.0
 psycopg2-binary>=2.9
+authlib>=1.3

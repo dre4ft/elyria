@@ -36,14 +36,53 @@ L'application démarre sur `https://127.0.0.1:8000`. Le hot-reload est activé �
 
 **Prérequis** : Python 3.12+, pip.
 
-**Configuration** : créez un fichier `app/.env` :
+**Configuration** : tout se fait dans l'interface, en base de données. Aucun fichier `.env` requis.
+
+Lancez l'appli, allez dans **Hub > Admin Config** (ou interrogez l'API `GET /api/admin/config`) :
+
+```json
+{
+  "settings": {
+    "app.host": "127.0.0.1",
+    "app.port": "8000",
+    "catcher.port": "6767",
+    "ssl.cert_path": "cert.pem",
+    "ssl.key_path": "key.pem",
+    "db.backend": "sqlite",
+    "db.sqlite.path": "database.db",
+    "db.pg.host": "localhost",
+    "db.pg.port": "5432",
+    "db.pg.database": "elyria",
+    "db.pg.user": "elyria",
+    "db.pg.password": "elyria",
+    "proxy.xor_key": "elyria-proxy-k"
+  },
+  "fqdn_whitelist": [
+    {"category": "fetch", "pattern": "localhost"},
+    {"category": "fetch", "pattern": "*.example.com"},
+    {"category": "proxy", "pattern": "localhost"},
+    {"category": "llm",   "pattern": "api.openai.com"}
+  ],
+  "provider_toggles": [
+    {"provider_type": "openai",    "enabled": 1},
+    {"provider_type": "ollama",    "enabled": 1},
+    {"provider_type": "lmstudio",  "enabled": 1},
+    {"provider_type": "anthropic", "enabled": 1},
+    {"provider_type": "deepseek",  "enabled": 1}
+  ],
+  "api_keys": [
+    {"key_name": "openai_api_key", "key_value": "***"}
+  ]
+}
 ```
-host=127.0.0.1
-port=8000
-cert_path=cert.pem
-key_path=key.pem
-openai_api_key=sk-votre-cle-api
-```
+
+**Modification** : `PUT /api/admin/config/settings/app.port` avec `{"value": "8443"}`, ou utilisez l'UI Hub.
+
+**FQDN whitelist** : contrôle quels hosts sont autorisés pour les requêtes serveur (fetch), les proxies, et les providers LLM. Supporte les wildcards `*.domaine.com`.
+
+**Provider toggles** : activez/désactivez des types de providers sans supprimer leur configuration.
+
+**Clés API** : stockées chiffrées en base. Plus besoin de `.env`.
 
 ### Méthode 2 — Docker
 
@@ -94,7 +133,7 @@ Testé également avec un **Raspberry Pi 4 (carte SD 64 Go)** servant l'applicat
 
 ## Base de données
 
-SQLite par défaut. MySQL et PostgreSQL sur la roadmap.
+SQLite par défaut (zero-config). PostgreSQL supporté — configurez `db.backend=postgres` et les paramètres `db.pg.*` dans la config admin.
 
 ## Interopérabilité
 
@@ -144,14 +183,53 @@ The app starts on `https://127.0.0.1:8000`. Hot-reload is enabled — Python cha
 
 **Requirements**: Python 3.12+, pip.
 
-**Configuration**: create an `app/.env` file:
+**Configuration**: everything is managed through the UI, stored in the database. No `.env` file needed.
+
+Start the app, go to **Hub > Admin Config** (or query the API `GET /api/admin/config`):
+
+```json
+{
+  "settings": {
+    "app.host": "127.0.0.1",
+    "app.port": "8000",
+    "catcher.port": "6767",
+    "ssl.cert_path": "cert.pem",
+    "ssl.key_path": "key.pem",
+    "db.backend": "sqlite",
+    "db.sqlite.path": "database.db",
+    "db.pg.host": "localhost",
+    "db.pg.port": "5432",
+    "db.pg.database": "elyria",
+    "db.pg.user": "elyria",
+    "db.pg.password": "elyria",
+    "proxy.xor_key": "elyria-proxy-k"
+  },
+  "fqdn_whitelist": [
+    {"category": "fetch", "pattern": "localhost"},
+    {"category": "fetch", "pattern": "*.example.com"},
+    {"category": "proxy", "pattern": "localhost"},
+    {"category": "llm",   "pattern": "api.openai.com"}
+  ],
+  "provider_toggles": [
+    {"provider_type": "openai",    "enabled": 1},
+    {"provider_type": "ollama",    "enabled": 1},
+    {"provider_type": "lmstudio",  "enabled": 1},
+    {"provider_type": "anthropic", "enabled": 1},
+    {"provider_type": "deepseek",  "enabled": 1}
+  ],
+  "api_keys": [
+    {"key_name": "openai_api_key", "key_value": "***"}
+  ]
+}
 ```
-host=127.0.0.1
-port=8000
-cert_path=cert.pem
-key_path=key.pem
-openai_api_key=sk-your-api-key
-```
+
+**Modify**: `PUT /api/admin/config/settings/app.port` with `{"value": "8443"}`, or use the Hub UI.
+
+**FQDN whitelist**: controls which hosts are allowed for server-side requests (fetch), proxy targets, and LLM providers. Supports `*.domain.com` wildcards.
+
+**Provider toggles**: enable/disable provider types without deleting their configuration.
+
+**API keys**: stored in the database. No `.env` required.
 
 ### Method 2 — Docker
 
@@ -204,7 +282,7 @@ Also tested with a **Raspberry Pi 4 (64 GB SD card)** hosting the server and cal
 
 ## Database
 
-SQLite by default. MySQL and PostgreSQL on the roadmap.
+SQLite by default (zero-config). PostgreSQL supported — set `db.backend=postgres` and `db.pg.*` parameters in the admin config.
 
 ## Interoperability
 
@@ -224,7 +302,6 @@ Open source. Forever.
 
 ## TODO
 
-- dockerfile
 - test bout en bout
 - connecteur pour DB externe (MySQL)
 - stockage local des requêtes le temps du premier envoi

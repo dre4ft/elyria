@@ -3,9 +3,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from .ai_wrapper import AIWrapper
 from database import ai_mgmt
-import os
-from dotenv import load_dotenv
-load_dotenv()
+
+
+def _get_fallback_api_key():
+    from database.app_config import get_api_key
+    return get_api_key("openai_api_key")
 
 
 def _init_provider_from_db():
@@ -20,17 +22,15 @@ def _init_provider_from_db():
                 url = url.rstrip("/") + "/v1"
             if not api_key:
                 api_key = "not-needed"
-        # Fallback to env if config has no key
         if not api_key:
-            api_key = os.getenv("openai_api_key", "")
+            api_key = _get_fallback_api_key()
         return AIWrapper(
             provider_type=cfg["provider_type"],
             url=url,
             api_key=api_key,
             model=cfg["model"] or "gpt-4o-mini",
         )
-    # Fallback to env
-    api_key = os.getenv("openai_api_key", "")
+    api_key = _get_fallback_api_key()
     return AIWrapper(
         provider_type='openai',
         url='https://api.openai.com/v1',

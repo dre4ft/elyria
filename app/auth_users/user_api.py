@@ -85,13 +85,14 @@ async def login(request: LoginRequest):
         # Look up proxy, XOR-encrypt with server key for JWT embed
         proxy_xor = ""
         try:
-            import os, base64
+            import base64
             from database.connection import get_connection
             conn = get_connection()
             row = conn.execute("SELECT p.url FROM user_favorite_proxy u JOIN proxies p ON u.proxy_id=p.proxy_id WHERE u.user_id=?", (user["user_id"],)).fetchone()
             conn.close()
             if row and row[0]:
-                xor_key = os.getenv("PROXY_XOR_KEY", "elyria-proxy-k")
+                from database.app_config import get as _cfg
+                xor_key = _cfg("proxy.xor_key", "elyria-proxy-k")
                 url_bytes = row[0].encode()
                 key_bytes = xor_key.encode()
                 result = bytearray(len(url_bytes))

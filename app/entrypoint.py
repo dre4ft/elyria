@@ -15,20 +15,22 @@ from database.proxy_api import app as proxy_router
 from database.teams_api import app as teams_router
 from ai_core.ai_config_api import app as ai_config_router
 from catcher.catcher_api import app as catcher_router
+from database.app_config_api import app as app_config_router
+from auth_users.oidc_api import app as oidc_router
 
-from dotenv import load_dotenv
-import os
-import jwt 
+import jwt
 from database.user_mgmt import get_key
-
-load_dotenv()
 
 app = FastAPI()
 
 
 @app.middleware("http")
 async def check_authorization(request: Request, call_next):
-    public_routes = ["/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/blueteam", "/api/doc", "/api/user/login", "/api/user/create"]
+    public_routes = [
+        "/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/blueteam",
+        "/api/doc", "/api/user/login", "/api/user/create",
+        "/api/user/oidc/login", "/api/user/oidc/callback", "/api/user/oidc/config",
+    ]
     path = request.url.path
     if path in public_routes or path.startswith("/static/"):
         return await call_next(request)
@@ -66,7 +68,9 @@ async def check_authorization(request: Request, call_next):
                 status_code=401,
                 content={"detail": "Invalid Authorization format"}
             )
-        request.state.token = jwt.decode(split_token, key_value, algorithms=["HS512"])["sub"]
+        decoded = jwt.decode(split_token, key_value, algorithms=["HS512"])
+        request.state.token = decoded["sub"]
+        request.state.token_obj = decoded  # full payload for proxy, teams, etc.
     except jwt.ExpiredSignatureError:
         return JSONResponse(
             status_code=401,
@@ -175,13 +179,24 @@ app.include_router(proxy_router)
 app.include_router(teams_router)
 app.include_router(ai_config_router)
 app.include_router(catcher_router)
-
-
+app.include_router(app_config_router)
+app.include_router(oidc_router)
 
 
 if __name__ == "__main__":
-    import uvicorn 
-    cert = os.getenv("cert_path")
-    key = os.getenv("key_path")
-    uvicorn.run("entrypoint:app", host=os.getenv("host"), port=int(os.getenv("port")),
-                ssl_certfile=cert, ssl_keyfile=key, reload=True)
+    import uvicorn
+    from database.app_config import get
+
+    cert = get("ssl.cert_path")
+    key = get("ssl.key_path")
+    ssl_kwargs = {}
+    if cert and key:
+        ssl_kwargs = {"ssl_certfile": cert, "ssl_keyfile": key}
+
+    uvicorn.run(
+        "entrypoint:app",
+        host=get("app.host", "127.0.0.1"),
+        port=int(get("app.port", "8000")),
+        reload=True,
+        **ssl_kwargs,
+    )

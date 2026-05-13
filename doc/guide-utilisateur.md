@@ -9,28 +9,17 @@
 1. [Présentation](#1--présentation)
 2. [Démarrage rapide](#2--démarrage-rapide)
 3. [L'interface principale](#3--linterface-principale)
-   - [La barre d'URL et l'envoi de requêtes](#31--la-barre-durl-et-lenvoi-de-requêtes)
-   - [Le builder structuré](#32--le-builder-structuré)
-   - [La réponse](#33--la-réponse)
 4. [Les Collections](#4--les-collections)
 5. [L'Historique](#5--lhistorique)
-6. [L'Assistant IA](#6--lassistant-ia)
-7. [Import de documents (OpenAPI / Arazzo)](#7--import-de-documents-openapi--arazzo)
-8. [Requêtes Raw HTTP](#8--requêtes-raw-http)
-9. [Le Workflow Builder](#9--le-workflow-builder)
-   - [Les briques](#91--les-briques)
-   - [Le contexte (ctx)](#92--le-contexte-ctx)
-   - [Exécution](#93--exécution)
-10. [Le Hub](#10--le-hub)
-   - [Teams](#101--teams)
-   - [Proxy](#102--proxy)
-   - [Agent IA](#103--agent-ia)
-11. [Red Team / Pentest](#11--red-team--pentest)
-   - [Profils de scan](#111--profils-de-scan)
-   - [Campagnes](#112--campagnes)
-   - [Findings et Logs](#113--findings-et-logs)
-   - [Rapport](#114--rapport)
-12. [Raccourcis clavier](#12--raccourcis-clavier)
+6. [Le Catcher (proxy intercepteur)](#6--le-catcher-proxy-intercepteur)
+7. [L'Assistant IA](#7--lassistant-ia)
+8. [Import de documents (OpenAPI / Arazzo)](#8--import-de-documents-openapi--arazzo)
+9. [Requêtes Raw HTTP](#9--requêtes-raw-http)
+10. [Le Workflow Builder](#10--le-workflow-builder)
+11. [Le Hub](#11--le-hub)
+12. [Red Team / Pentest](#12--red-team--pentest)
+13. [Blue Team / SSDLC](#13--blue-team--ssdlc)
+14. [Raccourcis clavier](#14--raccourcis-clavier)
 
 ---
 
@@ -40,9 +29,12 @@ Elyria est un client API complet qui combine :
 
 - **Requêtes structurées** — GET, POST, PUT, PATCH, DELETE avec headers, query params et body
 - **Requêtes Raw HTTP** — forgez vos requêtes HTTP from scratch (socket TCP)
-- **Collections** — organisez vos requêtes en dossiers hiérarchiques
-- **Workflow Builder** — automatisez des scénarios multi-requêtes avec logique conditionnelle et boucles
+- **Collections** — organisez vos requêtes en dossiers hiérarchiques, partagées en équipe
+- **Workflow Builder** — automatisez des scénarios multi-requêtes avec logique conditionnelle, boucles et tests de sécurité
+- **Catcher** — proxy intercepteur façon Burp Suite pour inspecter les requêtes de votre navigateur ou Postman
 - **Assistant IA intégré** — créez des collections, exécutez des tests et analysez les résultats par chat
+- **Red Team / Pentest** — scannez vos APIs avec le moteur OWASP API Top 10 + AI deep scan
+- **Blue Team / SSDLC** — analyse security-by-design de vos specs pour produire des rapports d'exigences de sécurité
 - **Import OpenAPI / Arazzo** — importez vos specs pour générer automatiquement des collections
 
 ---
@@ -70,13 +62,13 @@ Vous arrivez sur l'interface principale.
 
 ## 3. L'interface principale
 
-L'écran est divisé en 3 zones :
+L'écran est divisé en plusieurs zones :
 
 | Zone | Description |
 |------|-------------|
-| **Barre latérale gauche** | Collections (dossiers + requêtes sauvegardées) et Historique |
+| **Barre latérale gauche** | Collections (dossiers + requêtes sauvegardées) |
 | **Zone centrale** | Builder de requête (structuré ou raw) + panneau de réponse |
-| **Panneau chat (droite)** | Assistant IA, masqué par défaut, s'ouvre avec le bouton **Assistant IA** ou `Ctrl+I` |
+| **Panneaux latéraux droits** | Historique, Catcher, Assistant IA, JWT Decoder — s'ouvrent via les boutons du header |
 
 ### 3.1. La barre d'URL et l'envoi de requêtes
 
@@ -162,7 +154,57 @@ L'onglet **Historique** (dans la barre latérale) conserve la liste des requête
 
 ---
 
-## 6. L'Assistant IA
+## 6. Le Catcher (proxy intercepteur)
+
+Le Catcher est un proxy HTTP forward inspiré de Burp Suite qui intercepte les requêtes de votre navigateur ou de Postman pour inspection.
+
+### Activation
+
+1. Cliquez sur le bouton **Catcher** (rose) dans la barre du haut
+2. Dans le panneau, cliquez sur **Intercept OFF** pour activer l'interception → le bouton devient **Intercept ON**
+3. Un badge `Proxy: localhost:8080` apparaît — c'est l'adresse du proxy
+
+### Configuration navigateur / Postman
+
+- **Navigateur** : paramètres réseau → proxy HTTP → `localhost:8080`
+- **Postman** : Settings → Proxy → `localhost:8080`
+- **Ligne de commande** : `curl -x http://localhost:8080 https://api.example.com`
+
+### File d'attente
+
+Quand **Intercept ON** est actif, les requêtes sont mises en file d'attente au lieu d'être envoyées directement. La première requête s'affiche en mode expanded :
+
+- **Méthode** : modifiable via le dropdown
+- **URL** : champ éditable
+- **Headers** : textarea éditable
+- **Body** : textarea éditable
+
+Les champs sont éditables en direct — les modifications sont sauvegardées automatiquement.
+
+### Actions
+
+| Action | Description |
+|--------|-------------|
+| **Forward** | Exécute la requête vers la cible et renvoie la réponse au client |
+| **Drop** | Rejette la requête, le client reçoit une erreur 410 Gone |
+| **Load** | Charge la requête dans le builder API Elyria |
+
+### Historique
+
+Toutes les requêtes forwardées et droppées sont enregistrées dans l'historique (persisté en base). Chaque entrée affiche :
+- Méthode, code statut HTTP, URL
+- Bouton **Load** pour charger dans le builder API
+- Clic sur une ligne → détail du body de réponse
+
+L'historique est cloisonné par utilisateur.
+
+### Port du proxy
+
+Configurable via la variable d'environnement `CATCHER_PORT` (défaut : 8080).
+
+---
+
+## 7. L'Assistant IA
 
 L'assistant IA peut créer des collections, envoyer des requêtes et analyser les résultats.
 
@@ -185,7 +227,7 @@ L'assistant a accès à vos collections, peut créer des dossiers, des requêtes
 
 ---
 
-## 7. Import de documents (OpenAPI / Arazzo)
+## 8. Import de documents (OpenAPI / Arazzo)
 
 Importez vos spécifications d'API pour générer automatiquement des collections.
 
@@ -213,7 +255,7 @@ Importez vos spécifications d'API pour générer automatiquement des collection
 
 ---
 
-## 8. Requêtes Raw HTTP
+## 9. Requêtes Raw HTTP
 
 Le mode Raw HTTP permet d'envoyer des requêtes forgées manuellement pour tester des edge cases.
 
@@ -249,7 +291,7 @@ Authorization: Bearer eyJhbGciOiJIUzUxMiJ9...
 
 ---
 
-## 9. Le Workflow Builder
+## 10. Le Workflow Builder
 
 Le Workflow Builder permet de créer des scénarios de test automatisés par glisser-déposer.
 
@@ -265,7 +307,7 @@ Depuis l'interface principale, cliquez sur le bouton **Workflows** dans la barre
 | **Canvas central** | Zone de travail où vous placez et connectez les briques |
 | **Panneau droit** | Configuration de la brique sélectionnée + logs d'exécution |
 
-### 9.1. Les briques
+### 10.1. Les briques
 
 Glissez-déposez les briques depuis la palette vers le canvas. Connectez-les en tirant depuis le port de sortie (rond en bas) vers le port d'entrée (rond en haut) d'une autre brique.
 
@@ -343,7 +385,7 @@ Le panneau de config du bloc Assert propose des snippets d'exemples prêts à l'
 - Utile pour extraire un token CSRF, un ID de ressource, ou un token JWT et le réutiliser.
 - Stocke la valeur extraite dans `ctx.extracted_value`.
 
-### 9.2. Le contexte (ctx)
+### 10.2. Le contexte (ctx)
 
 Toutes les briques partagent un objet `ctx` qui circule à travers le workflow.
 
@@ -371,7 +413,7 @@ Toutes les briques partagent un objet `ctx` qui circule à travers le workflow.
 
 **Snippets ctx** : dans le panneau de configuration des briques HTTP Request, Raw Request, Set Data et If/Else, une section *ctx — Contexte du workflow* affiche des snippets cliquables qui s'insèrent à la position du curseur dans le champ actif.
 
-### 9.3. Exécution
+### 10.3. Exécution
 
 1. Placez un bloc **Start** sur le canvas
 2. Ajoutez vos blocs et connectez-les dans l'ordre souhaité
@@ -400,11 +442,11 @@ Vous pouvez **arrêter** l'exécution à tout moment avec le bouton Stop.
 
 ---
 
-## 10. Le Hub
+## 11. Le Hub
 
 Le Hub (accessible via l'icône utilisateur dans le header) centralise la gestion de votre compte et de vos ressources.
 
-### 10.1. Teams
+### 11.1. Teams
 
 - **Créer une team** : bouton "Créer", donnez un nom. Vous êtes automatiquement membre.
 - **Rejoindre une team** : entrez un Team ID et cliquez "Rejoindre". Une demande est envoyée aux membres.
@@ -412,7 +454,7 @@ Le Hub (accessible via l'icône utilisateur dans le header) centralise la gestio
 - **Suivre/Ne plus suivre** : les teams suivies apparaissent dans vos filtres de collections, workflows et pentest.
 - **Copier l'ID** : cliquez sur l'icône de copie à côté du Team ID.
 
-### 10.2. Proxy
+### 11.2. Proxy
 
 Configurez vos proxies HTTP pour le forwarding des requêtes.
 
@@ -420,24 +462,24 @@ Configurez vos proxies HTTP pour le forwarding des requêtes.
 - **Définir comme favori** : le proxy favori est injecté dans vos requêtes lorsqu'il est activé.
 - **Supprimer** : icône X sur chaque proxy.
 
-### 10.3. Agent IA
+### 11.3. Agent IA
 
 Gérez vos providers LLM pour le chat IA et le pentest AI.
 
 - **Deux slots indépendants** :
   - **Flash Model** : utilisé pour l'exploration rapide (batch de requêtes parallèles)
   - **Pro Model** : utilisé pour l'analyse profonde et le chat IA principal
-- **Chaque slot peut utiliser un provider différent** (ex: Flash sur Ollama local, Pro sur DeepSeek cloud)
-- **Providers supportés** : OpenAI/DeepSeek, LM Studio (local), Ollama (local)
+- **Chaque slot peut utiliser un provider différent** (ex: Flash sur Ollama local, Pro sur OpenAI API cloud)
+- **Providers supportés** : OpenAI API, LM Studio (local), Ollama (local)
 - **Lister les modèles** : après avoir configuré l'URL, cliquez "Lister" pour voir les modèles disponibles
 - **Définir par défaut** : un seul provider par slot peut être le défaut
 - **Sécurité** : les clés API ne sont jamais renvoyées au frontend (masquées `****`). Vous pouvez les remplacer mais pas les lire.
 
-## 11. Red Team / Pentest
+## 12. Red Team / Pentest
 
 Le module Red Team (accessible via le header ou `/pentest`) permet de scanner vos APIs avec le moteur OWASP API Top 10.
 
-### 11.1. Profils de scan
+### 12.1. Profils de scan
 
 - **Créer un profil** : bouton "+" dans la sidebar "Scan Profiles"
 - **Configurer** : URL cible, authentification (Bearer, headers), OpenAPI spec, ID list (pour BOLA), collection existante, équipe
@@ -445,7 +487,7 @@ Le module Red Team (accessible via le header ou `/pentest`) permet de scanner vo
 - **Modifier** : icône crayon sur le profil
 - **Supprimer** : icône X sur le profil
 
-### 11.2. Campagnes
+### 12.2. Campagnes
 
 - **Lancer un scan** : sélectionnez un profil, cliquez "Lancer le scan". Une campagne est créée.
 - **Progression** : barre de progression avec dégradé de couleurs (rouge → orange → violet)
@@ -453,7 +495,7 @@ Le module Red Team (accessible via le header ou `/pentest`) permet de scanner vo
 - **Supprimer** : icône X sur chaque campagne (purge complète : findings, logs, campagne)
 - **Refresh** : bouton Refresh dans le header ou automatique toutes les 60s
 
-### 11.3. Findings et Logs
+### 12.3. Findings et Logs
 
 - **Dashboard** : compteurs par sévérité (Critical, High, Medium, Low, Info)
 - **Findings** : chaque vulnérabilité affiche titre, sévérité, description, remédiation, CWE/CVSS
@@ -463,14 +505,60 @@ Le module Red Team (accessible via le header ou `/pentest`) permet de scanner vo
 - **Filtre par sévérité** : dropdown dans l'onglet Findings
 - **Rafraîchir** : boutons Refresh dans chaque onglet
 
-### 11.4. Rapport
+### 12.4. Rapport
 
 - **Rapport Markdown** : accessible dans l'onglet Rapport
 - **Navigation rapide** : table des matières sticky avec les sections principales
 - **Téléchargement** : bouton Rapport dans le header pour exporter en .md
 - **Annexes** : détails requête/réponse pour chaque finding
 
-## 12. Raccourcis clavier
+## 13. Blue Team / SSDLC
+
+Le module Blue Team (accessible via le header ou `/blueteam`) analyse vos spécifications API avec un agent IA expert en security-by-design pour produire un rapport d'exigences de sécurité.
+
+### 13.1. Profils SSDLC
+
+- **Créer un profil** : bouton "+" dans la sidebar "Profils SSDLC"
+- **Configurer** : URL cible, Master Prompt (instructions pour l'agent), Documentation (contexte métier), spécification OpenAPI, collection
+- **Filtre par équipe** : dropdown dans la sidebar pour filtrer les profils par équipe
+- **Modifier** : bouton crayon dans le header du profil
+- **Supprimer** : bouton poubelle dans le header du profil
+
+### 13.2. Analyse
+
+- **Lancer l'analyse** : sélectionnez un profil, cliquez "Lancer l'analyse"
+- **Progression** : barre de progression + messages de statut en temps réel (polling adaptatif)
+- **Arrêter** : bouton Stop pendant l'analyse
+- **Modèle Pro** : badge affichant le modèle IA utilisé
+
+### 13.3. Rapport
+
+L'agent IA analyse votre spec à travers 8 domaines de sécurité :
+1. Authentification & Autorisation
+2. Protection des données (transit, stockage, traitement)
+3. Input validation & injection
+4. Architecture API (rate limiting, versioning, CORS)
+5. Gestion d'erreurs & logging
+6. Logique métier & workflows
+7. Supply chain & dépendances
+8. Conformité & gouvernance (GDPR, PCI-DSS, SOC2)
+
+Le rapport inclut :
+- Résumé exécutif avec score de maturité sécurité
+- Analyse par domaine (forces, faiblesses, risques)
+- Tableau d'exigences de sécurité avec priorités et références OWASP/NIST
+- Plan d'action priorisé (immédiat, court terme, moyen terme)
+- Diagrammes Mermaid pour illustrer les flux et l'architecture
+
+### 13.4. Import depuis Red Team
+
+Vous pouvez importer une campagne Red Team pour générer un plan de remédiation :
+- Depuis Red Team, bouton "Envoyer vers Blue Team" sur une campagne terminée
+- Ou depuis Blue Team, utilisez l'API `POST /api/blueteam/import-from-pentest`
+
+---
+
+## 14. Raccourcis clavier
 
 | Raccourci | Action |
 |-----------|--------|

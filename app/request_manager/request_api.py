@@ -13,14 +13,15 @@ import ssl
 import socket
 
 def _get_proxy_from_request(request: Request) -> dict:
-    """XOR-decrypt proxy URL from JWT claim 'pry'."""
+    """XOR-decrypt proxy URL from JWT claim 'pry', then check if enabled."""
     try:
-        payload = getattr(request.state, "token", None)
-        if not payload: return None
-        proxy_xor = payload.get("pry") if isinstance(payload, dict) else None
+        payload = getattr(request.state, "token_obj", None)
+        if not payload or not isinstance(payload, dict): return None
+        proxy_xor = payload.get("pry")
         if not proxy_xor: return None
-        import os, base64
-        xor_key = os.getenv("PROXY_XOR_KEY", "elyria-proxy-k")
+        import base64
+        from database.app_config import get as _cfg
+        xor_key = _cfg("proxy.xor_key", "elyria-proxy-k")
         encrypted = base64.urlsafe_b64decode(proxy_xor)
         key_bytes = xor_key.encode()
         result = bytearray(len(encrypted))
@@ -28,6 +29,18 @@ def _get_proxy_from_request(request: Request) -> dict:
             result[i] = encrypted[i] ^ key_bytes[i % len(key_bytes)]
         url = bytes(result).rstrip(b'\x00').decode()
         if url:
+            # Check if proxy is enabled for this user
+            user_id = getattr(request.state, "token", None)
+            if user_id:
+                from database.connection import get_connection
+                conn = get_connection()
+                row = conn.execute(
+                    "SELECT enabled FROM user_favorite_proxy WHERE user_id=?",
+                    (user_id,)
+                ).fetchone()
+                conn.close()
+                if row and not row[0]:
+                    return None  # Proxy disabled
             return {"http": url, "https": url}
     except Exception:
         pass
@@ -94,6 +107,36 @@ def _make_request(url : str,method :str ,headers:dict=None,query_params:dict =No
                 "headers":dict(resp.headers),
                 "body" : resp.text if not resp.text.startswith("{") or resp.text.startswith("[") else  json.dumps(resp.json())}
     
+    except requests.exceptions.ProxyError as e:
+        if proxies:
+            # Proxy is down — retry without it
+            try:
+                resp = requests.request(method=method, url=url, data=body,
+                                        params=query_params, headers=headers,
+                                        json=_json, allow_redirects=allow_redirect,
+                                        proxies=None)
+                return {"status_code": resp.status_code,
+                        "url": resp.url,
+                        "headers": dict(resp.headers),
+                        "body": resp.text if not resp.text.startswith("{") or resp.text.startswith("[") else json.dumps(resp.json())}
+            except Exception:
+                raise Exception(f"Proxy unreachable: {e}")
+        raise Exception(f"Proxy unreachable: {e}")
+    except requests.exceptions.ConnectionError as e:
+        if proxies:
+            # Proxy connection failed — retry without it
+            try:
+                resp = requests.request(method=method, url=url, data=body,
+                                        params=query_params, headers=headers,
+                                        json=_json, allow_redirects=allow_redirect,
+                                        proxies=None)
+                return {"status_code": resp.status_code,
+                        "url": resp.url,
+                        "headers": dict(resp.headers),
+                        "body": resp.text if not resp.text.startswith("{") or resp.text.startswith("[") else json.dumps(resp.json())}
+            except Exception:
+                raise Exception(f"Connection failed via proxy: {e}")
+        raise Exception(f"Connection failed: {e}")
     except Exception as e:
         raise Exception(f"Request failed: {e}")
 

@@ -231,6 +231,8 @@ def get_collection_tree(author_user_id: str, team_ids: list = None):
     saved = get_saved_requests_by_user(author_user_id)
     # If team_ids is None: personal only. If empty list: no teams. If list: include those teams.
     if team_ids is not None and team_ids:
+        seen_folder_ids = {f["folder_id"] for f in folders}
+        seen_saved_ids = {r["saved_request_id"] for r in saved}
         for tid in team_ids:
             try:
                 conn = connect()
@@ -242,8 +244,14 @@ def get_collection_tree(author_user_id: str, team_ids: list = None):
                     placeholders = ",".join("?" * len(folder_ids))
                     tsaved += conn.execute(f"SELECT * FROM saved_requests WHERE folder_id IN ({placeholders})", folder_ids).fetchall()
                 conn.close()
-                folders.extend([dict(r) for r in tfolders])
-                saved.extend([dict(r) for r in tsaved])
+                for r in tfolders:
+                    if r["folder_id"] not in seen_folder_ids:
+                        seen_folder_ids.add(r["folder_id"])
+                        folders.append(dict(r))
+                for r in tsaved:
+                    if r["saved_request_id"] not in seen_saved_ids:
+                        seen_saved_ids.add(r["saved_request_id"])
+                        saved.append(dict(r))
             except Exception as e:
                 print(f"Team tree load error for {tid}: {e}")
 

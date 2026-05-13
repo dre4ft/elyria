@@ -1,30 +1,29 @@
 """
 Centralized database connection factory.
-Supports SQLite (default) and PostgreSQL, configurable via .env.
+Supports SQLite (default) and PostgreSQL.
 
-Environment variables:
-  DB_BACKEND=sqlite            # sqlite (default) or postgres
-  DB_PATH=database.db          # SQLite file path
-  PG_HOST=localhost            # PostgreSQL host
-  PG_PORT=5432                 # PostgreSQL port
-  PG_DATABASE=elyria           # PostgreSQL database name
-  PG_USER=elyria               # PostgreSQL user
-  PG_PASSWORD=elyria           # PostgreSQL password
+DB connection settings use hardcoded defaults (bootstrapping).
+Runtime overrides are stored in app_config DB table — but those
+require an already-working connection, so they apply to everything EXCEPT
+the connection layer itself.
 """
 
 import os
 import re
 import sqlite3
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
-DB_BACKEND = os.getenv("DB_BACKEND", "sqlite").lower()
+# Hardcoded fallbacks — the connection layer must stand alone (no app_config import).
+_DB_BACKEND = "sqlite"
+_DB_PATH = "database.db"
+_PG_HOST = "localhost"
+_PG_PORT = 5432
+_PG_DATABASE = "elyria"
+_PG_USER = "elyria"
+_PG_PASSWORD = "elyria"
 
 
 def is_postgres():
-    return DB_BACKEND in ("postgres", "postgresql", "pg")
+    return _DB_BACKEND in ("postgres", "postgresql", "pg")
 
 
 def get_connection():
@@ -35,8 +34,7 @@ def get_connection():
 
 
 def _sqlite_connect():
-    db_path = os.getenv("DB_PATH", "database.db")
-    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -48,11 +46,11 @@ def _pg_connect():
     import psycopg2.extras
 
     conn = psycopg2.connect(
-        host=os.getenv("PG_HOST", "localhost"),
-        port=int(os.getenv("PG_PORT", "5432")),
-        dbname=os.getenv("PG_DATABASE", "elyria"),
-        user=os.getenv("PG_USER", "elyria"),
-        password=os.getenv("PG_PASSWORD", "elyria"),
+        host=_PG_HOST,
+        port=_PG_PORT,
+        dbname=_PG_DATABASE,
+        user=_PG_USER,
+        password=_PG_PASSWORD,
         cursor_factory=psycopg2.extras.RealDictCursor,
     )
     conn.autocommit = False
