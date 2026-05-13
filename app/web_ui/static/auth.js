@@ -94,6 +94,17 @@ function parseUserFromToken(token) {
 function getToken() { return _token; }
 function getUser() { return _user; }
 
+function initHeaderUser() {
+  var user = _user;
+  var el = document.getElementById('header-username');
+  var logoutBtn = document.getElementById('btn-logout');
+  if (user && el) {
+    el.textContent = user.username || user.userId || '';
+    el.classList.remove('hidden');
+  }
+  if (logoutBtn) logoutBtn.addEventListener('click', logout);
+}
+
 function getAuthHeader() {
   if (!_token) return {};
   return { Authorization: 'Bearer ' + _token };

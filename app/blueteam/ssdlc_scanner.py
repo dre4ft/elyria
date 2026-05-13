@@ -34,9 +34,9 @@ class SSDLCAnalyzer:
 
         cfg = get_default_config("pro")
         if cfg:
-            url = cfg["base_url"] or "https://api.deepseek.com"
+            url = cfg["base_url"] or "https://api.openai.com/v1"
             api_key = cfg.get("api_key", "")
-            model = cfg.get("model") or os.getenv("deepseek_model") or "deepseek-v4-pro"
+            model = cfg.get("model") or os.getenv("openai_model") or "gpt-4o"
             if cfg["provider_type"] == "lmstudio":
                 url = url.rstrip("/").replace("/api/v1", "/v1")
                 if not url.endswith("/v1"):
@@ -44,14 +44,14 @@ class SSDLCAnalyzer:
                 if not api_key:
                     api_key = "not-needed"
             if not api_key:
-                api_key = os.getenv("deepseek") or os.getenv("deepseek_api_key", "")
+                api_key = os.getenv("openai_api_key", "")
             provider_type = cfg["provider_type"]
         else:
-            api_key = os.getenv("deepseek") or os.getenv("deepseek_api_key", "")
+            api_key = os.getenv("openai_api_key", "")
             if not api_key:
                 raise RuntimeError("No API key for 'pro' slot — set a default in /hub")
-            url = os.getenv("deepseek_provider_url", "https://api.deepseek.com")
-            model = os.getenv("deepseek_model") or "deepseek-v4-pro"
+            url = os.getenv("openai_base_url", "https://api.openai.com/v1")
+            model = os.getenv("openai_model") or "gpt-4o"
             provider_type = "openai"
 
         wrapper = AIWrapper(provider_type=provider_type, url=url, api_key=api_key, model=model)

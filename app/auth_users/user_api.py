@@ -24,10 +24,11 @@ def _generate_request_uuid()->str:
     return str(uuid_utils.uuid4())
 
 
-def create_jwt_token(user_id: str, secret_key: str, key_id: str, expires_in: int = 3600, proxy_xor: str = "") -> str:
+def create_jwt_token(user_id: str, secret_key: str, key_id: str, expires_in: int = 3600, proxy_xor: str = "", username: str = "") -> str:
     payload = {
         "kid": key_id,
         "sub": user_id,
+        "username": username or user_id,
         "iat": int(time.time()),
         "exp": time.time() + expires_in,
         "pry": proxy_xor,
@@ -101,7 +102,7 @@ async def login(request: LoginRequest):
         key_id = _generate_request_uuid()
         key = secrets.token_bytes(64).hex()
         add_key(key_id, key, user["user_id"])
-        token = create_jwt_token(user["user_id"], key, key_id, proxy_xor=proxy_xor)
+        token = create_jwt_token(user["user_id"], key, key_id, proxy_xor=proxy_xor, username=user.get("username", ""))
         return JSONResponse(content={"token": token, "user_id": user["user_id"], "username": user["username"]})
     else:
         raise HTTPException(status_code=401, detail="Invalid credentials")

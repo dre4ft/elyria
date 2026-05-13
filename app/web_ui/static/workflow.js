@@ -235,14 +235,7 @@ function init() {
   initAuth();
 
   // Afficher le nom d'utilisateur et configurer le bouton logout
-  const user = getUser();
-  const usernameEl = document.getElementById('header-username');
-  const logoutBtn = document.getElementById('btn-logout');
-  if (user && usernameEl && logoutBtn) {
-    usernameEl.textContent = user.username || user.userId;
-    usernameEl.classList.remove('hidden');
-    logoutBtn.addEventListener('click', logout);
-  }
+  initHeaderUser();
 
   setupPanelTabs();
   setupPaletteDrag();

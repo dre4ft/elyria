@@ -163,7 +163,7 @@ function renderTeams(teams) {
   const c = $('#teams-container');
   if(!teams.length){ c.innerHTML='<div class="empty-state">Aucune team. Creez-en une ou rejoignez-en une avec son ID.</div>'; return; }
   c.innerHTML = teams.map(t => {
-    const m = (t.members||[]).join(', ');
+    const m = (t.members||[]).map(x => typeof x === 'string' ? x : (x.username || x.user_id)).join(', ');
     const pend = (t.pending||[]).map(p=>`<div class="flex items-center justify-between py-2 px-3 rounded-lg bg-base-900/40 text-[11px]">
       <span class="text-gray-400 font-mono">${esc(p.user_id)}</span><span class="text-[10px] text-gray-500">${p.validators.length}/${p.needed} validations</span>
       <button onclick="validateRequest('${t.team_id}','${p.user_id}')" class="text-[10px] px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20 transition-all">Valider</button></div>`).join('');
@@ -239,11 +239,11 @@ function switchHubTab(tab) {
 
 // ── AI Config ──
 const PROVIDER_DEFAULTS = {
-  openai:   { url: 'https://api.deepseek.com', key: '', placeholder: 'deepseek-v4, gpt-4o...' },
+  openai:   { url: 'https://api.openai.com/v1', key: '', placeholder: 'gpt-4o, gpt-4o-mini...' },
   lmstudio: { url: 'http://localhost:1234/v1', key: '', placeholder: 'Modele local LM Studio...' },
   ollama:   { url: 'http://localhost:11434',   key: '', placeholder: 'llama3, mistral, codellama...' },
 };
-const PROVIDER_LABELS = {openai:'DeepSeek', lmstudio:'LM Studio', ollama:'Ollama'};
+const PROVIDER_LABELS = {openai:'OpenAI API', lmstudio:'LM Studio', ollama:'Ollama'};
 const PROVIDER_ICONS = {
   openai: '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/></svg>',
   lmstudio: '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-7.5-3h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z"/></svg>',

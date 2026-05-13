@@ -200,7 +200,7 @@ Le rapport original du pentest est fourni dans la documentation ci-dessous."""
 
     user_id = _get_user(request)
     pid = create_profile(
-        name=f"🔴 Remediation — {c.get('name','Pentest')[:50]}",
+        name=f"Remediation — {c.get('name','Pentest')[:50]}",
         target_url=c.get('target_url', ''),
         user_id=user_id,
         team_ids=_get_teams(request),
@@ -215,7 +215,7 @@ Le rapport original du pentest est fourni dans la documentation ci-dessous."""
     from database.ai_config_mgmt import get_default_config
     import os as _os
     pro_cfg = get_default_config("pro")
-    pro_model = pro_cfg.get("model") if pro_cfg else _os.getenv("deepseek_model") or "deepseek-v4-pro"
+    pro_model = pro_cfg.get("model") if pro_cfg else _os.getenv("openai_model") or "gpt-4o"
     update_profile(pid, status="running", pro_model=pro_model)
 
     def _progress(pct, msg):
@@ -284,7 +284,7 @@ async def api_start_analysis(profile_id: str, request: Request):
     from database.ai_config_mgmt import get_default_config
     import os as _os
     pro_cfg = get_default_config("pro")
-    pro_model = pro_cfg.get("model") if pro_cfg else _os.getenv("deepseek_model") or "deepseek-v4-pro"
+    pro_model = pro_cfg.get("model") if pro_cfg else _os.getenv("openai_model") or "gpt-4o"
     update_profile(profile_id, status="running", pro_model=pro_model)
 
     # Load spec content

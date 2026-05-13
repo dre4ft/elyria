@@ -28,6 +28,7 @@ const state = {
   conversation_id : null,
   currentRequestId: null,
   history: [],
+  statusFilter: '',
   chatOpen: false,
   collections: [],             // tree: [{ id, name, type:'folder', children:[], expanded }, { id, name, type:'request', method, url }]
   activeCollectionId: null,   // ID de la requête de collection actuellement chargée
@@ -166,15 +167,7 @@ function init() {
   window.__appInitCalled = true;
   initAuth();
 
-  // Afficher le nom d'utilisateur et configurer le bouton logout
-  const user = getUser();
-  const usernameEl = $('#header-username');
-  const logoutBtn = $('#btn-logout');
-  if (user && usernameEl && logoutBtn) {
-    usernameEl.textContent = user.username || user.userId;
-    usernameEl.classList.remove('hidden');
-    logoutBtn.addEventListener('click', logout);
-  }
+  initHeaderUser();
 
   setupTabs();
   setupSubtabs();
@@ -1284,6 +1277,23 @@ function setupHistory() {
   btnClear.addEventListener('click', () => { state.history = []; renderHistoryLog(); });
   searchInput.addEventListener('input', () => renderHistoryLog());
 
+  // Status code filter buttons
+  const filterBtns = document.querySelectorAll('#history-status-filter button');
+  filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterBtns.forEach(b => { b.className = 'h-5 px-2 rounded text-[9px] font-medium text-gray-500 border border-transparent transition-all'; });
+      const sc = btn.dataset.sc;
+      const active = 'h-5 px-2 rounded text-[9px] font-semibold border transition-all';
+      if (sc === '2') btn.className = active + ' bg-green-500/15 text-green-400 border-green-500/20';
+      else if (sc === '3') btn.className = active + ' bg-white/5 text-gray-300 border-white/10';
+      else if (sc === '4') btn.className = active + ' bg-orange-500/15 text-orange-400 border-orange-500/20';
+      else if (sc === '5') btn.className = active + ' bg-red-500/15 text-red-400 border-red-500/20';
+      else btn.className = active + ' bg-amber-500/15 text-amber-400 border-amber-500/20';
+      state.statusFilter = sc;
+      renderHistoryLog();
+    });
+  });
+
   // Watch all completed requests — update history in real time
   onRequestComplete((entry) => {
     state.history = state.history.filter(h => h.id !== entry.id);
@@ -1338,9 +1348,18 @@ function renderHistoryLog() {
   if (!logList) return;
 
   const query = (searchInput ? searchInput.value : '').toLowerCase().trim();
-  const filtered = query
-    ? state.history.filter(h => (h.url||'').toLowerCase().includes(query) || (h.method||'').toLowerCase().includes(query))
-    : state.history;
+  const scFilter = state.statusFilter || '';
+  let filtered = state.history;
+  if (query) {
+    filtered = filtered.filter(h => (h.url||'').toLowerCase().includes(query) || (h.method||'').toLowerCase().includes(query));
+  }
+  if (scFilter) {
+    const prefix = parseInt(scFilter, 10);
+    filtered = filtered.filter(h => {
+      const sc = h.statusCode || 0;
+      return sc >= prefix * 100 && sc < (prefix + 1) * 100;
+    });
+  }
 
   // Remove old rows (keep empty state)
   logList.querySelectorAll('.history-log-row,.history-quick-view').forEach(e => e.remove());

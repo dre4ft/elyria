@@ -49,12 +49,12 @@ def user_hub(request: Request):
     teams = c.execute("SELECT t.*, (SELECT COUNT(*) FROM team_users WHERE team_id=t.team_id) as member_count FROM teams t JOIN team_users tu ON t.team_id=tu.team_id WHERE tu.user_id=?", (uid,)).fetchall()
     teams_data = []
     for t in teams:
-        members = c.execute("SELECT user_id FROM team_users WHERE team_id=?", (t["team_id"],)).fetchall()
+        members = c.execute("SELECT tu.user_id, u.username FROM team_users tu LEFT JOIN users u ON tu.user_id=u.user_id WHERE tu.team_id=?", (t["team_id"],)).fetchall()
         pendings = c.execute("SELECT * FROM pending_team_requests WHERE team_id=?", (t["team_id"],)).fetchall()
         teams_data.append({
             "team_id": t["team_id"], "name": t["name"], "creator": t["creator_user_id"],
             "member_count": t["member_count"], "created_at": t["created_at"],
-            "members": [m["user_id"] for m in members],
+            "members": [{"user_id": m["user_id"], "username": (m["username"] or m["user_id"])} for m in members],
             "pending": [{"user_id": p["user_id"], "validators": json.loads(p["validators"]), "needed": p["needed_validator"]} for p in pendings],
         })
     # User's proxies
@@ -100,7 +100,7 @@ def get_team(team_id: str, request: Request):
     c = _conn()
     t = c.execute("SELECT * FROM teams WHERE team_id=?", (team_id,)).fetchone()
     if not t: raise HTTPException(404, "Team not found")
-    members = c.execute("SELECT user_id FROM team_users WHERE team_id=?", (team_id,)).fetchall()
+    members = c.execute("SELECT tu.user_id, u.username FROM team_users tu LEFT JOIN users u ON tu.user_id=u.user_id WHERE tu.team_id=?", (team_id,)).fetchall()
     is_member = any(m["user_id"] == uid for m in members)
     pendings = []
     if is_member:
@@ -115,7 +115,7 @@ def get_team(team_id: str, request: Request):
     return {
         "team_id": t["team_id"], "name": t["name"], "creator": t["creator_user_id"],
         "created_at": t["created_at"],
-        "members": [m["user_id"] for m in members],
+        "members": [{"user_id": m["user_id"], "username": (m["username"] or m["user_id"])} for m in members],
         "member_count": len(members),
         "pending": [{"user_id": p["user_id"], "validators": json.loads(p["validators"]), "needed": p["needed_validator"]} for p in pendings],
         "is_member": True,

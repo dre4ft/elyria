@@ -183,14 +183,7 @@
     async function init() {
       initAuth();
 
-      const user = getUser();
-      const usernameEl = document.getElementById('header-username');
-      const logoutBtn = document.getElementById('btn-logout');
-      if (user && usernameEl && logoutBtn) {
-        usernameEl.textContent = user.username || user.userId;
-        usernameEl.classList.remove('hidden');
-        logoutBtn.addEventListener('click', logout);
-      }
+      initHeaderUser();
 
       // Read lang from URL query param
       const params = new URLSearchParams(window.location.search);
