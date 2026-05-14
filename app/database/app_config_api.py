@@ -10,7 +10,7 @@ from database.app_config import (
     get_provider_toggles, set_provider_toggle, is_provider_enabled,
     get_all_api_keys, set_api_key, get_api_key,
 )
-from database.auth_utils import get_auth_user
+from database.auth_utils import get_auth_user, require_admin
 
 app = APIRouter(prefix="/api/admin/config", tags=["config"])
 
@@ -28,7 +28,7 @@ def get_full_config(request: Request):
 
 @app.put("/settings/{key}")
 async def update_setting(key: str, request: Request):
-    get_auth_user(request)
+    require_admin(request)
     body = await request.json()
     set_kv(key, str(body.get("value", "")))
     return {"key": key, "value": get(key)}
@@ -43,7 +43,7 @@ def list_fqdn(category: str = None, request: Request = None):
 
 @app.post("/fqdn")
 async def add_fqdn_entry(request: Request):
-    get_auth_user(request)
+    require_admin(request)
     body = await request.json()
     add_fqdn(body.get("category", "fetch"), body.get("pattern", ""))
     return get_fqdn_whitelist(body.get("category"))
@@ -51,7 +51,7 @@ async def add_fqdn_entry(request: Request):
 
 @app.delete("/fqdn/{fqdn_id}")
 def delete_fqdn_entry(fqdn_id: int, request: Request):
-    get_auth_user(request)
+    require_admin(request)
     remove_fqdn(fqdn_id)
     return {"status": "deleted"}
 
@@ -65,7 +65,7 @@ def list_provider_toggles(request: Request):
 
 @app.put("/providers/{provider_type}")
 async def update_provider_toggle(provider_type: str, request: Request):
-    get_auth_user(request)
+    require_admin(request)
     body = await request.json()
     set_provider_toggle(provider_type, body.get("enabled", True))
     return {"provider_type": provider_type, "enabled": is_provider_enabled(provider_type)}
@@ -80,7 +80,7 @@ def list_api_keys(request: Request):
 
 @app.put("/apikeys/{key_name}")
 async def update_api_key(key_name: str, request: Request):
-    get_auth_user(request)
+    require_admin(request)
     body = await request.json()
     set_api_key(key_name, body.get("key_value", ""))
     return {"key_name": key_name, "status": "ok"}

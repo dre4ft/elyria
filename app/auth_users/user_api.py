@@ -62,6 +62,10 @@ class LoginRequest(BaseModel):
 
 @app.post("/create")
 async def create_user(request: CreateUserRequest):
+    # Check if username already exists
+    existing = get_user_by_username(request.username)
+    if existing:
+        raise HTTPException(status_code=409, detail="Username already taken")
     user_id = _generate_request_uuid()
     salt = secrets.token_bytes(16).hex()
     salted_digest = request.digest + salt
@@ -82,6 +86,11 @@ async def login(request: LoginRequest):
     is_valid = is_valid_user(request.username, hashed_digest)
     if is_valid:
         user = get_user_by_username(request.username)
+        # Derive and store user encryption key (BYOK)
+        from database.crypto_store import derive_and_store_user_key, wrap_and_persist_user_key
+        user_key = derive_and_store_user_key(user["user_id"], request.digest, salt)
+        # Persist wrapped key for recovery (password reset)
+        wrap_and_persist_user_key(user["user_id"], user_key)
         # Look up proxy, XOR-encrypt with server key for JWT embed
         proxy_xor = ""
         try:
@@ -113,6 +122,10 @@ async def logout(request: Request):
     token = getattr(request.state, "token", None)
     if token:
         try:
+            user_id = token.get("sub", "")
+            if user_id:
+                from database.crypto_store import clear_user_key
+                clear_user_key(user_id)
             key_id = token.get("kid")
             if key_id:
                 delete_key(key_id)

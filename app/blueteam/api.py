@@ -47,6 +47,7 @@ def _verify_ownership(resource, user_id, user_teams=""):
 async def api_stop_analysis(profile_id: str, request: Request):
     p = get_profile(profile_id)
     _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
+    _analysis_progress.pop(profile_id, None)
     _running.discard(profile_id)
     update_profile(profile_id, status="stopped")
     publish(profile_id, "done", {"status": "stopped"})
@@ -367,17 +368,6 @@ async def api_start_analysis(profile_id: str, request: Request):
     thread.start()
 
     return {"status": "started", "profile_id": profile_id, "pro_model": pro_model}
-
-
-@app.post("/profiles/{profile_id}/stop")
-async def api_stop_analysis(profile_id: str, request: Request):
-    """Request stop — the thread checks _running and _analysis_progress."""
-    _analysis_progress.pop(profile_id, None)
-    if profile_id in _running:
-        _running.discard(profile_id)
-        update_profile(profile_id, status="stopped")
-        return {"status": "stopped"}
-    return {"status": "not_running"}
 
 
 # ═══════════════════════════════════════════

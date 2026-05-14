@@ -72,6 +72,8 @@ _DEFAULTS = {
     "oidc.client_secret":     "test-secret",
     "oidc.scope":             "openid profile email",
     "oidc.button_label":      "Test SSO",
+    # ── SSRF protection ──
+    "ssrf.blocked_hosts":     "metadata.google.internal,169.254.169.254,instance-data,169.254.170.2",
 }
 
 _DEFAULT_FQDN = {

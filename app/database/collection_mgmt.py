@@ -92,7 +92,7 @@ def _get_all_child_folder_ids(cursor, parent_id: str):
 # SAVED REQUESTS
 # ═══════════════════════════════════════════════
 
-def get_request_by_id(saved_request_id: str):
+def get_request_by_id(saved_request_id: str, requester_user_id: str = ""):
     conn = None
     try:
         conn = connect()
@@ -102,8 +102,25 @@ def get_request_by_id(saved_request_id: str):
             (saved_request_id,)
         )
         row = cursor.fetchone()
+        # Verify ownership if requester is specified
+        if row and requester_user_id:
+            d = dict(row)
+            if d.get("author_user_id") and d["author_user_id"] != requester_user_id:
+                return None
         if row:
-            return dict(row)
+            d = dict(row)
+            if d.get("payload_encrypted"):
+                opened = _open_saved_payload(d["payload_encrypted"], d.get("author_user_id", ""), d.get("team_id", ""))
+                if opened:
+                    d["method"] = opened.get("method", d["method"])
+                    d["url"] = opened.get("url", "")
+                    d["headers"] = opened.get("headers")
+                    d["body"] = opened.get("body")
+                else:
+                    d["url"] = ""
+                    d["headers"] = None
+                    d["body"] = None
+            return d
         return None
     except Exception as e:
         print("get_request_by_id error:", e)
@@ -112,21 +129,21 @@ def get_request_by_id(saved_request_id: str):
         if conn:
             conn.close()
 
-def _seal_saved_payload(method: str, url: str, headers_str, body_str, team_id: str) -> str:
+def _seal_saved_payload(method: str, url: str, headers_str, body_str, user_id: str, team_id: str) -> str:
     """Encrypt sensitive columns into a payload_encrypted blob."""
     from database.crypto_store import crypto_seal
     payload = {"method": method, "url": url}
     if headers_str: payload["headers"] = headers_str
     if body_str: payload["body"] = body_str
-    return crypto_seal(payload, team_id)
+    return crypto_seal(payload, user_id, team_id)
 
 
-def _open_saved_payload(encrypted: str, team_id: str) -> dict:
+def _open_saved_payload(encrypted: str, user_id: str, team_id: str) -> dict:
     """Decrypt payload_encrypted back into column values."""
     from database.crypto_store import crypto_open
     if not encrypted:
         return {}
-    return crypto_open(encrypted, team_id)
+    return crypto_open(encrypted, user_id, team_id)
 
 
 def create_saved_request(name: str, author_user_id: str, folder_id: str = None,
@@ -147,7 +164,7 @@ def create_saved_request(name: str, author_user_id: str, folder_id: str = None,
 
         # Encrypt sensitive columns
         tid = team_id or ""
-        payload_enc = _seal_saved_payload(method.upper(), url, headers_str, body_str, tid)
+        payload_enc = _seal_saved_payload(method.upper(), url, headers_str, body_str, author_user_id, tid)
 
         now = datetime.now()
         cursor.execute(
@@ -183,11 +200,12 @@ def get_saved_requests_by_user(author_user_id: str):
             # Decrypt payload if present
             if d.get("payload_encrypted"):
                 tid = d.get("team_id", "")
-                opened = _open_saved_payload(d["payload_encrypted"], tid)
-                if opened.get("method"): d["method"] = opened["method"]
-                if opened.get("url"): d["url"] = opened["url"]
-                if opened.get("headers"): d["headers"] = opened["headers"]
-                if opened.get("body"): d["body"] = opened["body"]
+                opened = _open_saved_payload(d["payload_encrypted"], author_user_id, tid)
+                # If decryption succeeds, use decrypted values; if it fails, clear sensitive columns
+                d["method"] = opened.get("method", d["method"]) if opened else d["method"]
+                d["url"] = opened.get("url", "") if opened else ""
+                d["headers"] = opened.get("headers") if opened else None
+                d["body"] = opened.get("body") if opened else None
             rows.append(d)
         return rows
     except Exception as e:
@@ -233,7 +251,7 @@ def update_saved_request(saved_request_id: str, author_user_id: str, **kwargs):
                 u = updates.get("url", row["url"])
                 h = updates.get("headers", row["headers"])
                 b = updates.get("body", row["body"])
-                updates["payload_encrypted"] = _seal_saved_payload(m, u, h, b, tid)
+                updates["payload_encrypted"] = _seal_saved_payload(m, u, h, b, author_user_id, tid)
 
         updates["updated_at"] = datetime.now()
         set_clause = ", ".join(f"{k}=?" for k in updates.keys())
@@ -298,10 +316,23 @@ def get_collection_tree(author_user_id: str, team_ids: list = None):
                     if r["folder_id"] not in seen_folder_ids:
                         seen_folder_ids.add(r["folder_id"])
                         folders.append(dict(r))
-                for r in tsaved:
-                    if r["saved_request_id"] not in seen_saved_ids:
-                        seen_saved_ids.add(r["saved_request_id"])
-                        saved.append(dict(r))
+                for row in tsaved:
+                    if row["saved_request_id"] not in seen_saved_ids:
+                        d = dict(row)
+                        # Decrypt team-scoped payload — if fails, blank the sensitive fields
+                        if d.get("payload_encrypted"):
+                            opened = _open_saved_payload(d["payload_encrypted"], author_user_id, tid)
+                            if opened:
+                                d["method"] = opened.get("method", d["method"])
+                                d["url"] = opened.get("url", "")
+                                d["headers"] = opened.get("headers")
+                                d["body"] = opened.get("body")
+                            else:
+                                d["url"] = ""
+                                d["headers"] = None
+                                d["body"] = None
+                        seen_saved_ids.add(d["saved_request_id"])
+                        saved.append(d)
             except Exception as e:
                 print(f"Team tree load error for {tid}: {e}")
 

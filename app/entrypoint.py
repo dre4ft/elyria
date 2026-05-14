@@ -36,7 +36,8 @@ async def check_authorization(request: Request, call_next):
         return await call_next(request)
     # SSE endpoints — EventSource can't send headers, so bypass middleware auth
     # Ownership is verified inside each endpoint
-    if "/events" in path and ("/api/blueteam/" in path or "/api/pentest/" in path):
+    # SSE event streams: auth via token in query param (EventSource can't send headers)
+    if path.endswith("/events") and ("/api/blueteam/" in path or "/api/pentest/" in path):
         return await call_next(request)
 
     auth = request.headers.get("authorization")
