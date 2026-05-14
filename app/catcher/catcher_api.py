@@ -410,7 +410,7 @@ def toggle_intercept(request: Request):
 
 @app.get("/pending")
 def list_pending(request: Request):
-    get_auth_user(request)
+    require_admin(request)
     with _lock:
         items = [{k: v for k, v in p.items() if not k.startswith("_")} for p in _pending.values()]
     items.sort(key=lambda x: x.get("timestamp", 0))

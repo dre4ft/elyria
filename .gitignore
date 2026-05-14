@@ -8,7 +8,7 @@ ai_agents/
 *.pyc
 *.pyo
 *.pyd
-*.db
+*.db*
 *.sqlite
 *.zip
 *.tar.gz

@@ -26,17 +26,7 @@ _analysis_progress = {}  # profile_id → {"pct": int, "msg": str, "status": str
 from database.auth_utils import get_auth_user, get_auth_user_teams
 
 
-def _verify_ownership(resource, user_id, user_teams=""):
-    if not resource:
-        raise HTTPException(404, "Not found")
-    if resource.get("user_id") == user_id or not resource.get("user_id"):
-        return
-    team_ids = resource.get("team_ids", "")
-    if team_ids and user_teams:
-        for t in team_ids.split(","):
-            if t.strip() and t.strip() in user_teams.split(","):
-                return
-    raise HTTPException(403, "Access denied")
+from core.auth import verify_ownership as _verify_ownership
 
 
 # ═══════════════════════════════════════════

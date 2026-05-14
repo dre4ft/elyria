@@ -59,37 +59,7 @@ def _validate_graph_expressions(graph):
 from database.auth_utils import get_auth_user, get_auth_user_teams
 
 
-def _verify_ownership(workflow, user_id, user_teams=""):
-    """Check if user owns the workflow or is in the owning team."""
-    if not workflow:
-        raise HTTPException(404, "Workflow not found")
-    if workflow.get("user_id") == user_id or not workflow.get("user_id"):
-        return
-    team_id = workflow.get("team_id", "")
-    if team_id and user_teams:
-        if team_id in user_teams.split(","):
-            return
-    raise HTTPException(403, "Access denied")
-
-
-def _verify_team_membership(team_id, user_id):
-    """Raise 403 if user is not a member of the given team."""
-    if not team_id:
-        return
-    try:
-        from database.connection import get_connection
-        conn = get_connection()
-        row = conn.execute(
-            "SELECT 1 FROM team_users WHERE team_id=? AND user_id=?",
-            (team_id, user_id),
-        ).fetchone()
-        conn.close()
-        if not row:
-            raise HTTPException(403, "You are not a member of this team")
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(403, "Team membership check failed")
+from core.auth import verify_ownership as _verify_ownership, verify_team_membership as _verify_team_membership
 
 
 @app.post("")

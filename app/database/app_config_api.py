@@ -17,7 +17,7 @@ app = APIRouter(prefix="/api/admin/config", tags=["config"])
 
 @app.get("")
 def get_full_config(request: Request):
-    get_auth_user(request)
+    require_admin(request)
     return {
         "settings": get_all(),
         "fqdn_whitelist": get_fqdn_whitelist(),
@@ -37,7 +37,7 @@ async def update_setting(key: str, request: Request):
 # ── FQDN whitelist ────────────────────────────────────────────────────
 @app.get("/fqdn")
 def list_fqdn(category: str = None, request: Request = None):
-    get_auth_user(request)
+    require_admin(request)
     return get_fqdn_whitelist(category)
 
 
@@ -59,7 +59,7 @@ def delete_fqdn_entry(fqdn_id: int, request: Request):
 # ── Provider toggles ──────────────────────────────────────────────────
 @app.get("/providers")
 def list_provider_toggles(request: Request):
-    get_auth_user(request)
+    require_admin(request)
     return get_provider_toggles()
 
 
@@ -74,7 +74,7 @@ async def update_provider_toggle(provider_type: str, request: Request):
 # ── API keys ──────────────────────────────────────────────────────────
 @app.get("/apikeys")
 def list_api_keys(request: Request):
-    get_auth_user(request)
+    require_admin(request)
     return [{"key_name": k["key_name"], "key_value": "***" + k["key_value"][-4:] if k["key_value"] else ""} for k in get_all_api_keys()]
 
 

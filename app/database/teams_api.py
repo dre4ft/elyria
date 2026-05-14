@@ -3,6 +3,16 @@ Team management + User Hub API.
 Decentralized governance: any user can create teams, join requests require 80% approval.
 """
 
+from core.cache import cache as _cache
+
+
+def _invalidate_team_caches(team_id: str, user_id: str = ""):
+    """Invalidate cached team membership and tree data on member changes."""
+    _cache.invalidate_prefix(f"team_member:{team_id}:")
+    if user_id:
+        _cache.invalidate_prefix(f"tree:{user_id}:")
+        _cache.invalidate(f"team_member:{team_id}:{user_id}")
+
 import json, uuid, math
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException
@@ -87,6 +97,7 @@ async def create_team(request: Request):
               (tid, uid, wrapped_key))
     c.execute("INSERT OR IGNORE INTO user_followed_teams (user_id,team_id) VALUES(?,?)", (uid, tid))
     c.commit(); c.close()
+    _invalidate_team_caches(tid, uid)
     return {"team_id": tid, "name": name}
 
 
@@ -182,6 +193,7 @@ async def validate_request(team_id: str, target_user_id: str, request: Request):
             c.execute("INSERT OR IGNORE INTO user_followed_teams (user_id,team_id) VALUES(?,?)", (target_user_id, team_id))
             c.execute("DELETE FROM pending_team_requests WHERE team_id=? AND user_id=?", (team_id, target_user_id))
             c.commit()
+            _invalidate_team_caches(team_id, target_user_id)
             # Now wrap the team key for the new member
             add_member_team_key(team_id, target_user_id, uid)
         else:
@@ -259,6 +271,7 @@ def remove_member(team_id: str, user_id: str, request: Request):
     c.execute("DELETE FROM team_users WHERE team_id=? AND user_id=?", (team_id, user_id))
     c.execute("DELETE FROM user_followed_teams WHERE team_id=? AND user_id=?", (team_id, user_id))
     c.commit()
+    _invalidate_team_caches(team_id, user_id)
     remaining = c.execute("SELECT COUNT(*) FROM team_users WHERE team_id=?", (team_id,)).fetchone()[0]
     c.close()
     # Rotate team key — departing member can no longer decrypt
@@ -277,6 +290,7 @@ def leave_team(team_id: str, request: Request):
     c.execute("DELETE FROM team_users WHERE team_id=? AND user_id=?", (team_id, uid))
     c.execute("DELETE FROM user_followed_teams WHERE team_id=? AND user_id=?", (team_id, uid))
     c.commit()
+    _invalidate_team_caches(team_id, uid)
     remaining = c.execute("SELECT COUNT(*) FROM team_users WHERE team_id=?", (team_id,)).fetchone()[0]
     c.close()
     # If team still has members, rotate the key

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Request, HTTPException
+from core.auth import get_user, require_admin
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from .ai_wrapper import AIWrapper
@@ -79,7 +80,8 @@ class InitProviderRequest(BaseModel):
 
 
 @app.get("/models")
-async def list_models():
+async def list_models(request: Request):
+    get_user(request)
     try:
         models = AI_PROVIDER.get_models()
         models_dict = models.model_dump()
@@ -91,7 +93,8 @@ async def list_models():
 
 
 @app.post("/update_model")
-async def update_model(update_request: UpdateModelRequest):
+async def update_model(request: Request, update_request: UpdateModelRequest):
+    require_admin(request)
     try:
         AI_PROVIDER.update_model(update_request.new_model)
         return JSONResponse(content={"message": f"Model updated to {update_request.new_model}"})
@@ -99,11 +102,13 @@ async def update_model(update_request: UpdateModelRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/providers")
-async def get_providers():
+async def get_providers(request: Request):
+    get_user(request)
     return JSONResponse(content={"providers": ["openai", "ollama", "lmstudio"]})
 
 @app.post("/init_provider")
-async def init_provider(init_request: InitProviderRequest):
+async def init_provider(request: Request, init_request: InitProviderRequest):
+    require_admin(request)
     try:
         global AI_PROVIDER
         AI_PROVIDER = AIWrapper(
@@ -120,11 +125,13 @@ async def init_provider(init_request: InitProviderRequest):
         raise HTTPException(status_code=500, detail=str(e))
     
 @app.get("/current_provider")
-def get_provider_config():
+def get_provider_config(request: Request):
+    get_user(request)
     return JSONResponse(content=AI_PROVIDER.get_config())
 
 @app.post("")
 async def chat_endpoint(request: Request, chat_request: ChatRequest):
+    get_user(request)
     user_id = request.state.token
     try:
         response = AI_PROVIDER.chat(

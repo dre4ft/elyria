@@ -125,18 +125,13 @@ def parse_curl(curl: str) -> dict:
     return {"method": method, "url": url, "headers": headers, "body": body}
 
 
-def _verify_team_membership(team_id, user_id):
-    """Raise 403 if user is not a member of the given team."""
-    if not team_id:
-        return
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT 1 FROM team_users WHERE team_id=? AND user_id=?",
-        (team_id, user_id),
-    ).fetchone()
-    conn.close()
-    if not row:
-        raise HTTPException(403, "You are not a member of this team")
+from core.auth import verify_team_membership as _verify_team_membership
+
+def _invalidate_tree_cache(user_id: str):
+    """Invalidate collection tree cache for a user after any mutation."""
+    from core.cache import cache
+    cache.invalidate_prefix(f"tree:{user_id}:")
+
 
 # ═══════════════════════════════════════════════
 # ROUTES
@@ -152,7 +147,13 @@ def list_collections(request: Request, team_id: str = ""):
         team_ids = [team_id]
     else:
         team_ids = _get_followed_team_ids(user_id)
-    tree = get_collection_tree(author_user_id=user_id, team_ids=team_ids)
+    # Cache tree per user+team filter (TTL 5s — frequent writes invalidate quickly)
+    from core.cache import cache
+    ck = f"tree:{user_id}:{team_id}"
+    tree = cache.get(ck)
+    if tree is None:
+        tree = get_collection_tree(author_user_id=user_id, team_ids=team_ids)
+        cache.set(ck, tree, ttl=5)
     return JSONResponse(tree)
 
 
@@ -168,6 +169,7 @@ def api_create_folder(body: CreateFolderBody, request: Request):
         team_id=body.team_id,
     )
     if folder_id:
+        _invalidate_tree_cache(token)
         return JSONResponse({"folder_id": folder_id, "name": body.name}, status_code=201)
     raise HTTPException(status_code=500, detail="Failed to create folder")
 
@@ -177,6 +179,7 @@ def api_delete_folder(folder_id: str, request: Request):
     token = request.state.token
     ok = delete_folder(folder_id, author_user_id=token)
     if ok:
+        _invalidate_tree_cache(token)
         return JSONResponse({"deleted": True})
     raise HTTPException(status_code=500, detail="Failed to delete folder")
 
@@ -207,6 +210,7 @@ def api_create_request(body: CreateRequestBody, request: Request):
         team_id=team_id,
     )
     if saved_id:
+        _invalidate_tree_cache(token)
         return JSONResponse({"saved_request_id": saved_id, "name": body.name}, status_code=201)
     raise HTTPException(status_code=500, detail="Failed to create saved request")
 
@@ -240,6 +244,7 @@ def api_compile_curl(body: CurlCompileBody, request: Request):
         team_id=team_id,
     )
     if saved_id:
+        _invalidate_tree_cache(token)
         return JSONResponse({"saved_request_id": saved_id, "name": body.name, "parsed": parsed}, status_code=201)
     raise HTTPException(status_code=500, detail="Failed to save request")
 
@@ -250,6 +255,7 @@ def api_update_request(saved_request_id: str, body: UpdateRequestBody, request: 
     update_data = {k: v for k, v in body.model_dump().items() if v is not None}
     ok = update_saved_request(saved_request_id, author_user_id=token, **update_data)
     if ok:
+        _invalidate_tree_cache(token)
         return JSONResponse({"updated": True})
     raise HTTPException(status_code=500, detail="Failed to update saved request")
 
@@ -259,5 +265,6 @@ def api_delete_request(saved_request_id: str, request: Request):
     token = request.state.token
     ok = delete_saved_request(saved_request_id, author_user_id=token)
     if ok:
+        _invalidate_tree_cache(token)
         return JSONResponse({"deleted": True})
     raise HTTPException(status_code=500, detail="Failed to delete saved request")
