@@ -31,7 +31,7 @@ async def check_authorization(request: Request, call_next):
     # can load auth.js — client-side auth handles the rest.
     PUBLIC_ROUTES = {
         "/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/blueteam",
-        "/api/user/login", "/api/user/create",
+        "/api/user/login", "/api/user/create", "/api/user/refresh",
         "/api/user/oidc/login", "/api/user/oidc/callback", "/api/user/oidc/config",
     }
     path = request.url.path

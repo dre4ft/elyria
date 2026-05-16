@@ -63,11 +63,14 @@ def _discover(issuer: str) -> dict:
     return meta
 
 
-def _build_jwt(user: dict, expires_in: int = 3600) -> str:
-    """Create an Elyria HS512 session JWT from a user dict."""
+def _build_jwt(user: dict, expires_in: int = 3600) -> tuple[str, str]:
+    """Create an Elyria HS512 session JWT + refresh token from a user dict."""
+    import hashlib
     key_id = str(uuid.uuid4())
     secret_key = secrets.token_bytes(64).hex()
-    user_mgmt.add_key(key_id, secret_key, user.get("user_id"))
+    refresh_token = secrets.token_hex(64)
+    refresh_hash = hashlib.sha3_512(refresh_token.encode()).hexdigest()
+    user_mgmt.add_key(key_id, secret_key, user.get("user_id"), refresh_token_hash=refresh_hash)
     payload = {
         "kid": key_id,
         "sub": user["user_id"],
@@ -75,7 +78,7 @@ def _build_jwt(user: dict, expires_in: int = 3600) -> str:
         "iat": int(time.time()),
         "exp": time.time() + expires_in,
     }
-    return jwt.encode(payload, secret_key, algorithm="HS512")
+    return jwt.encode(payload, secret_key, algorithm="HS512"), refresh_token
 
 
 # ═══════════════════════════════════════════
@@ -201,11 +204,13 @@ def oidc_callback(request: Request, code: str = "", state: str = "", error: str 
         if not user:
             return RedirectResponse("/login?error=user_creation_failed")
 
-        # Issue session JWT
-        jwt_token = _build_jwt(user)
+        # Issue session JWT + refresh token
+        jwt_token, refresh_token = _build_jwt(user)
 
-        # Redirect to the app with token in URL hash (handled by auth.js)
-        return RedirectResponse(f"/app#token={jwt_token}")
+        # Redirect to the app with tokens in URL hash (handled by auth.js)
+        import urllib.parse
+        params = urllib.parse.urlencode({"token": jwt_token, "refresh_token": refresh_token})
+        return RedirectResponse(f"/app#{params}")
 
     except jwt.ExpiredSignatureError:
         return RedirectResponse("/login?error=token_expired")

@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS keys (
     key_id TEXT UNIQUE NOT NULL,
     key_value TEXT NOT NULL,
     user_id TEXT NOT NULL,
+    refresh_token_hash TEXT DEFAULT '',
+    refresh_count INTEGER DEFAULT 0,
+    max_refreshes INTEGER DEFAULT 2,
     created_at DATETIME NOT NULL
 )
 """
@@ -134,6 +137,9 @@ def _migrate_crypto_columns(cursor, conn):
         _safe_add_column(cursor, tbl, "team_id", "TEXT DEFAULT ''")
     _safe_add_column(cursor, "users", "wrapped_user_key", "TEXT DEFAULT ''")
     _safe_add_column(cursor, "team_users", "encrypted_team_key", "TEXT DEFAULT ''")
+    # Refresh token columns on keys table
+    for col, cdef in [("refresh_token_hash", "TEXT DEFAULT ''"), ("refresh_count", "INTEGER DEFAULT 0"), ("max_refreshes", "INTEGER DEFAULT 2")]:
+        _safe_add_column(cursor, "keys", col, cdef)
     conn.commit()
 
 

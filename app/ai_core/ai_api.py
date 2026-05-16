@@ -134,10 +134,22 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
     get_user(request)
     user_id = request.state.token
     try:
+        from ai_core.chat_tools import is_slash_command, get_slash_prompt
+
+        message = chat_request.message
+        conversation_id = chat_request.conversation_id
+
+        # Slash command → inject system message forcing the tool
+        forced_tool = is_slash_command(message)
+        if forced_tool:
+            import ai_mgmt
+            system_prompt = get_slash_prompt(forced_tool, message)
+            ai_mgmt.add_message({"role": "system", "content": system_prompt}, user_id, conversation_id)
+
         response = AI_PROVIDER.chat(
-            message=chat_request.message,
+            message=message,
             user_id=user_id,
-            conversation_id=chat_request.conversation_id
+            conversation_id=conversation_id
         )
         return JSONResponse(content=response)
     except Exception as e:

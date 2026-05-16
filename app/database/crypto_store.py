@@ -172,36 +172,46 @@ def get_team_key(user_id: str, team_id: str) -> bytes | None:
 # Payload seal / open
 # ═══════════════════════════════════════════════════════════════
 
-def crypto_seal(data: dict, user_id: str, team_id: str = "") -> str:
-    """
-    Encrypt data for storage.
-    If team_id is set, use team key. Otherwise use user's personal key.
-    """
-    if not data:
-        return ""
+def _resolve_key(user_id: str, team_id: str = "") -> bytes | None:
+    """Get encryption key for user/team. Falls back to DB recovery if not in memory."""
     if team_id:
         key = get_team_key(user_id, team_id)
-        if not key:
-            raise RuntimeError(f"Team key not available for user {user_id} team {team_id}")
+        if key:
+            return key
+        # Try DB recovery: load user key, then team key
+        uk = get_user_key(user_id) or load_user_key(user_id)
+        if uk:
+            set_user_key(user_id, uk)
+            return get_team_key(user_id, team_id)
+        return None
     else:
         key = get_user_key(user_id)
-        if not key:
-            raise RuntimeError(f"User key not available for {user_id}")
+        if key:
+            return key
+        # Try DB recovery
+        key = load_user_key(user_id)
+        if key:
+            set_user_key(user_id, key)
+        return key
+
+
+def crypto_seal(data: dict, user_id: str, team_id: str = "") -> str:
+    """Encrypt data. Falls back to DB recovery if user key not in memory."""
+    if not data:
+        return ""
+    key = _resolve_key(user_id, team_id)
+    if not key:
+        raise RuntimeError(f"Encryption key not available for user {user_id}")
     return encrypt_payload(data, key)
 
 
 def crypto_open(encrypted: str, user_id: str, team_id: str = "") -> dict:
-    """Decrypt a payload."""
+    """Decrypt a payload. Falls back to DB recovery. Returns {} on failure."""
     if not encrypted:
         return {}
-    if team_id:
-        key = get_team_key(user_id, team_id)
-        if not key:
-            return {}
-    else:
-        key = get_user_key(user_id)
-        if not key:
-            return {}
+    key = _resolve_key(user_id, team_id)
+    if not key:
+        return {}
     try:
         return decrypt_payload(encrypted, key)
     except Exception:

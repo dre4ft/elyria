@@ -130,20 +130,26 @@ def get_request_by_id(saved_request_id: str, requester_user_id: str = ""):
             conn.close()
 
 def _seal_saved_payload(method: str, url: str, headers_str, body_str, user_id: str, team_id: str) -> str:
-    """Encrypt sensitive columns into a payload_encrypted blob."""
-    from database.crypto_store import crypto_seal
-    payload = {"method": method, "url": url}
-    if headers_str: payload["headers"] = headers_str
-    if body_str: payload["body"] = body_str
-    return crypto_seal(payload, user_id, team_id)
+    """Encrypt sensitive columns into a payload_encrypted blob. Returns '' if crypto unavailable."""
+    try:
+        from database.crypto_store import crypto_seal
+        payload = {"method": method, "url": url}
+        if headers_str: payload["headers"] = headers_str
+        if body_str: payload["body"] = body_str
+        return crypto_seal(payload, user_id, team_id)
+    except Exception:
+        return ""
 
 
 def _open_saved_payload(encrypted: str, user_id: str, team_id: str) -> dict:
-    """Decrypt payload_encrypted back into column values."""
+    """Decrypt payload_encrypted back into column values. Returns {} if crypto unavailable."""
     from database.crypto_store import crypto_open
     if not encrypted:
         return {}
-    return crypto_open(encrypted, user_id, team_id)
+    try:
+        return crypto_open(encrypted, user_id, team_id)
+    except Exception:
+        return {}
 
 
 def create_saved_request(name: str, author_user_id: str, folder_id: str = None,
@@ -238,7 +244,7 @@ def update_saved_request(saved_request_id: str, author_user_id: str, **kwargs):
         if not updates:
             return False
 
-        # Re-encrypt payload if any sensitive field changed
+        # Re-encrypt payload if any sensitive field changed (non-blocking — falls back to cleartext)
         sensitive = {"method", "url", "headers", "body"}
         if sensitive & set(updates.keys()):
             row = cursor.execute(
