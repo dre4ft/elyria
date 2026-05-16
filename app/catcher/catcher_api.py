@@ -115,7 +115,7 @@ def _clear_history(user_id=""):
 
 
 _init_db()
-from database.auth_utils import get_auth_user, require_admin
+from database.auth_utils import get_auth_user
 
 
 # ═══════════════════════════════════════════
@@ -410,7 +410,7 @@ def toggle_intercept(request: Request):
 
 @app.get("/pending")
 def list_pending(request: Request):
-    require_admin(request)
+    get_auth_user(request)
     with _lock:
         items = [{k: v for k, v in p.items() if not k.startswith("_")} for p in _pending.values()]
     items.sort(key=lambda x: x.get("timestamp", 0))
@@ -432,7 +432,7 @@ async def edit_pending(req_id: str, request: Request):
 
 @app.post("/pending/{req_id}/forward")
 def forward_request(req_id: str, request: Request):
-    require_admin(request)
+    get_auth_user(request)
     with _lock:
         entry = _pending.get(req_id)
     if not entry:
@@ -445,7 +445,7 @@ def forward_request(req_id: str, request: Request):
 
 @app.post("/pending/{req_id}/drop")
 def drop_request(req_id: str, request: Request):
-    require_admin(request)
+    get_auth_user(request)
     with _lock:
         entry = _pending.get(req_id)
     if not entry:
@@ -459,7 +459,7 @@ def drop_request(req_id: str, request: Request):
 
 @app.post("/pending/drop-all")
 def drop_all(request: Request):
-    require_admin(request)
+    get_auth_user(request)
     with _lock:
         for entry in _pending.values():
             entry["_dropped"] = True

@@ -1,3 +1,5 @@
+import json
+
 from database import collection_mgmt, json_helper, request_mgmt
 from request_manager.request_api import handle_raw, handle_request
 from ai_core.chat_tools import get_chat_tools, handle_chat_tool, is_slash_command, get_slash_prompt
@@ -151,8 +153,15 @@ def create_folder(current_user_id, name, parent_id=None):
     return {"folder_id": folder_id}
 
 def send_request(current_user_id, url:str, method: str, headers:str=None, body:str=None):
-    headers = json_helper.from_json(headers) if headers else None
-    req_uuid, resp = handle_request(user_id=current_user_id, url=url, method=method, headers=headers, body=body, is_done_by_ai=True) 
+    if isinstance(headers, str) and headers.strip():
+        try:
+            headers = json.loads(headers)
+        except Exception:
+            import json as _json
+            headers = _json.loads(headers) if headers.startswith("{") else None
+    elif not isinstance(headers, dict):
+        headers = None
+    req_uuid, resp = handle_request(user_id=current_user_id, url=url, method=method, headers=headers, body=body, is_done_by_ai=True)
     return {"response_uuid":req_uuid,"response": resp}
 
 def send_request_by_id(current_user_id, request_id: str):

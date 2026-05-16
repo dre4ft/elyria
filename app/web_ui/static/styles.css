@@ -408,7 +408,7 @@
   border: 1px solid rgba(124, 58, 237, 0.2);
   border-radius: 0.75rem 0.75rem 0.25rem 0.75rem;
   padding: 0.625rem 0.875rem;
-  max-width: 280px;
+  max-width: 340px;
   font-size: 0.75rem;
   color: #e5e7eb;
   line-height: 1.6;
@@ -423,7 +423,7 @@
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 0.25rem 0.75rem 0.75rem 0.75rem;
   padding: 0.625rem 0.875rem;
-  max-width: 280px;
+  max-width: 400px;
   font-size: 0.75rem;
   color: #d1d5db;
   line-height: 1.6;

@@ -190,7 +190,7 @@ const Catcher = {
                   <span class="json-editor-status catcher-json-status" data-json-status="${rid}-headers"></span>
                   <button class="json-editor-fmt" data-json-fmt="${rid}-headers" title="Formatter (Ctrl+Shift+F)">{ }</button>
                 </div>
-                <textarea id="${rid}-headers" class="json-editor-textarea w-full h-24 p-2 rounded text-[10px] text-gray-300 resize-none focus:outline-none focus:border-pink-500/40" onchange="Catcher._editField('${r.id}','headers',this.value)" oninput="Catcher._validateJsonField('${rid}-headers')" spellcheck="false">${this._esc(headersStr)}</textarea>
+                <textarea id="${rid}-headers" class="json-editor-textarea w-full h-24 p-2 rounded bg-base-900/80 border border-white/5 text-[10px] text-gray-300 resize-none focus:outline-none focus:border-pink-500/40" onchange="Catcher._editField('${r.id}','headers',this.value)" oninput="Catcher._validateJsonField('${rid}-headers')" spellcheck="false">${this._esc(headersStr)}</textarea>
               </div>
             </div>
             <div>
@@ -200,7 +200,7 @@ const Catcher = {
                   <span class="json-editor-status catcher-json-status" data-json-status="${rid}-body"></span>
                   <button class="json-editor-fmt" data-json-fmt="${rid}-body" title="Formatter (Ctrl+Shift+F)">{ }</button>
                 </div>
-                <textarea id="${rid}-body" class="json-editor-textarea w-full h-32 p-2 rounded text-[10px] text-gray-300 resize-none focus:outline-none focus:border-pink-500/40" onchange="Catcher._editField('${r.id}','body',this.value)" oninput="Catcher._validateJsonField('${rid}-body')" spellcheck="false">${this._esc(bodyStr)}</textarea>
+                <textarea id="${rid}-body" class="json-editor-textarea w-full h-32 p-2 rounded bg-base-900/80 border border-white/5 text-[10px] text-gray-300 resize-none focus:outline-none focus:border-pink-500/40" onchange="Catcher._editField('${r.id}','body',this.value)" oninput="Catcher._validateJsonField('${rid}-body')" spellcheck="false">${this._esc(bodyStr)}</textarea>
               </div>
             </div>
           </div>

@@ -200,13 +200,23 @@ L'historique est cloisonné par utilisateur.
 
 ### Port du proxy
 
-Configurable via la variable d'environnement `CATCHER_PORT` (défaut : 8080).
+Configurable dans **Hub > Admin Config** (clé `catcher.port`, défaut : `6767`).
 
 ---
 
 ## 7. L'Assistant IA
 
 L'assistant IA peut créer des collections, envoyer des requêtes et analyser les résultats.
+
+### Commandes slash `/`
+
+Dans le chat, tapez `/` pour voir les commandes disponibles :
+- `/explain` — analyser une réponse HTTP (status, headers, erreurs)
+- `/scan` — quick OWASP scan sur un endpoint
+- `/diff` — comparer deux réponses (confirmation BOLA/IDOR)
+- `/code` — générer du code client HTTP (Python, JS, Go)
+
+Quand une commande est utilisée, l'IA est **forcée** d'utiliser le tool correspondant. Navigation au clavier (↑↓ Enter) ou clic souris dans le menu.
 
 ### Ouvrir l'assistant
 
@@ -454,7 +464,26 @@ Le Hub (accessible via l'icône utilisateur dans le header) centralise la gestio
 - **Suivre/Ne plus suivre** : les teams suivies apparaissent dans vos filtres de collections, workflows et pentest.
 - **Copier l'ID** : cliquez sur l'icône de copie à côté du Team ID.
 
-### 11.2. Proxy
+### 11.2. Admin Config
+
+Toute la configuration d'Elyria est centralisée dans **Hub > Admin Config**. Plus besoin de fichier `.env`.
+
+**Settings** : clés/valeurs modifiables en direct :
+- `app.host`, `app.port` — binding du serveur
+- `catcher.port` — port du proxy intercepteur
+- `ssl.cert_path`, `ssl.key_path` — certificats TLS
+- `db.backend`, `db.pg.*` — base de données (SQLite ou PostgreSQL)
+- `proxy.xor_key` — clé de chiffrement du proxy dans le JWT
+
+**FQDN Whitelist** : contrôle quels hosts sont autorisés par catégorie (`fetch`, `proxy`, `llm`). Supporte les wildcards `*.domaine.com`.
+
+**Provider Toggles** : active/désactive des types de providers LLM (`openai`, `ollama`, `lmstudio`, `anthropic`, `deepseek`).
+
+**API Keys** : stockées chiffrées en base. La clé `openai_api_key` sert de fallback quand un provider n'a pas sa propre clé configurée.
+
+Modification via l'UI ou l'API : `PUT /api/admin/config/settings/{key}`.
+
+### 11.3. Proxy
 
 Configurez vos proxies HTTP pour le forwarding des requêtes.
 
@@ -462,7 +491,7 @@ Configurez vos proxies HTTP pour le forwarding des requêtes.
 - **Définir comme favori** : le proxy favori est injecté dans vos requêtes lorsqu'il est activé.
 - **Supprimer** : icône X sur chaque proxy.
 
-### 11.3. Agent IA
+### 11.4. Agent IA
 
 Gérez vos providers LLM pour le chat IA et le pentest AI.
 
@@ -495,7 +524,21 @@ Le module Red Team (accessible via le header ou `/pentest`) permet de scanner vo
 - **Supprimer** : icône X sur chaque campagne (purge complète : findings, logs, campagne)
 - **Refresh** : bouton Refresh dans le header ou automatique toutes les 60s
 
-### 12.3. Findings et Logs
+### 12.3. Sandbox (Bash Tool)
+
+Lors d'un scan, Elyria spawn automatiquement un **conteneur Docker** jetable (`strike-sandbox`) équipé d'outils de pentest réels :
+- **nmap** — scan de ports, détection de services
+- **sqlmap** — détection et exploitation d'injection SQL
+- **nuclei** — 5000+ templates de vulnérabilités
+- **ffuf** — fuzzer web (bruteforce de chemins)
+- **subfinder** — énumération de sous-domaines
+- **curl, jq, python3** — outils de scripting
+
+L'IA appelle ces outils via un **tool `bash` unique** — elle décide quelle commande exécuter. Chaque commande est logguée dans les scan logs avec stdout/stderr.
+
+Le conteneur est automatiquement détruit en fin de scan (ou si le scan est stoppé).
+
+### 12.4. Findings et Logs
 
 - **Dashboard** : compteurs par sévérité (Critical, High, Medium, Low, Info)
 - **Findings** : chaque vulnérabilité affiche titre, sévérité, description, remédiation, CWE/CVSS
@@ -505,7 +548,7 @@ Le module Red Team (accessible via le header ou `/pentest`) permet de scanner vo
 - **Filtre par sévérité** : dropdown dans l'onglet Findings
 - **Rafraîchir** : boutons Refresh dans chaque onglet
 
-### 12.4. Rapport
+### 12.5. Rapport
 
 - **Rapport Markdown** : accessible dans l'onglet Rapport
 - **Navigation rapide** : table des matières sticky avec les sections principales

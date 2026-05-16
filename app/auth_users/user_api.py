@@ -129,14 +129,14 @@ async def login(request: LoginRequest):
     
 @app.get("/logout")
 async def logout(request: Request):
-    token = getattr(request.state, "token", None)
-    if token:
+    token_obj = getattr(request.state, "token_obj", None)
+    if token_obj:
         try:
-            user_id = token.get("sub", "")
+            user_id = token_obj.get("sub", "")
             if user_id:
                 from database.crypto_store import clear_user_key
                 clear_user_key(user_id)
-            key_id = token.get("kid")
+            key_id = token_obj.get("kid")
             if key_id:
                 delete_key(key_id)
                 delete_old_keys()
@@ -144,7 +144,7 @@ async def logout(request: Request):
                 info("user.logout", user_id=user_id, success=True)
                 return JSONResponse(content={"message": "Logged out successfully"})
             else:
-                raise HTTPException(status_code=400, detail="Invalid token")    
+                raise HTTPException(status_code=400, detail="Invalid token")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
     raise HTTPException(status_code=401, detail="Not authenticated")

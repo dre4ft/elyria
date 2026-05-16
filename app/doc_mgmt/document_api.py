@@ -90,5 +90,63 @@ async def upload(request : Request, target_url: str="http://localhost:9000", tea
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)[:200]}")
+
+
+# ── Postman / Bruno import ──────────────────────────────────────────────
+
+@app.post("/postman")
+async def upload_postman(request: Request, file: UploadFile = File(...)):
+    user_id = request.state.token
+    from doc_mgmt.postman.parser import parse_postman
+    from database.collection_mgmt import create_folder, create_saved_request
+
+    raw = (await file.read()).decode("utf-8", errors="replace")
+    parsed = parse_postman(raw)
+
+    # Create folder tree
+    folder_map = {}
+    for fld in parsed.get("folders", []):
+        fid = create_folder(name=fld["name"], author_user_id=user_id, parent_id=fld.get("parent_id"))
+        folder_map[fld["id"]] = fid
+
+    # Create requests
+    count = 0
+    for req in parsed.get("requests", []):
+        parent = folder_map.get(req.get("folder_id"))
+        create_saved_request(
+            name=req["name"], author_user_id=user_id,
+            folder_id=parent, method=req["method"], url=req["url"],
+            headers=req.get("headers"), body=req.get("body"),
+        )
+        count += 1
+
+    return JSONResponse(status_code=201, content={
+        "collection_name": parsed.get("collection_name", "Postman Import"),
+        "requests_imported": count,
+    })
+
+
+@app.post("/bruno")
+async def upload_bruno(request: Request, file: UploadFile = File(...)):
+    user_id = request.state.token
+    from doc_mgmt.bruno.parser import parse_bruno
+    from database.collection_mgmt import create_saved_request
+
+    raw = (await file.read()).decode("utf-8", errors="replace")
+    parsed = parse_bruno(raw, file.filename or "")
+
+    count = 0
+    for req in parsed.get("requests", []):
+        create_saved_request(
+            name=req["name"], author_user_id=user_id,
+            folder_id=None, method=req["method"], url=req["url"],
+            headers=req.get("headers"), body=req.get("body"),
+        )
+        count += 1
+
+    return JSONResponse(status_code=201, content={
+        "collection_name": parsed.get("collection_name", "Bruno Import"),
+        "requests_imported": count,
+    })
     
  
