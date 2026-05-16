@@ -7,7 +7,7 @@ import threading
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pentest.scan_events import publish, cleanup as events_cleanup
+from redteam.scan_events import publish, cleanup as events_cleanup
 
 from blueteam.database import (
     init_blueteam_db, create_profile, list_profiles, get_profile,
@@ -135,7 +135,7 @@ async def api_import_from_pentest(request: Request):
 
     # Fetch campaign data — verify ownership
     try:
-        from pentest.database import get_campaign, get_campaign_findings
+        from redteam.database import get_campaign, get_campaign_findings
         c = get_campaign(campaign_id)
         if not c:
             raise HTTPException(404, "Campaign not found")

@@ -10,6 +10,8 @@ import json
 import re
 import time
 from urllib.parse import urljoin
+from strike.sandbox.tool import BashTool
+
 
 import requests
 
@@ -46,6 +48,34 @@ def _get_tools():
                         },
                     },
                     "required": ["requests"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "bash",
+                "description": (
+                    "Execute a command in the pentest sandbox. "
+                    "Available tools: nmap, sqlmap, nuclei, ffuf, amass, subfinder, httpx, curl, "
+                    "python3, jq, yq, go. "
+                    "The sandbox has network access to the target. "
+                    "Use this for reconnaissance, exploitation, fuzzing, and data extraction. "
+                    "Chain multiple bash calls: enumerate → analyze → exploit → confirm."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "Shell command to execute in the sandbox. Examples: 'nmap -sV TARGET', 'sqlmap -u http://TARGET/api/users?id=1 --batch', 'nuclei -u http://TARGET -severity critical,high'",
+                        },
+                        "timeout_ms": {
+                            "type": "integer",
+                            "description": "Max execution time in milliseconds (default: 30000)",
+                        },
+                    },
+                    "required": ["command"],
                 },
             },
         },
@@ -93,7 +123,8 @@ def _get_tools():
 class AIScanner:
     def __init__(self, campaign_id, target_url, user_id, auth_config=None,
                  deterministic_findings=None, collection_requests=None, id_list=None,
-                 callbacks=None, description="", explore_rounds=15, analysis_rounds=5):
+                 callbacks=None, description="", explore_rounds=15, analysis_rounds=5,
+                 stop_check=None):
         self.campaign_id = campaign_id
         self.target = target_url.rstrip("/")
         self.user_id = user_id
@@ -105,9 +136,17 @@ class AIScanner:
         self.callbacks = callbacks or {}
         self.explore_rounds = max(1, min(50, int(explore_rounds)))
         self.analysis_rounds = max(1, min(25, int(analysis_rounds)))
+        self.stop_check = stop_check or (lambda: False)
         self.conversation = []
         self._setup_session()
         self._setup_providers()
+        self.bash_tool = BashTool(sandbox=None, manager=None, target=self.target)
+
+    def _cleanup_sandbox(self):
+        try:
+            self.bash_tool.destroy()
+        except Exception:
+            pass
 
     def _setup_session(self):
         self.session = requests.Session()
@@ -257,7 +296,7 @@ class AIScanner:
 
         # Last 15 scan logs for context
         try:
-            from pentest.database import get_scan_logs
+            from redteam.database import get_scan_logs
             result = get_scan_logs(self.campaign_id, limit=15, page=1)
             logs = result.get("logs", []) if isinstance(result, dict) else (result or [])
             if logs:
@@ -276,6 +315,12 @@ class AIScanner:
         """Extensive AI deep scan — 20+ rounds: explore → analyze → probe deeper → verify → report."""
         ai_findings = []
         ai_tokens = {"prompt": 0, "completion": 0, "total": 0}
+
+        # Spawn sandbox for bash tool
+        try:
+            self.bash_tool.spawn(self.target)
+        except Exception as e:
+            print(f"[AI_SCANNER] Sandbox spawn failed: {e} — bash tool disabled", flush=True)
         orig_cb = self.callbacks.get("on_finding")
         def capture(f):
             ai_findings.append(f)
@@ -286,13 +331,18 @@ class AIScanner:
         context = self._build_context_block()
         tools = _get_tools()
 
-        # ── Heartbeat helper ──
+        self._aborted = False
+
         def _beat():
+            if self.stop_check():
+                self._aborted = True
+                return True
             try:
-                from pentest.scan_events import heartbeat
+                from redteam.scan_events import heartbeat
                 heartbeat(self.campaign_id)
             except Exception:
                 pass
+            return False
 
         # ── Token accumulator ──
         def _add_tokens(resp):
@@ -441,8 +491,8 @@ RULES:
             for i in range(explore_idx, batch_end):
                 prompt = exploration_prompts[i]
                 msgs.append({"role": "user", "content": prompt})
+                if _beat(): break
                 try:
-                    _beat()
                     resp = self.flash.chat(msgs, tools=tools)
                     _add_tokens(resp)
                 except Exception:
@@ -452,8 +502,8 @@ RULES:
                     self.conversation = msgs[:]
                 else:
                     msgs.append({"role": "user", "content": "You MUST call tools. Make at least 5 requests with pentest_make_requests."})
+                    if _beat(): break
                     try:
-                        _beat()
                         resp = self.flash.chat(msgs, tools=tools)
                         _add_tokens(resp)
                         await _process_tool_calls(msgs, resp)
@@ -493,14 +543,14 @@ SUPPLEMENTARY:
 ☐ Cache Poisoning — X-Forwarded-Host reflection, unkeyed headers
 ☐ BOLA via Batch — Per-item auth in bulk endpoints"""}
                 msgs.append({"role": "user", "content": analysis_prompts[analyze_idx]})
+                if _beat(): break
                 try:
-                    _beat()
                     resp = self.pro.chat(msgs, tools=tools)
                     _add_tokens(resp)
                     if not await _process_tool_calls(msgs, resp):
                         msgs.append({"role": "user", "content": "Call pentest_add_findings for every vulnerability you identified. Verify with pentest_make_requests if needed."})
+                        if _beat(): break
                         try:
-                            _beat()
                             resp = self.pro.chat(msgs, tools=tools)
                             _add_tokens(resp)
                             await _process_tool_calls(msgs, resp)
@@ -546,17 +596,18 @@ A human pentester would STILL check these — for each one, either confirm it's 
 For every question above where the answer is NO or UNCERTAIN: call pentest_make_requests NOW with targeted probes. Then call pentest_add_findings for anything you confirm."""
 
         msgs.append({"role": "user", "content": blind_spot_prompt})
-        try:
-            _beat()
-            resp = self.pro.chat(msgs, tools=tools)
-            _add_tokens(resp)
-            await _process_tool_calls(msgs, resp)
-        except Exception:
-            pass
+        if not self._aborted:
+            try:
+                resp = self.pro.chat(msgs, tools=tools)
+                _add_tokens(resp)
+                await _process_tool_calls(msgs, resp)
+            except Exception:
+                pass
         if self.callbacks.get("on_progress"):
             self.callbacks["on_progress"](98, "Final blind spot sweep")
 
         self.callbacks["on_finding"] = orig_cb
+        self._cleanup_sandbox()
         return {"findings": ai_findings, "tokens": ai_tokens,
                 "flash_model": self.flash_model,
                 "pro_model": self.pro_model,
@@ -565,6 +616,7 @@ For every question above where the answer is NO or UNCERTAIN: call pentest_make_
     TOOL_MAP = {
         "pentest_make_requests": "_handle_make_requests",
         "pentest_add_findings": "_handle_add_findings",
+        "bash": "_handle_bash",
     }
 
     async def _execute_tool(self, name, args):
@@ -576,6 +628,24 @@ For every question above where the answer is NO or UNCERTAIN: call pentest_make_
                 return await fn(parsed)
             return fn(parsed)
         return json.dumps({"error": f"Unknown tool: {name}"})
+
+    def _handle_bash(self, args):
+        result_str = self.bash_tool.handle(args)
+        # Log bash execution to scan logs
+        try:
+            result = json.loads(result_str)
+            from redteam.database import add_bash_log
+            add_bash_log(
+                campaign_id=self.campaign_id,
+                command=args.get("command", ""),
+                exit_code=result.get("exit_code", -1),
+                stdout=result.get("stdout", ""),
+                stderr=result.get("stderr", ""),
+                elapsed_ms=result.get("elapsed_ms", 0),
+            )
+        except Exception:
+            pass
+        return result_str
 
 
 def _format_tool_calls(raw):

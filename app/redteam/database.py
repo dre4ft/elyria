@@ -61,6 +61,7 @@ def init_pentest_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             log_id TEXT UNIQUE NOT NULL,
             campaign_id TEXT NOT NULL,
+            log_type TEXT DEFAULT 'http',
             endpoint TEXT NOT NULL,
             method TEXT DEFAULT 'GET',
             request_url TEXT DEFAULT '',
@@ -130,6 +131,11 @@ def init_pentest_db():
             conn.execute(f"ALTER TABLE pentest_findings ADD COLUMN {col} {ctype}")
         except Exception:
             pass
+    # Migration: log_type for bash command logs
+    try:
+        conn.execute("ALTER TABLE pentest_scan_logs ADD COLUMN log_type TEXT DEFAULT 'http'")
+    except Exception:
+        pass
     conn.commit()
     conn.close()
     # Auto-repair unlinked AI findings from previous runs
@@ -445,21 +451,38 @@ def get_finding_counts(campaign_id):
 
 def add_scan_log(campaign_id, endpoint, method="GET", request_url="", request_headers=None,
                   request_body="", response_status=None, response_headers=None,
-                  response_body_preview="", response_time_ms=0, check_name=""):
+                  response_body_preview="", response_time_ms=0, check_name="", log_type="http"):
     conn = _connect()
     lid = str(uuid.uuid4())
     conn.execute(
-        """INSERT INTO pentest_scan_logs (log_id, campaign_id, endpoint, method, request_url,
+        """INSERT INTO pentest_scan_logs (log_id, campaign_id, log_type, endpoint, method, request_url,
            request_headers, request_body, response_status, response_headers,
            response_body_preview, response_time_ms, check_name)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (lid, campaign_id, endpoint, method, request_url,
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (lid, campaign_id, log_type, endpoint, method, request_url,
          json.dumps(request_headers or {}), request_body[:2000], response_status,
          json.dumps(response_headers or {}), response_body_preview[:2000], response_time_ms, check_name),
     )
     conn.commit()
     conn.close()
     return lid
+
+
+def add_bash_log(campaign_id, command, exit_code, stdout, stderr, elapsed_ms):
+    """Log a sandbox bash command execution."""
+    return add_scan_log(
+        campaign_id=campaign_id,
+        endpoint="Sandbox",
+        method="BASH",
+        request_url=command[:500],
+        request_body=command,
+        response_status=exit_code,
+        response_headers={},
+        response_body_preview=(stdout[:1000] + ("\n[stderr]\n" + stderr[:500] if stderr else "")),
+        response_time_ms=elapsed_ms,
+        check_name="bash",
+        log_type="bash",
+    )
 
 
 def get_scan_logs(campaign_id, limit=50, page=1):
@@ -469,7 +492,7 @@ def get_scan_logs(campaign_id, limit=50, page=1):
     ).fetchone()[0]
     offset = (page - 1) * limit
     rows = conn.execute(
-        "SELECT log_id, campaign_id, endpoint, method, request_url, response_status, response_time_ms, check_name, created_at FROM pentest_scan_logs WHERE campaign_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+        "SELECT log_id, campaign_id, log_type, endpoint, method, request_url, response_status, response_time_ms, check_name, created_at FROM pentest_scan_logs WHERE campaign_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
         (campaign_id, limit, offset),
     ).fetchall()
     conn.close()

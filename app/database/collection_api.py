@@ -126,6 +126,7 @@ def parse_curl(curl: str) -> dict:
 
 
 from core.auth import verify_team_membership as _verify_team_membership
+from core.audit import info as _audit
 
 def _invalidate_tree_cache(user_id: str):
     """Invalidate collection tree cache for a user after any mutation."""
@@ -170,6 +171,7 @@ def api_create_folder(body: CreateFolderBody, request: Request):
     )
     if folder_id:
         _invalidate_tree_cache(token)
+        _audit("folder.create", user_id=token, resource_id=folder_id, resource_type="folder", team_id=body.team_id)
         return JSONResponse({"folder_id": folder_id, "name": body.name}, status_code=201)
     raise HTTPException(status_code=500, detail="Failed to create folder")
 
@@ -180,6 +182,7 @@ def api_delete_folder(folder_id: str, request: Request):
     ok = delete_folder(folder_id, author_user_id=token)
     if ok:
         _invalidate_tree_cache(token)
+        _audit("folder.delete", user_id=token, resource_id=folder_id)
         return JSONResponse({"deleted": True})
     raise HTTPException(status_code=500, detail="Failed to delete folder")
 
@@ -211,6 +214,7 @@ def api_create_request(body: CreateRequestBody, request: Request):
     )
     if saved_id:
         _invalidate_tree_cache(token)
+        _audit("request.create", user_id=token, resource_id=saved_id, resource_type="request", team_id=team_id)
         return JSONResponse({"saved_request_id": saved_id, "name": body.name}, status_code=201)
     raise HTTPException(status_code=500, detail="Failed to create saved request")
 
@@ -256,6 +260,7 @@ def api_update_request(saved_request_id: str, body: UpdateRequestBody, request: 
     ok = update_saved_request(saved_request_id, author_user_id=token, **update_data)
     if ok:
         _invalidate_tree_cache(token)
+        _audit("request.update", user_id=token, resource_id=saved_request_id, resource_type="request")
         return JSONResponse({"updated": True})
     raise HTTPException(status_code=500, detail="Failed to update saved request")
 
@@ -266,5 +271,6 @@ def api_delete_request(saved_request_id: str, request: Request):
     ok = delete_saved_request(saved_request_id, author_user_id=token)
     if ok:
         _invalidate_tree_cache(token)
+        _audit("request.delete", user_id=token, resource_id=saved_request_id, resource_type="request")
         return JSONResponse({"deleted": True})
     raise HTTPException(status_code=500, detail="Failed to delete saved request")

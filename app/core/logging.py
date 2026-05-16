@@ -1,69 +1,96 @@
 """
-Centralized structured logging. JSON format, request IDs, log levels.
+Centralized logging — proper log format, human-readable.
+
+Log files (rotated daily, kept 30 days):
+  logs/elyria.log      — all application logs
+  logs/audit.log       — audit trail only (WHO, WHAT, WHEN, RESULT)
 
 Usage:
   from core.logging import get_logger
   logger = get_logger(__name__)
-  logger.info("message", extra={"user_id": uid})
+  logger.info("message")
 """
 
-import json
 import logging
+import logging.handlers
 import os
 import sys
-import time
-import uuid
 from logging import Logger
+from pathlib import Path
 
 
-class _JsonFormatter(logging.Formatter):
+class _LogFormatter(logging.Formatter):
+    """Standard log format: 2026-05-16 12:01:43 INFO [module] message"""
     def format(self, record):
-        obj = {
-            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S.") + f"{int(record.msecs):03d}Z",
-            "level": record.levelname,
-            "logger": record.name,
-            "msg": record.getMessage(),
-        }
-        if hasattr(record, "request_id"):
-            obj["rid"] = record.request_id
-        if record.exc_info and record.exc_info[1]:
-            obj["error"] = str(record.exc_info[1])
-        for k, v in record.__dict__.items():
-            if k not in (
-                "args", "asctime", "created", "exc_info", "exc_text",
-                "filename", "funcName", "levelname", "levelno", "lineno",
-                "module", "msecs", "message", "msg", "name", "pathname",
-                "process", "processName", "relativeCreated", "request_id",
-                "stack_info", "thread", "threadName", "ts",
-            ):
-                try:
-                    json.dumps(v)
-                    obj[k] = v
-                except (TypeError, ValueError):
-                    pass
-        return json.dumps(obj, default=str)
+        ts = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
+        return f"{ts} {record.levelname:5s} [{record.name}] {record.getMessage()}"
 
 
 _log_initialized = False
+_audit_logger: Logger | None = None
+
+
+def _resolve_log_dir(base: str) -> str:
+    """Resolve log directory: absolute path, fallback to app/logs."""
+    if os.path.isabs(base):
+        return base
+    # Relative to the app directory
+    app_root = Path(__file__).resolve().parent.parent  # core → app
+    return str(app_root / base)
 
 
 def _init():
-    global _log_initialized
+    global _log_initialized, _audit_logger
     if _log_initialized:
         return
     _log_initialized = True
 
-    level_name = os.getenv("ELYRIA_LOG_LEVEL", "INFO").upper()
+    from database.app_config import get as cfg
+    level_name = cfg("log.level", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
+    log_dir = _resolve_log_dir(cfg("log.dir", "logs"))
+    os.makedirs(log_dir, exist_ok=True)
 
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(_JsonFormatter())
-    handler.setLevel(level)
+    formatter = _LogFormatter()
 
+    # ── Root logger: console + file ──
     root = logging.getLogger()
     root.handlers.clear()
     root.setLevel(level)
-    root.addHandler(handler)
+
+    # Console
+    console = logging.StreamHandler(sys.stdout)
+    console.setFormatter(formatter)
+    console.setLevel(level)
+    root.addHandler(console)
+
+    # File: rotated daily, 30 days
+    app_file = logging.handlers.TimedRotatingFileHandler(
+        os.path.join(log_dir, "elyria.log"),
+        when="midnight", interval=1, backupCount=30, encoding="utf-8",
+    )
+    app_file.setFormatter(formatter)
+    app_file.setLevel(level)
+    root.addHandler(app_file)
+
+    # ── Audit logger: separate file ──
+    _audit_logger = logging.getLogger("audit")
+    _audit_logger.propagate = False
+    _audit_logger.setLevel(logging.INFO)
+
+    audit_file = logging.handlers.TimedRotatingFileHandler(
+        os.path.join(log_dir, "audit.log"),
+        when="midnight", interval=1, backupCount=90, encoding="utf-8",
+    )
+    audit_file.setFormatter(formatter)
+    audit_file.setLevel(logging.INFO)
+    _audit_logger.addHandler(audit_file)
+
+    # Audit also to console (prefixed)
+    audit_console = logging.StreamHandler(sys.stdout)
+    audit_console.setFormatter(logging.Formatter("%(asctime)s [AUDIT] %(message)s"))
+    audit_console.setLevel(logging.INFO)
+    _audit_logger.addHandler(audit_console)
 
     # Quiet noisy libs
     for name in ("uvicorn", "uvicorn.access", "httpx", "httpcore", "urllib3", "openai", "ollama"):
@@ -72,4 +99,6 @@ def _init():
 
 def get_logger(name: str = "elyria") -> Logger:
     _init()
+    if name == "audit":
+        return _audit_logger or logging.getLogger("audit")
     return logging.getLogger(name)

@@ -8,7 +8,7 @@ from database.collection_api import app as collection_router
 from ai_core.ai_api import app as ai_router
 from auth_users.user_api import app as user_router
 from doc_mgmt.document_api import app as document_router
-from pentest.campaign_api import app as pentest_router
+from redteam.campaign_api import app as pentest_router
 from blueteam.api import app as blueteam_router
 from database.workflow_graph_api import app as workflow_graph_router
 from database.proxy_api import app as proxy_router
@@ -22,6 +22,12 @@ import jwt
 from database.user_mgmt import get_key
 
 app = FastAPI()
+
+# ── Audit logging middleware (outermost — runs first, finishes last) ──
+from core.audit import audit_middleware, init_audit_db
+init_audit_db()
+
+app.middleware("http")(audit_middleware)
 
 
 @app.middleware("http")
@@ -180,6 +186,6 @@ if __name__ == "__main__":
         "entrypoint:app",
         host=get("app.host", "127.0.0.1"),
         port=int(get("app.port", "8000")),
-        reload=os.getenv("ELYRIA_RELOAD", "").lower() in ("1", "true", "yes"),
+        reload=get("app.reload", "0") == "1",
         **ssl_kwargs,
     )

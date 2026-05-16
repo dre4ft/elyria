@@ -7,9 +7,9 @@ import asyncio
 import threading
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pentest.scan_events import publish, heartbeat, cleanup
+from redteam.scan_events import publish, heartbeat, cleanup
 
-from pentest.database import (
+from redteam.database import (
     init_pentest_db,
     create_campaign,
     list_campaigns,
@@ -30,10 +30,10 @@ from pentest.database import (
     delete_profile,
     _now,
 )
-from pentest.scanner import Scanner
-from pentest.report_generator import generate_report
-from pentest.ai_enhancer import analyze_findings
-from pentest.ai_scanner import AIScanner
+from redteam.scanner import Scanner
+from redteam.report_generator import generate_report
+from redteam.ai_enhancer import analyze_findings
+from redteam.ai_scanner import AIScanner
 
 import ipaddress
 import json
@@ -429,9 +429,10 @@ async def api_start_scan(profile_id: str, request: Request):
                     explore_rounds=p.get("explore_rounds", 30 if expert_mode else 15),
                     analysis_rounds=p.get("analysis_rounds", 15 if expert_mode else 5),
                     callbacks={"on_log": log_cb, "on_finding": ai_on_finding, "on_progress": progress_cb},
+                    stop_check=lambda: _stop_flags.get(campaign_id, False),
                 )
                 if expert_mode:
-                    from pentest.expert_scanner import ExpertAIScanner
+                    from redteam.expert_scanner import ExpertAIScanner
                     scanner_cls = ExpertAIScanner
                     scanner_kwargs["master_prompt"] = p.get("master_prompt", "")
                     scanner_kwargs["documentation"] = p.get("documentation", "")
@@ -486,7 +487,7 @@ async def api_start_scan(profile_id: str, request: Request):
             # Store AI config in campaign
             ai_cfg = _scan_configs.get(campaign_id, {})
             try:
-                from pentest.database import _connect
+                from redteam.database import _connect
                 conn = _connect()
                 conn.execute(
                     "UPDATE pentest_campaigns SET flash_model=?, pro_model=?, tokens_used=? WHERE campaign_id=?",
@@ -532,7 +533,7 @@ async def api_start_scan(profile_id: str, request: Request):
 
     # Store AI models in campaign now so they're visible immediately
     try:
-        from pentest.database import _connect
+        from redteam.database import _connect
         conn = _connect()
         conn.execute(
             "UPDATE pentest_campaigns SET flash_model=?, pro_model=? WHERE campaign_id=?",

@@ -4,6 +4,7 @@ Decentralized governance: any user can create teams, join requests require 80% a
 """
 
 from core.cache import cache as _cache
+from core.audit import info as _audit
 
 
 def _invalidate_team_caches(team_id: str, user_id: str = ""):
@@ -98,6 +99,7 @@ async def create_team(request: Request):
     c.execute("INSERT OR IGNORE INTO user_followed_teams (user_id,team_id) VALUES(?,?)", (uid, tid))
     c.commit(); c.close()
     _invalidate_team_caches(tid, uid)
+    _audit("team.create", user_id=uid, resource_id=tid, resource_type="team")
     return {"team_id": tid, "name": name}
 
 
@@ -199,6 +201,7 @@ async def validate_request(team_id: str, target_user_id: str, request: Request):
         else:
             c.commit()
     c.commit(); c.close()
+    _audit("team.member_added", user_id=target_user_id, team_id=team_id, resource_type="team", detail=f"validated by {uid}")
     return {"status": "validated", "validators": len(validators), "needed": pend["needed_validator"],
             "added": len(validators) >= pend["needed_validator"]}
 
@@ -277,6 +280,7 @@ def remove_member(team_id: str, user_id: str, request: Request):
     # Rotate team key — departing member can no longer decrypt
     from database.crypto_store import rotate_team_key
     count = rotate_team_key(team_id, uid)
+    _audit("team.member_removed", user_id=uid, team_id=team_id, resource_type="team", detail=f"removed {user_id}, rows={count}")
     return {"status": "removed", "remaining_members": remaining, "rows_re_encrypted": count}
 
 
@@ -305,4 +309,5 @@ def leave_team(team_id: str, request: Request):
             # Temporarily load performer's key
             from database.crypto_store import load_user_key
             count = rotate_team_key(team_id, next_member["user_id"])
+    _audit("team.member_left", user_id=uid, team_id=team_id, resource_type="team", detail=f"rows={count}")
     return {"status": "left", "remaining_members": remaining, "rows_re_encrypted": count}

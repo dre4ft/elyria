@@ -60,6 +60,7 @@ from database.auth_utils import get_auth_user, get_auth_user_teams
 
 
 from core.auth import verify_ownership as _verify_ownership, verify_team_membership as _verify_team_membership
+from core.audit import info as _audit
 
 
 @app.post("")
@@ -83,6 +84,7 @@ async def api_save_workflow(request: Request):
         description=body.get("description", ""),
         team_id=team_id,
     )
+    _audit("workflow.save", user_id=user_id, resource_id=wf_id, resource_type="workflow", team_id=team_id)
     return {"workflow_id": wf_id}
 
 
@@ -123,6 +125,7 @@ async def api_update_workflow(workflow_id: str, request: Request):
         description=body.get("description", wf.get("description", "")),
         team_id=team_id,
     )
+    _audit("workflow.update", user_id=get_auth_user(request), resource_id=workflow_id, resource_type="workflow", team_id=team_id)
     return {"status": "updated"}
 
 
@@ -131,6 +134,7 @@ async def api_delete_workflow(workflow_id: str, request: Request):
     wf = get_workflow(workflow_id)
     _verify_ownership(wf, get_auth_user(request), get_auth_user_teams(request))
     delete_workflow(workflow_id)
+    _audit("workflow.delete", user_id=get_auth_user(request), resource_id=workflow_id, resource_type="workflow")
     return {"status": "deleted"}
 
 

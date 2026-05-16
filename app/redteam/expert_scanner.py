@@ -12,7 +12,7 @@ import re
 import time
 from urllib.parse import urljoin
 
-from pentest.ai_scanner import AIScanner, _get_tools, _format_tool_calls
+from redteam.ai_scanner import AIScanner, _get_tools, _format_tool_calls
 
 
 def _extract_targets(text: str) -> str:
@@ -61,10 +61,11 @@ class ExpertAIScanner(AIScanner):
     def __init__(self, campaign_id, target_url, user_id, auth_config=None,
                  deterministic_findings=None, collection_requests=None, id_list=None,
                  callbacks=None, description="", explore_rounds=30, analysis_rounds=15,
-                 master_prompt="", documentation="", openapi_spec=""):
+                 master_prompt="", documentation="", openapi_spec="", stop_check=None):
         super().__init__(campaign_id, target_url, user_id, auth_config,
                          deterministic_findings, collection_requests, id_list,
-                         callbacks, description, explore_rounds, analysis_rounds)
+                         callbacks, description, explore_rounds, analysis_rounds,
+                         stop_check=stop_check)
         self.master_prompt = master_prompt
         self.documentation = documentation
         self.openapi_spec = openapi_spec
@@ -228,7 +229,7 @@ For ANY question answered NO: call pentest_make_requests NOW. Then verify. Then 
     async def _handle_read_logs(self, args):
         limit = min(int(args.get("limit", 20)), 30)
         try:
-            from pentest.database import get_scan_logs
+            from redteam.database import get_scan_logs
             result = get_scan_logs(self.campaign_id, limit=limit, page=1)
             logs = result.get("logs", []) if isinstance(result, dict) else (result or [])
             entries = []
@@ -272,7 +273,7 @@ For ANY question answered NO: call pentest_make_requests NOW. Then verify. Then 
 
         def _beat():
             try:
-                from pentest.scan_events import heartbeat
+                from redteam.scan_events import heartbeat
                 heartbeat(self.campaign_id)
             except Exception:
                 pass
@@ -588,7 +589,7 @@ IMPORTANT: Write the COMPLETE report. Do not abbreviate. Each section must be fu
         # Store report in DB
         if report:
             try:
-                from pentest.database import _connect
+                from redteam.database import _connect
                 conn = _connect()
                 conn.execute(
                     "UPDATE pentest_campaigns SET expert_report=?, expert_report_md=? WHERE campaign_id=?",

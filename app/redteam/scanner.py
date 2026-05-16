@@ -895,7 +895,7 @@ class Scanner:
         if not self.collection_requests:
             return findings
 
-        from pentest.attack_payloads import generate_attack_values, fuzz_request_body
+        from redteam.attack_payloads import generate_attack_values, fuzz_request_body
 
         for req in self.collection_requests[:20]:  # cap at 20 requests
             method = req.get("method", "GET")

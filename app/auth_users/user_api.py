@@ -116,6 +116,8 @@ async def login(request: LoginRequest):
         refresh_hash = hashlib.sha3_512(refresh_token.encode()).hexdigest()
         add_key(key_id, key, user["user_id"], refresh_token_hash=refresh_hash)
         token = create_jwt_token(user["user_id"], key, key_id, proxy_xor=proxy_xor, username=user.get("username", ""))
+        from core.audit import info
+        info("user.login", user_id=user["user_id"], success=True)
         return JSONResponse(content={
             "token": token,
             "refresh_token": refresh_token,
@@ -138,6 +140,8 @@ async def logout(request: Request):
             if key_id:
                 delete_key(key_id)
                 delete_old_keys()
+                from core.audit import info
+                info("user.logout", user_id=user_id, success=True)
                 return JSONResponse(content={"message": "Logged out successfully"})
             else:
                 raise HTTPException(status_code=400, detail="Invalid token")    
@@ -184,6 +188,8 @@ async def refresh_session(request: RefreshRequest):
 
     token = create_jwt_token(row["user_id"], new_secret, row["key_id"],
                              username=row.get("username", ""))
+    from core.audit import info
+    info("user.refresh", user_id=row["user_id"], success=True)
     return JSONResponse(content={
         "token": token,
         "refresh_token": new_refresh_token,

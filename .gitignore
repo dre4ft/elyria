@@ -39,4 +39,5 @@ data/
 .env
 .env.*
 # Logs
-*.log
+*.logs/
+*.log/
