@@ -100,43 +100,22 @@ def _make_request(url : str,method :str ,headers:dict=None,query_params:dict =No
                                headers=headers,
                                json=_json,
                                allow_redirects=allow_redirect,
-                               proxies=proxies)
-        
+                               proxies=proxies,
+                               verify=False)
+
         return {"status_code" : resp.status_code,
                 "url":resp.url,
                 "headers":dict(resp.headers),
                 "body" : resp.text if not resp.text.startswith("{") or resp.text.startswith("[") else  json.dumps(resp.json())}
-    
+
     except requests.exceptions.ProxyError as e:
-        if proxies:
-            # Proxy is down — retry without it
-            try:
-                resp = requests.request(method=method, url=url, data=body,
-                                        params=query_params, headers=headers,
-                                        json=_json, allow_redirects=allow_redirect,
-                                        proxies=None)
-                return {"status_code": resp.status_code,
-                        "url": resp.url,
-                        "headers": dict(resp.headers),
-                        "body": resp.text if not resp.text.startswith("{") or resp.text.startswith("[") else json.dumps(resp.json())}
-            except Exception:
-                raise Exception(f"Proxy unreachable: {e}")
         raise Exception(f"Proxy unreachable: {e}")
+    except requests.exceptions.SSLError as e:
+        raise Exception(f"SSL/TLS error — cert may be self-signed or invalid: {e}")
     except requests.exceptions.ConnectionError as e:
         if proxies:
-            # Proxy connection failed — retry without it
-            try:
-                resp = requests.request(method=method, url=url, data=body,
-                                        params=query_params, headers=headers,
-                                        json=_json, allow_redirects=allow_redirect,
-                                        proxies=None)
-                return {"status_code": resp.status_code,
-                        "url": resp.url,
-                        "headers": dict(resp.headers),
-                        "body": resp.text if not resp.text.startswith("{") or resp.text.startswith("[") else json.dumps(resp.json())}
-            except Exception:
-                raise Exception(f"Connection failed via proxy: {e}")
-        raise Exception(f"Connection failed: {e}")
+            raise Exception(f"Connection failed via proxy (disable proxy to connect directly): {e}")
+        raise Exception(f"Connection failed — target unreachable: {e}")
     except Exception as e:
         raise Exception(f"Request failed: {e}")
 

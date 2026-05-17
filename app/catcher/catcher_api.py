@@ -115,7 +115,7 @@ def _clear_history(user_id=""):
 
 
 _init_db()
-from database.auth_utils import get_auth_user
+from database.auth_utils import get_auth_user, require_admin
 
 
 # ═══════════════════════════════════════════
@@ -137,14 +137,16 @@ def _run_proxy():
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
     except AttributeError:
         pass  # Linux only
+    from database.app_config import get as _cfg
+    bind_host = _cfg("app.host", "127.0.0.1")
     try:
-        srv.bind(("0.0.0.0", _proxy_port))
+        srv.bind((bind_host, _proxy_port))
     except OSError:
         print(f"[catcher] Port {_proxy_port} already in use — proxy not started")
         return
     srv.listen(50)
     srv.settimeout(1)
-    print(f"[catcher] Proxy HTTP forward demarre sur 0.0.0.0:{_proxy_port}")
+    print(f"[catcher] Proxy HTTP forward demarre sur {bind_host}:{_proxy_port}")
     while True:
         try:
             client, addr = srv.accept()
@@ -190,32 +192,35 @@ def _handle_client(client, addr):
             _tunnel_connect(client, addr, parts)
             return
 
-        # Parse headers and body
-        headers = {}
-        body = ""
-        header_done = False
-        for line in lines[1:]:
-            if not header_done:
-                if line == "":
-                    header_done = True
-                elif ":" in line:
-                    k, v = line.split(":", 1)
-                    headers[k.strip()] = v.strip()
-            else:
-                body += line + "\n"
-        body = body.strip()
+        # Split headers from body using the raw bytes (avoids encoding issues)
+        header_end = data.find(b"\r\n\r\n")
+        if header_end == -1:
+            client.close()
+            return
 
-        # Content-Length support
+        header_bytes = data[:header_end]
+        body_bytes = data[header_end + 4:]  # skip \r\n\r\n
+
+        # Parse headers
+        headers = {}
+        header_lines = header_bytes.decode("utf-8", errors="replace").split("\r\n")
+        for line in header_lines[1:]:  # skip request line
+            if ":" in line:
+                k, v = line.split(":", 1)
+                headers[k.strip()] = v.strip()
+
+        # Handle body
         content_length = int(headers.get("Content-Length", "0"))
-        if content_length > 0 and len(body.encode()) < content_length:
-            remaining = content_length - len(body.encode())
+        if content_length > 0 and len(body_bytes) < content_length:
+            remaining = content_length - len(body_bytes)
             try:
-                client.settimeout(5)
+                client.settimeout(2)
                 extra = client.recv(remaining + 4096)
                 if extra:
-                    body += extra.decode("utf-8", errors="replace")
+                    body_bytes += extra
             except:
                 pass
+        body = body_bytes.decode("utf-8", errors="replace").strip()
 
         req_id = str(uuid.uuid4())[:8]
         entry = {
@@ -405,7 +410,7 @@ def toggle_intercept(request: Request):
 
 @app.get("/pending")
 def list_pending(request: Request):
-    get_auth_user(request)
+    require_admin(request)
     with _lock:
         items = [{k: v for k, v in p.items() if not k.startswith("_")} for p in _pending.values()]
     items.sort(key=lambda x: x.get("timestamp", 0))
@@ -414,7 +419,7 @@ def list_pending(request: Request):
 
 @app.put("/pending/{req_id}")
 async def edit_pending(req_id: str, request: Request):
-    get_auth_user(request)
+    require_admin(request)
     body = await request.json()
     with _lock:
         if req_id not in _pending:
@@ -427,7 +432,7 @@ async def edit_pending(req_id: str, request: Request):
 
 @app.post("/pending/{req_id}/forward")
 def forward_request(req_id: str, request: Request):
-    get_auth_user(request)
+    require_admin(request)
     with _lock:
         entry = _pending.get(req_id)
     if not entry:
@@ -440,7 +445,7 @@ def forward_request(req_id: str, request: Request):
 
 @app.post("/pending/{req_id}/drop")
 def drop_request(req_id: str, request: Request):
-    get_auth_user(request)
+    require_admin(request)
     with _lock:
         entry = _pending.get(req_id)
     if not entry:
@@ -454,7 +459,7 @@ def drop_request(req_id: str, request: Request):
 
 @app.post("/pending/drop-all")
 def drop_all(request: Request):
-    get_auth_user(request)
+    require_admin(request)
     with _lock:
         for entry in _pending.values():
             entry["_dropped"] = True

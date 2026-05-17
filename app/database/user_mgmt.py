@@ -123,17 +123,21 @@ def delete_user(user_id: str):
 
 
 
-def add_key(key_id: str, key_value: str,user_id: str = None):
+def add_key(key_id: str, key_value: str, user_id: str = None,
+            refresh_token_hash: str = ""):
     conn = connect()
     cursor = conn.cursor()
     try:
-        cursor.execute("INSERT INTO keys (key_id, key_value, user_id, created_at) VALUES (?, ?, ?, ?)", (key_id, key_value, user_id, datetime.now()))
+        cursor.execute(
+            "INSERT INTO keys (key_id, key_value, user_id, refresh_token_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+            (key_id, key_value, user_id, refresh_token_hash, datetime.now()),
+        )
         conn.commit()
         return True
     except Exception as e:
         print(f"Error adding key: {e}")
         return False
-    finally:        
+    finally:
         conn.close()
 
 
@@ -266,5 +270,77 @@ def delete_old_keys(max_age_seconds: int = 3600):
     except Exception as e:
         print(f"Error deleting old keys: {e}")
         return False
+    finally:
+        conn.close()
+def verify_refresh_token(refresh_token: str) -> dict | None:
+    """Verify a refresh token against stored hashes. Returns key row dict or None."""
+    import hashlib
+    h = hashlib.sha3_512(refresh_token.encode()).hexdigest()
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT key_id, key_value, user_id, refresh_count, max_refreshes FROM keys WHERE refresh_token_hash = ?",
+            (h,),
+        ).fetchone()
+        if row:
+            return dict(row)
+        return None
+    except Exception as e:
+        print(f"Error verifying refresh token: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def consume_refresh(key_id: str) -> bool:
+    """Increment refresh count. Returns True if still within limit."""
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT refresh_count, max_refreshes FROM keys WHERE key_id = ?", (key_id,)
+        ).fetchone()
+        if not row:
+            return False
+        count = row["refresh_count"] + 1
+        if count > row["max_refreshes"]:
+            return False
+        conn.execute(
+            "UPDATE keys SET refresh_count = ? WHERE key_id = ?", (count, key_id)
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error consuming refresh: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def rotate_refresh_token(key_id: str, new_refresh_token_hash: str):
+    """Replace the refresh token hash after a successful refresh."""
+    conn = connect()
+    try:
+        conn.execute(
+            "UPDATE keys SET refresh_token_hash = ? WHERE key_id = ?",
+            (new_refresh_token_hash, key_id),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"Error rotating refresh token: {e}")
+    finally:
+        conn.close()
+
+
+def rotate_key(key_id: str, new_secret: str, new_refresh_hash: str):
+    """Replace JWT secret and refresh hash on an existing key (in-place rotation)."""
+    conn = connect()
+    try:
+        conn.execute(
+            "UPDATE keys SET key_value = ?, refresh_token_hash = ? WHERE key_id = ?",
+            (new_secret, new_refresh_hash, key_id),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"Error rotating key: {e}")
     finally:
         conn.close()

@@ -3,6 +3,7 @@ AI Provider configuration API — flash and pro slots, multi-provider.
 """
 
 from fastapi import APIRouter, Request, HTTPException
+from core.auth import get_user, require_admin
 from database.ai_config_mgmt import (
     list_provider_configs,
     get_provider_config,
@@ -29,6 +30,7 @@ def _mask_keys(configs):
 
 @app.post("/list-models")
 async def api_list_models_from_params(request: Request):
+    get_user(request)
     """List models from raw provider params (no saved config needed)."""
     body = await request.json()
     provider_type = body.get("provider_type", "openai")
@@ -171,19 +173,22 @@ def _extract_model_ids(model_list):
 
 
 @app.get("")
-async def api_list_configs(slot: str = ""):
+async def api_list_configs(request: Request, slot: str = ""):
+    get_user(request)
     return _mask_keys(list_provider_configs(slot=slot if slot else None))
 
 
 @app.get("/defaults")
-async def api_get_defaults():
+async def api_get_defaults(request: Request):
+    get_user(request)
     flash = get_default_config("flash")
     pro = get_default_config("pro")
     return {"flash": _mask_key(flash), "pro": _mask_key(pro)}
 
 
 @app.get("/default/{slot}")
-async def api_get_default_slot(slot: str):
+async def api_get_default_slot(request: Request, slot: str):
+    get_user(request)
     cfg = get_default_config(slot)
     if not cfg:
         raise HTTPException(404, f"No default provider for slot '{slot}'")
@@ -192,6 +197,7 @@ async def api_get_default_slot(slot: str):
 
 @app.post("")
 async def api_create_config(request: Request):
+    require_admin(request)
     body = await request.json()
     slot = body.get("slot", "pro")
     if slot not in ("flash", "pro"):
@@ -214,7 +220,8 @@ async def api_create_config(request: Request):
 
 
 @app.post("/{config_id}/set-default")
-async def api_set_default(config_id: str):
+async def api_set_default(request: Request, config_id: str):
+    require_admin(request)
     cfg = get_provider_config(config_id)
     if not cfg:
         raise HTTPException(404, "Config not found")
@@ -223,7 +230,8 @@ async def api_set_default(config_id: str):
 
 
 @app.get("/{config_id}/models")
-async def api_list_models(config_id: str):
+async def api_list_models(request: Request, config_id: str):
+    get_user(request)
     cfg = get_provider_config(config_id)
     if not cfg:
         raise HTTPException(404, "Config not found")
@@ -259,7 +267,8 @@ async def api_list_models(config_id: str):
 
 
 @app.get("/{config_id}")
-async def api_get_config(config_id: str):
+async def api_get_config(request: Request, config_id: str):
+    get_user(request)
     cfg = get_provider_config(config_id)
     if not cfg:
         raise HTTPException(404, "Config not found")
@@ -268,6 +277,7 @@ async def api_get_config(config_id: str):
 
 @app.put("/{config_id}")
 async def api_update_config(config_id: str, request: Request):
+    require_admin(request)
     cfg = get_provider_config(config_id)
     if not cfg:
         raise HTTPException(404, "Config not found")
@@ -280,7 +290,8 @@ async def api_update_config(config_id: str, request: Request):
 
 
 @app.delete("/{config_id}")
-async def api_delete_config(config_id: str):
+async def api_delete_config(request: Request, config_id: str):
+    require_admin(request)
     cfg = get_provider_config(config_id)
     if not cfg:
         raise HTTPException(404, "Config not found")

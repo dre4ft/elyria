@@ -1,12 +1,19 @@
 """
-Cryptographic compartmentalization for team data.
+BYOK — Bring Your Own Key.
 
 Architecture:
-  Master key = HKDF-SHA256(ELYRIA_MASTER_SEED, salt, length=32)
-  Per team: team_key (AES-256), encrypted with master key via AES-GCM
-  Per row: payload = AES-256-GCM(json(data), team_key), nonce prepended
+  user_key  = HKDF(client_digest, user_salt, "elyria-user-key", 32 bytes)
+               Derived server-side at login from the SHA-512 digest the client already sends.
+               Never stored in plaintext.
 
-Without ELYRIA_MASTER_SEED, all encrypted data is irrecoverable.
+  Server wrap key = ELYRIA_SERVER_WRAP_KEY env var (64 bytes hex) or ephemeral.
+               Used only to wrap user_key at rest so password reset can re-wrap team keys.
+
+  Personal data:       payload = AES-256-GCM(data, user_key)
+  Team data:           payload = AES-256-GCM(data, team_key)
+  Team key for member: teams.encrypted_team_key = AES-256-GCM(team_key, member's user_key)
+
+Without the user's password, data is irrecoverable.
 """
 
 import base64
@@ -15,102 +22,128 @@ import hmac
 import json
 import os
 import secrets
-from typing import Optional
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-# ── Master key ──────────────────────────────────────────────────────────
 
-def _derive_master_key(seed: bytes) -> bytes:
-    """HKDF-SHA256: derive a 32-byte master key from the seed."""
-    # HKDF using hashlib + hmac (stdlib only, no cryptography dependency for this)
-    # extract
-    prk = hmac.new(b"elyria-master-salt", seed, hashlib.sha256).digest()
-    # expand
-    return hmac.new(prk, b"elyria-master-expand", hashlib.sha256).digest()
+# ═══════════════════════════════════════════════════════════════
+# HKDF helper (stdlib only — no cryptography dep needed for this)
+# ═══════════════════════════════════════════════════════════════
+
+def _hkdf_sha256(ikm: bytes, salt: bytes, info: bytes, length: int = 32) -> bytes:
+    """HKDF-SHA256 (RFC 5869)."""
+    prk = hmac.new(salt, ikm, hashlib.sha256).digest()
+    out = b""
+    i = 1
+    while len(out) < length:
+        out += hmac.new(prk, out[-32:] + info + bytes([i]), hashlib.sha256).digest()
+        i += 1
+    return out[:length]
 
 
-def _load_master_seed() -> bytes:
-    """Load master seed from env or generate one if not set."""
-    raw = os.getenv("ELYRIA_MASTER_SEED", "")
+# ═══════════════════════════════════════════════════════════════
+# Server wrap key (for password reset recovery only)
+# ═══════════════════════════════════════════════════════════════
+
+_server_wrap_key: bytes | None = None
+
+
+def _load_server_wrap_key() -> bytes:
+    raw = os.getenv("ELYRIA_SERVER_WRAP_KEY", "")
     if raw:
         try:
             return bytes.fromhex(raw)
         except ValueError:
             pass
-    # Dev mode: generate a random seed — data WILL be lost on restart
-    seed = secrets.token_bytes(64)
-    print("[crypto] ⚠ ELYRIA_MASTER_SEED not set — generated ephemeral seed. "
-          "Encrypted data will be lost on restart.")
-    return seed
+    key = secrets.token_bytes(32)
+    print("[crypto] ⚠ ELYRIA_SERVER_WRAP_KEY not set — ephemeral server key. "
+          "Wrapped user keys will be lost on restart (users can still re-derive from password).")
+    return key
 
 
-_master_key: Optional[bytes] = None
+def get_server_wrap_key() -> bytes:
+    global _server_wrap_key
+    if _server_wrap_key is None:
+        _server_wrap_key = _load_server_wrap_key()
+    return _server_wrap_key
 
 
-def get_master_key() -> bytes:
-    """Return the master key (lazy init, cached in memory)."""
-    global _master_key
-    if _master_key is None:
-        _master_key = _derive_master_key(_load_master_seed())
-    return _master_key
+# ═══════════════════════════════════════════════════════════════
+# User key — derived from login digest + user salt
+# ═══════════════════════════════════════════════════════════════
+
+def derive_user_key(client_digest: str, user_salt: str) -> bytes:
+    """
+    Derive a 32-byte AES-256 key from the login credentials.
+    client_digest = SHA-512(password) from the browser (hex string)
+    user_salt     = per-user salt from the users table (hex string)
+    """
+    ikm = client_digest.encode()
+    salt = user_salt.encode()
+    return _hkdf_sha256(ikm, salt, b"elyria-user-key", 32)
 
 
-# ── Team keys ───────────────────────────────────────────────────────────
+def wrap_user_key(user_key: bytes) -> str:
+    """Encrypt user_key with server wrap key for at-rest storage."""
+    nonce = secrets.token_bytes(12)
+    aes = AESGCM(get_server_wrap_key())
+    ct = aes.encrypt(nonce, user_key, None)
+    return base64.b64encode(nonce + ct).decode()
+
+
+def unwrap_user_key(wrapped: str) -> bytes | None:
+    """Decrypt user_key from at-rest storage. Returns None on failure."""
+    if not wrapped:
+        return None
+    try:
+        raw = base64.b64decode(wrapped)
+        nonce, ct = raw[:12], raw[12:]
+        aes = AESGCM(get_server_wrap_key())
+        return aes.decrypt(nonce, ct, None)
+    except Exception:
+        return None
+
+
+# ═══════════════════════════════════════════════════════════════
+# Team keys — wrapped per member
+# ═══════════════════════════════════════════════════════════════
 
 def generate_team_key() -> bytes:
-    """Generate a fresh 32-byte AES-256 key for a new team."""
     return AESGCM.generate_key(bit_length=256)
 
 
-def encrypt_team_key(team_key: bytes) -> str:
-    """Encrypt a team key with the master key. Returns base64-encoded ciphertext (nonce prepended)."""
+def wrap_team_key_for_member(team_key: bytes, member_user_key: bytes) -> str:
+    """Encrypt team_key with a specific member's user_key."""
     nonce = secrets.token_bytes(12)
-    aes = AESGCM(get_master_key())
+    aes = AESGCM(member_user_key)
     ct = aes.encrypt(nonce, team_key, None)
     return base64.b64encode(nonce + ct).decode()
 
 
-def decrypt_team_key(encrypted: str) -> bytes:
-    """Decrypt a team key using the master key."""
+def unwrap_team_key_for_member(encrypted: str, member_user_key: bytes) -> bytes:
+    """Decrypt team_key using a member's user_key."""
     raw = base64.b64decode(encrypted)
     nonce, ct = raw[:12], raw[12:]
-    aes = AESGCM(get_master_key())
+    aes = AESGCM(member_user_key)
     return aes.decrypt(nonce, ct, None)
 
 
-# ── Payload encryption ──────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# Payload encryption
+# ═══════════════════════════════════════════════════════════════
 
-def encrypt_payload(data: dict, team_key: bytes) -> str:
-    """Encrypt a JSON-serializable dict with the team key. Returns base64 (nonce + ciphertext)."""
+def encrypt_payload(data: dict, key: bytes) -> str:
+    """AES-256-GCM encrypt a JSON dict. Returns base64 (nonce + ct)."""
     nonce = secrets.token_bytes(12)
     plaintext = json.dumps(data, ensure_ascii=False).encode()
-    aes = AESGCM(team_key)
+    aes = AESGCM(key)
     ct = aes.encrypt(nonce, plaintext, None)
     return base64.b64encode(nonce + ct).decode()
 
 
-def decrypt_payload(encrypted: str, team_key: bytes) -> dict:
-    """Decrypt a payload with the team key. Returns the original dict."""
+def decrypt_payload(encrypted: str, key: bytes) -> dict:
+    """AES-256-GCM decrypt a payload back to a dict."""
     raw = base64.b64decode(encrypted)
     nonce, ct = raw[:12], raw[12:]
-    aes = AESGCM(team_key)
-    plaintext = aes.decrypt(nonce, ct, None)
-    return json.loads(plaintext)
-
-
-# ── Wrappers for DB integration ─────────────────────────────────────────
-
-def encrypt_row(cleartext_columns: dict, team_key: bytes) -> str:
-    """Encrypt a dict of sensitive columns into a single payload string."""
-    return encrypt_payload(cleartext_columns, team_key)
-
-
-def decrypt_row(payload: str, team_key: bytes) -> dict:
-    """Decrypt a payload string back into a dict of columns."""
-    return decrypt_payload(payload, team_key)
-
-
-def get_team_key(encrypted_team_key: str) -> bytes:
-    """Decrypt and return a team key (caller must hold master key)."""
-    return decrypt_team_key(encrypted_team_key)
+    aes = AESGCM(key)
+    return json.loads(aes.decrypt(nonce, ct, None))

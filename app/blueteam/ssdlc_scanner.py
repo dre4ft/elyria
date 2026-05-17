@@ -103,7 +103,7 @@ class SSDLCAnalyzer:
 
         def _beat():
             try:
-                from pentest.scan_events import heartbeat
+                from redteam.scan_events import heartbeat
                 heartbeat("blueteam")
             except Exception:
                 pass

@@ -8,7 +8,7 @@ from database.collection_api import app as collection_router
 from ai_core.ai_api import app as ai_router
 from auth_users.user_api import app as user_router
 from doc_mgmt.document_api import app as document_router
-from pentest.campaign_api import app as pentest_router
+from redteam.campaign_api import app as pentest_router
 from blueteam.api import app as blueteam_router
 from database.workflow_graph_api import app as workflow_graph_router
 from database.proxy_api import app as proxy_router
@@ -23,68 +23,56 @@ from database.user_mgmt import get_key
 
 app = FastAPI()
 
+# ── Audit logging middleware (outermost — runs first, finishes last) ──
+from core.audit import audit_middleware, init_audit_db
+init_audit_db()
+
+app.middleware("http")(audit_middleware)
+
 
 @app.middleware("http")
 async def check_authorization(request: Request, call_next):
-    public_routes = [
+    # Only login/auth flows, HTML shells, and static assets are public.
+    # HTML shells (/app, /workflow, etc.) are served without auth so the SPA
+    # can load auth.js — client-side auth handles the rest.
+    PUBLIC_ROUTES = {
         "/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/blueteam",
-        "/api/doc", "/api/user/login", "/api/user/create",
+        "/api/user/login", "/api/user/create", "/api/user/refresh",
         "/api/user/oidc/login", "/api/user/oidc/callback", "/api/user/oidc/config",
-    ]
+    }
     path = request.url.path
-    if path in public_routes or path.startswith("/static/"):
+    if path in PUBLIC_ROUTES or path.startswith("/static/"):
         return await call_next(request)
-    # SSE endpoints — EventSource can't send headers, so bypass middleware auth
-    # Ownership is verified inside each endpoint
-    if "/events" in path and ("/api/blueteam/" in path or "/api/pentest/" in path):
+
+    # SSE streams: EventSource can't send custom headers → bypass middleware
+    if path.endswith("/events") and ("/api/blueteam/" in path or "/api/pentest/" in path):
         return await call_next(request)
 
     auth = request.headers.get("authorization")
-
-    if not auth:
+    if not auth or not auth.startswith("Bearer "):
         return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
 
-    if not auth.startswith("Bearer "):
+    token = auth.split("Bearer ")[1]
+    if token.count(".") != 2:
         return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
 
-    split_token = auth.split("Bearer ")[1]
-    split_token_parts = split_token.split(".")
-    if len(split_token_parts) != 3:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Invalid Authorization format"}
-        )
     try:
-        unverified_payload = jwt.decode(split_token, options={"verify_signature": False})
-        key_id = unverified_payload.get("kid")
-        if not key_id:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Invalid Authorization format"}
-            )
-        key_value = get_key(key_id)
-        if not key_value:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Invalid Authorization format"}
-            )
-        decoded = jwt.decode(split_token, key_value, algorithms=["HS512"])
+        unverified = jwt.decode(token, options={"verify_signature": False})
+        kid = unverified.get("kid")
+        if not kid:
+            return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
+        secret = get_key(kid)
+        if not secret:
+            return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
+        decoded = jwt.decode(token, secret, algorithms=["HS512"])
         request.state.token = decoded["sub"]
-        request.state.token_obj = decoded  # full payload for proxy, teams, etc.
+        request.state.token_obj = decoded
     except jwt.ExpiredSignatureError:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Invalid Authorization format"}
-        )
+        return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
     except jwt.InvalidTokenError:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Invalid Authorization format"}
-        )
-    
-    
-    return await call_next(request)
+        return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
 
+    return await call_next(request)
 @app.get("/")
 async def second_route():
     try:
@@ -198,6 +186,6 @@ if __name__ == "__main__":
         "entrypoint:app",
         host=get("app.host", "127.0.0.1"),
         port=int(get("app.port", "8000")),
-        reload=os.getenv("ELYRIA_RELOAD", "").lower() in ("1", "true", "yes"),
+        reload=get("app.reload", "0") == "1",
         **ssl_kwargs,
     )

@@ -12,7 +12,40 @@ import re
 import time
 from urllib.parse import urljoin
 
-from pentest.ai_scanner import AIScanner, _get_tools, _format_tool_calls
+from redteam.ai_scanner import AIScanner, _get_tools, _format_tool_calls
+
+
+def _extract_targets(text: str) -> str:
+    """Extract exploration suggestions from analysis text. Returns a concise prompt fragment or empty string."""
+    if not text:
+        return ""
+    # Look for patterns like "NEW TARGETS:", "Explore:", "Next exploration:", numbered lists
+    import re
+    patterns = [
+        r'(?:NEW\s+TARGETS?|EXPLORE\s+NEXT|NEXT\s+EXPLORATION|SUGGESTED\s+TARGETS?)[:\-]\s*(.+?)(?:\n\n|\n\s*\n|$)',
+        r'(?:should\s+explore|should\s+probe|should\s+test|recommend\s+testing)[:\s]+(.+?)(?:\n\n|\n\s*\n|$)',
+        r'(?:propose\w*\s+target|propose\w*\s+explor\w*)[:\s]+(.+?)(?:\n\n|\n\s*\n|$)',
+    ]
+    for p in patterns:
+        m = re.search(p, text, re.IGNORECASE | re.DOTALL)
+        if m:
+            return f"Based on the latest analysis, explore these targets: {m.group(1).strip()[:500]}"
+    # Fallback: look for the last numbered list or bullet list
+    lines = text.strip().split("\n")
+    suggestions = []
+    in_list = False
+    for line in lines[-30:]:
+        stripped = line.strip()
+        if re.match(r'^[\d]+[\.\)]\s', stripped) or stripped.startswith("- ") or stripped.startswith("* "):
+            suggestions.append(stripped)
+            in_list = True
+        elif in_list and not stripped:
+            break
+        elif in_list and not (re.match(r'^[\d]+[\.\)]\s', stripped) or stripped.startswith("- ") or stripped.startswith("* ")):
+            break
+    if len(suggestions) >= 2:
+        return f"Based on the latest analysis, explore these targets: {'; '.join(s for s in suggestions[:5])}"
+    return ""
 
 
 class ExpertAIScanner(AIScanner):
@@ -28,10 +61,11 @@ class ExpertAIScanner(AIScanner):
     def __init__(self, campaign_id, target_url, user_id, auth_config=None,
                  deterministic_findings=None, collection_requests=None, id_list=None,
                  callbacks=None, description="", explore_rounds=30, analysis_rounds=15,
-                 master_prompt="", documentation="", openapi_spec=""):
+                 master_prompt="", documentation="", openapi_spec="", stop_check=None):
         super().__init__(campaign_id, target_url, user_id, auth_config,
                          deterministic_findings, collection_requests, id_list,
-                         callbacks, description, explore_rounds, analysis_rounds)
+                         callbacks, description, explore_rounds, analysis_rounds,
+                         stop_check=stop_check)
         self.master_prompt = master_prompt
         self.documentation = documentation
         self.openapi_spec = openapi_spec
@@ -96,63 +130,81 @@ class ExpertAIScanner(AIScanner):
     def _get_exploration_prompts(self):
         doc_ref = "Consult the OpenAPI spec and documentation for exact endpoints, parameters, and auth schemes. "
         return [
-            # Mapping & Reconnaissance (rounds 1-5)
-            f"Round 1: API Surface Mapping. {doc_ref}Make 10-15 requests to enumerate ALL endpoints from the documentation. Test baseline requests on every collection and resource endpoint.",
-            f"Round 2: Parameter Discovery. {doc_ref}Probe each endpoint with different query params from the OpenAPI spec. Test optional, required, and undocumented parameters.",
-            f"Round 3: Schema Validation. Based on the OpenAPI schemas, send requests that violate the schema — wrong types, missing required fields, extra fields. Document server responses.",
-            f"Round 4: Hidden Endpoints. Probe for undocumented endpoints: /admin, /internal, /debug, /metrics, /health, /env, /config, /backup, /api/v1, /api/v2, /graphql.",
-            f"Round 5: Method Enumeration. Test every documented endpoint with GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD. Find methods that should return 405 but return 200.",
-            # Authorization (rounds 6-11)
-            f"Round 6: BOLA/IDOR — Resource IDs. Substitute user IDs, order IDs, and resource IDs from the ID list into collection endpoints. Test cross-tenant access.",
-            f"Round 7: BOLA/IDOR — Query Params & Bodies. {doc_ref}Inject other users' IDs into query params, JSON bodies, and nested objects. Test array-based IDOR (ids[]=victim_id).",
-            f"Round 8: Horizontal Privilege Escalation. {doc_ref}Access user-specific resources (profiles, orders, settings) with your own auth but targeting another user's data.",
-            f"Round 9: Vertical Privilege Escalation. {doc_ref}Try to access admin/superadmin endpoints with regular user tokens. Test role-based endpoints: /admin, /manage, /dashboard.",
-            f"Round 10: Auth Bypass. Test without auth headers. Send malformed JWT (alg:none, empty signature). Use expired tokens. Try different key IDs.",
-            f"Round 11: Mass Assignment. {doc_ref}PUT/PATCH user profiles adding role=admin, isAdmin=true, permissions=[]. Test all update endpoints with extra fields.",
-            # Business Logic (rounds 12-17)
-            f"Round 12: Workflow Bypass. {doc_ref}Skip steps in multi-step flows (e.g., go directly to checkout without adding items). Test order/payment flows.",
-            f"Round 13: Price Manipulation. Test negative prices, zero quantities, large discounts, coupon reuse, currency switching. Manipulate cart totals.",
-            f"Round 14: Race Conditions. Send rapid duplicate requests to state-changing endpoints. Test order creation, payment processing, resource allocation.",
-            f"Round 15: Input Validation — Injection. {doc_ref}Test SQLi, NoSQLi, XSS, SSTI, command injection in ALL parameters. Focus on error messages that leak schema info.",
-            f"Round 16: Input Validation — Path Traversal & SSRF. Test file paths (../../etc/passwd), URL parameters (http://internal), and redirect parameters.",
-            f"Round 17: Business Logic — Edge Cases. Test maximum values, minimum values, boundary conditions. Overflow counters, exhaust rate limits, abuse pagination.",
-            # Security Headers & Config (rounds 18-22)
-            f"Round 18: Security Headers. Check every response for missing HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy.",
-            f"Round 19: Information Disclosure. Check responses for API keys, tokens, passwords, stack traces, debug info, server headers, version numbers, internal IPs.",
-            f"Round 20: CORS Misconfiguration. Test with different Origin headers. Try null origin, subdomain origins, wildcard credentials. Check Access-Control headers.",
-            f"Round 21: Content-Type Attacks. Send XML, HTML, form-encoded to JSON endpoints. Test parser confusion. Send oversized payloads, deep nesting, duplicate keys.",
-            f"Round 22: Rate Limiting. Send 30+ rapid requests to each endpoint. Test with different IPs (X-Forwarded-For). Probe for rate limit bypass via headers.",
-            # Advanced (rounds 23-28)
-            f"Round 23: JWT Attacks. {doc_ref}Test JWT key confusion (HMAC→RSA), alg:none, weak HMAC secrets. Decode and analyze JWT claims for privilege info.",
-            f"Round 24: OAuth/OIDC Flows. {doc_ref}Test redirect_uri manipulation, state parameter replay, PKCE bypass, scope escalation, token reuse.",
-            f"Round 25: GraphQL Specific. If GraphQL detected: introspection query, field suggestions, batching attacks, aliases for rate limit bypass, depth attacks.",
-            f"Round 26: WebSocket Testing. If WebSocket endpoints exist: test auth, message validation, connection limits, cross-origin WebSocket hijacking.",
-            f"Round 27: File Upload. {doc_ref}If upload endpoints exist: test file types, size limits, path traversal in filenames, double extensions, MIME confusion.",
-            f"Round 28: Dependency Confusion. Probe error messages for library versions. Test for known CVEs in stack. Check server technologies exposed.",
-            # Deep Fuzzing (rounds 29-30)
-            "Round 29: Targeted Deep Dive. Based on ALL previous results, make 10-15 highly targeted requests on the most promising vulnerability leads. Probe every anomaly.",
-            "Round 30: Final Sweep. Re-test the top 5 most suspicious endpoints. Confirm findings with different payloads. Leave no stone unturned.",
+            # ═══ 1-5: Reconnaissance ═══
+            f"Round 1: API Surface Mapping. {doc_ref}Make 10-15 requests to enumerate ALL documented endpoints. Test baseline requests on every collection and resource endpoint. Probe standard discovery paths: /.well-known/jwks.json, /.well-known/openid-configuration, /graphql, /api/docs, /actuator/health, /.env, /debug, /admin, /internal, /console.",
+            f"Round 2: Parameter & Schema Discovery. {doc_ref}Probe each endpoint with documented params, then test undocumented ones. Test type confusion (string where int expected, array where object expected). Test empty params, missing required fields, duplicate keys. Note every parameter the server accepts.",
+            f"Round 3: Schema Boundary Testing. Send requests that violate documented schemas — wrong types, missing required fields, extra properties, boundary values (0, -1, MAX_INT, empty string, null). Document how the server responds to each: rejection, sanitization, or acceptance.",
+            f"Round 4: Hidden & Legacy Endpoints. Probe for undocumented endpoints: /admin, /internal, /debug, /metrics, /health, /env, /config, /backup, /api/v1, /api/v2, /graphql, /console, /manager, /status. Test deprecated/legacy API versions — they often have weaker auth.",
+            f"Round 5: HTTP Method Matrix. Test every documented endpoint with GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD, TRACE. Find methods that should return 405 but return 200. Test method override headers (X-HTTP-Method-Override). Test OPTIONS without auth — it often bypasses middleware.",
+            # ═══ 6-11: Authorization ═══
+            f"Round 6: Direct Object Reference (IDOR). Substitute resource IDs from the ID list into all collection endpoints. Test sequential IDs, UUIDs, and predictable patterns. Swap tenant/team/org identifiers. Compare response sizes — identical sizes at 200 often indicate successful IDOR even with empty body.",
+            f"Round 7: Nested & Bulk Authorization. {doc_ref}Inject other users' IDs into nested JSON bodies, query params, and arrays. Test bulk/batch endpoints: verify EACH item in the batch is authorized individually, not just the batch envelope. This is the most common IDOR variant in production APIs.",
+            f"Round 8: Horizontal Privilege Escalation. Access user-specific resources with your own auth but targeting another user's data. Compare responses attribute by attribute: do sensitive fields (email, role, balance) differ? Test list endpoints — are they filtered by the authenticated user or do they return all resources?",
+            f"Round 9: Vertical Privilege Escalation. Test admin/management endpoints with regular user tokens. Look for endpoints that return partial data to users but full data to admins. Test role-based paths: /admin, /manage, /dashboard, /staff. Test if the server enforces roles or relies on the client to hide admin UI.",
+            f"Round 10: Auth Bypass Patterns. Test WITHOUT auth headers entirely — not invalid, not expired, COMPLETELY MISSING. Many endpoints (GraphQL, webhooks, health, debug, static resources) bypass middleware. Test auth token in different locations: query param (?token=), cookie, X-API-Key header, body field.",
+            f"Round 11: Mass Assignment. {doc_ref}PUT/PATCH resource endpoints adding privileged fields: role=admin, isAdmin=true, permissions=[], group=admin, plan=enterprise, verified=true. Test all update endpoints. Test partial PATCH — does it bypass required-field validation?",
+            # ═══ 12-17: Business Logic ═══
+            f"Round 12: Workflow & State Machine Bypass. {doc_ref}Skip steps in multi-step flows. Test state transitions: pending→completed without payment, draft→published without review. Test if you can modify immutable resources after creation. Test status field manipulation in update endpoints.",
+            f"Round 13: Value Manipulation. Test negative values in ALL numeric fields: quantities, amounts, prices, counters, limits, offsets. Test extreme values: 0, -1, MAX_INT, MIN_INT, NaN, Infinity (as string). Test discount/promo/coupon codes with common patterns. Test if discounts stack beyond 100%.",
+            f"Round 14: Race Conditions. Send 5 RAPID CONCURRENT identical requests in ONE pentest_make_requests call to ALL state-changing endpoints discovered. Check for: duplicate resource creation, double transactions, reused single-use codes, over-limit operations, negative balances. This vulnerability class is missed by 90% of automated scanners.",
+            f"Round 15: Injection — All Vectors. {doc_ref}Test SQLi, NoSQLi, XSS, SSTI, command injection, LDAP injection in ALL parameters, headers, and body fields. Focus on error responses — do they leak schema, stack traces, or library versions? Test regex injection in search/filter endpoints with exponential backtracking patterns.",
+            f"Round 16: Server-Side Request Forgery. Test URL/URI parameters (webhook callbacks, import URLs, redirect params, proxy endpoints). Probe internal services: 169.254.169.254, metadata.internal, localhost:1-65535. Test URL parser differentials (http://safe.com@127.0.0.1). Test protocol switching (file://, gopher://).",
+            f"Round 17: Business Logic Edge Cases. Test maximum/minimum/boundary values on all numeric/resource fields. Test currency/precision confusion (100 vs 100.00 vs 10000 cents). Test time-window logic: future dates, expired tokens, timezone edge cases. Test resource exhaustion: create until error, paginate to end, fill storage limits.",
+            # ═══ 18-22: Security Configuration ═══
+            f"Round 18: Security Headers & Transport. Check all responses: HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy. Note Server, X-Powered-By, X-Auth-Method, X-API-Version — each enables CVE matching. Test if HTTP works alongside HTTPS. Test certificate validity.",
+            f"Round 19: Information Leakage. Review ALL responses for: API keys, tokens, passwords, PII, stack traces, internal IPs, hostnames, file paths, SQL errors, debug flags. Error responses (400, 404, 500) leak more than success responses. Check JWKS: symmetric keys (kty:oct) in a public endpoint = token forgery.",
+            f"Round 20: CORS & Cross-Origin. Test with Origin headers: null, malicious.com, subdomain.target.com, target.com.evil.com. If Access-Control-Allow-Credentials:true is set with reflected Origin — report as critical (enables cross-origin auth theft). Test if Vary: Origin header is missing (cache poisoning via CORS).",
+            f"Round 21: Content-Type & Parser Attacks. Send XML to JSON endpoints, JSON to XML endpoints, form-encoded everywhere. Send oversized payloads (>1MB), deep nesting (>100 levels), duplicate keys (which wins?). Test charset manipulation. Test multipart boundary confusion.",
+            f"Round 22: Rate Limiting & Resource Consumption. Send 30+ rapid requests. Test rate limit bypass: different IPs (X-Forwarded-For), different methods, different paths, auth vs no-auth. Test GraphQL aliases for rate limit bypass. Test pagination abuse (limit=999999, offset=999999).",
+            # ═══ 23-28: Advanced Attacks ═══
+            f"Round 23: Token & Key Attacks. If JWT: decode without verification, analyze claims. Fetch JWKS — if symmetric key found, FORGE tokens immediately. Test alg:none, alg:HS256 with RSA public key, key confusion. Test kid injection. If API keys: test key in different locations, test key rotation, test key scoping.",
+            f"Round 24: OAuth/OIDC & Federation. {doc_ref}If OAuth/OIDC: test redirect_uri manipulation, state parameter replay, PKCE bypass, scope escalation, token reuse, CSRF in authorization flow. Test if you can mix OAuth tokens with local tokens.",
+            f"Round 25: GraphQL & Alternative APIs. If GraphQL: send introspection (blocked by string match → use aliases). Test field suggestions in errors — they leak the schema. Test depth attacks, alias batching, recursive fragments. Test WITHOUT ANY auth header — GraphQL often bypasses REST middleware. If gRPC/WebSocket/SSE: test equivalent patterns.",
+            f"Round 26: Cache Poisoning & CDN Attacks. Test X-Forwarded-Host, Host, X-Forwarded-Scheme, X-Forwarded-For, Forwarded headers. If ANY value is reflected in responses (body, headers, links, redirects) — report cache poisoning. Test unkeyed headers. Test if Cache-Control/Pragma/Vary headers are missing on authenticated responses.",
+            f"Round 27: Real-time & Streaming. If WebSocket: test auth (token in query param?), message validation, connection limits, origin check. If SSE/EventSource: test auth bypass (can't send custom headers → token in URL). Test cross-origin WebSocket connections.",
+            f"Round 28: Stack Fingerprinting & CVE Matching. Catalog every technology indicator: Server header, X-Powered-By, error page signatures, cookie names (JSESSIONID, PHPSESSID), API patterns (GraphQL, REST, gRPC). Map to specific versions. Cross-reference with known CVEs. Test if health/debug endpoints leak dependency trees.",
+            # ═══ 29-30: Synthesis ═══
+            """Round 29: ATTACK CHAIN SYNTHESIS. Review ALL findings from rounds 1-28. Build complete attack chains:
+Step 1: Identify the single highest-impact primitive you've discovered (token forge, IDOR, business logic bypass, SSRF).
+Step 2: Use that primitive to amplify: forged token → access all endpoints as admin. IDOR → enumerate all resources. SSRF → map internal network. Business logic → maximize financial/safety impact.
+Step 3: Execute each chain end-to-end with 10-15 requests.
+Step 4: Report each chain as a unified finding (not fragmented pieces). The narrative matters: 'A single JWKS misconfiguration enables full system compromise via these 5 steps.'""",
+            """Round 30: SENIOR-LEVEL BLIND SPOT SWEEP. A principal pentester reviews their work for systematic gaps:
+- Did I test WITHOUT auth headers on EVERY endpoint type? (GraphQL, webhooks, SSE, debug, health — each may have different middleware)
+- Did I look for symmetric keys in JWKS or key endpoints? (Most commonly missed critical)
+- Did I send concurrent requests to EVERY state-changing endpoint? (Race conditions — 90% miss rate)
+- Did I test negative/MAX values in ALL numeric fields, not just prices?
+- Did I check for reflected forwarding headers (X-Forwarded-*, Host)? → Cache poisoning
+- Did I test SSRF with parser differentials? (urlparse vs urllib vs browser)
+- Did I check CORS + credentials = cross-origin auth theft?
+- Did I catalog EVERY response header for version leaks? → CVE matching
+- Did I test bulk/batch endpoints for per-item authorization?
+- Did I try single-use codes/coupons/tokens in concurrent requests?
+- Did I review error messages for schema/stack leaks?
+
+For ANY question answered NO: call pentest_make_requests NOW. Then verify. Then call pentest_add_findings. Leave nothing untested.""",
         ]
 
     # ── Enhanced analysis prompts (documentation-aware) ──
 
     def _get_analysis_prompts(self):
+        owasp = "OWASP API Top 10 coverage so far — mentally check each: ☐ API1 BOLA ☐ API2 Broken Auth ☐ API3 Mass Assignment ☐ API4 Resource ☐ API5 BFLA ☐ API6 Business Logic ☐ API7 SSRF ☐ API8 Misconfig ☐ API9 Inventory ☐ API10 Unsafe Consumption. Supplementary: ☐ JWT Confusion ☐ Race Conditions ☐ GraphQL Auth ☐ Cache Poisoning ☐ Batch IDOR"
         return [
-            "Analysis 1: Review ALL exploration results against the documentation. Identify mismatches between documented behavior and actual responses. Report critical findings with pentest_add_findings. Propose 3-5 NEW exploration targets based on anomalies found.",
-            "Analysis 2: Authorization deep-dive. Analyze BOLA/IDOR results, privilege escalation attempts, mass assignment. Cross-reference with the OpenAPI spec — which endpoints SHOULD have strict auth? Report confirmed findings. Propose new exploration targets for borderline cases.",
-            "Analysis 3: Business logic analysis. Review order/payment/cart results. Identify workflow bypass opportunities, price manipulation vectors, race condition windows. Report all confirmed findings with evidence.",
-            "Analysis 4: Injection & input validation. Analyze SQLi, XSS, SSRF, path traversal results. Focus on error messages that confirmed injection surface. Report confirmed findings. Probes for verification if needed.",
-            "Analysis 5: Auth & session analysis. Review JWT manipulation results, OAuth flows, auth bypass attempts. Confirm which auth mechanisms are vulnerable. Report all confirmed.",
-            "Analysis 6: Configuration & headers. Analyze security header coverage, CORS configurations, information disclosure. Report confirmed misconfigurations. Compare against security baseline from documentation.",
-            "Analysis 7: API documentation gap analysis. Compare actual API behavior against the OpenAPI spec. Identify undocumented endpoints, missing security controls, spec inconsistencies. Report all gaps.",
-            "Analysis 8: Chained attack synthesis. Combine multiple low-severity findings into higher-impact attack chains. Can info disclosure + mass assignment = privilege escalation? Report chained findings.",
-            "Analysis 9: Advanced threat modeling. Based on the full picture: what's the worst-case impact? Identify the most critical vulnerability chain. Verification probes for any remaining uncertain findings.",
-            "Analysis 10: Comprehensive review. Ensure every anomaly from exploration has been investigated. Read the latest scan logs. Report any remaining findings. Final verification probes. Leave nothing unchecked.",
-            "Analysis 11: Documentation cross-reference. Compare ALL findings with the provided documentation. Which vulnerabilities contradict documented security guarantees? Which are known risks vs. unexpected gaps?",
-            "Analysis 12: Remediation prioritization. Rank all findings by CVSS + exploitability. For each critical/high, provide a specific remediation path referencing the relevant part of the OpenAPI spec or documentation.",
-            "Analysis 13: False positive elimination. Review borderline findings. Verify with alternative payloads. Downgrade or remove false positives. Strengthen evidence for true positives.",
-            "Analysis 14: Penetration test report synthesis. Group findings by attack category. Identify systemic weaknesses (e.g., 'no auth on any endpoint'). Prepare the narrative structure.",
-            "Analysis 15: Final verification. Re-test the top 3 most critical findings with fresh requests. Confirm exploitation is reproducible. Ensure all pentest_add_findings calls have complete evidence.",
+            f"Analysis 1: Review ALL exploration results against the documentation. Identify mismatches between documented behavior and actual responses. Call pentest_read_logs to review history. Report critical findings with pentest_add_findings. Propose 3-5 NEW exploration targets based on anomalies. {owasp}",
+            f"Analysis 2: Authorization deep-dive. Analyze BOLA/IDOR results, privilege escalation attempts, mass assignment. Cross-reference with the OpenAPI spec — which endpoints SHOULD have strict auth? Report confirmed findings. For each BOLA finding, propose the NEXT resource ID to test. {owasp}",
+            f"Analysis 3: Business logic deep-dive. Review price manipulation, coupon abuse, race conditions, workflow bypass. Identify the maximum financial impact chain. Report all confirmed findings with concrete $ impact estimates. Propose new edge case tests. {owasp}",
+            f"Analysis 4: Injection & input validation. Analyze SQLi, XSS, SSRF, path traversal, regex injection (ReDoS) results. Focus on error messages that confirmed injection surface. Report confirmed findings. Verify with alternative payloads. {owasp}",
+            f"Analysis 5: Auth & JWT deep-dive. Review JWT algorithm confusion (RS256→HS256), alg:none, kid injection, JWKS analysis. Did you find a symmetric key? Did you FORGE tokens? If yes, use forged admin token to re-test EVERY endpoint. Report the full privilege escalation chain. {owasp}",
+            f"Analysis 6: Configuration & information disclosure. Analyze security header coverage, CORS configurations (especially Access-Control-Allow-Credentials:true), version leaks. Every leaked version = potential CVE. Every CORS misconfig = cross-origin attack vector. Report all. {owasp}",
+            f"Analysis 7: API documentation gap analysis. Compare actual API behavior against the OpenAPI spec. Identify undocumented endpoints, missing security controls, spec inconsistencies, ghost endpoints. Each gap is a finding. {owasp}",
+            f"Analysis 8: Attack chain synthesis. Combine findings into complete kill chains. Example: JWKS leak → JWT forge → admin access → read all user wallets → negative order refund → steal all funds. For each chain, verify every step is reproducible. Report the chain as a single critical finding with the kill chain as evidence. {owasp}",
+            f"Analysis 9: Race condition & concurrency analysis. Review ALL state-changing endpoints. Which ones lack atomicity? Report TOCTOU windows. Propose specific concurrent request payloads for verification. {owasp}",
+            f"Analysis 10: GraphQL, WebSocket & real-time. If GraphQL found: report introspection leak, field suggestions, missing auth. If WebSocket/SSE: report auth bypass patterns. These are consistently the most overlooked attack surfaces. {owasp}",
+            f"Analysis 11: Cache poisoning & HTTP smuggling. Analyze X-Forwarded-* header reflection, Host header injection, content-type confusion. If any header is reflected without validation, report it with the specific cache poisoning payload. {owasp}",
+            f"Analysis 12: False positive elimination & evidence strengthening. Review ALL reported findings. For each: is the evidence conclusive? Downgrade or remove false positives. For true positives, add a second verification probe with a different payload. {owasp}",
+            f"Analysis 13: Remediation prioritization. Rank all findings by CVSS × exploitability × business impact. For each critical/high, provide a specific, actionable remediation path. Reference the relevant OpenAPI spec section. {owasp}",
+            f"Analysis 14: Penetration test narrative. Group findings by attack category. Identify systemic weaknesses (e.g., 'no per-item auth in bulk endpoints', 'JWT algorithm confusion enables full compromise'). Build the executive narrative: what's the single root cause that would fix the most issues? {owasp}",
+            f"Analysis 15: FINAL VERIFICATION. Re-test the top 5 most critical findings with FRESH requests (different payloads, different sessions). Confirm exploitation is reproducible and deterministic. Ensure ALL pentest_add_findings calls have complete evidence, CVSS scores, CWE IDs, and remediation. Read final scan logs. Nothing left unchecked. {owasp}",
         ]
 
     # ── Additional tool: read scan logs (for analysis phase) ──
@@ -177,7 +229,7 @@ class ExpertAIScanner(AIScanner):
     async def _handle_read_logs(self, args):
         limit = min(int(args.get("limit", 20)), 30)
         try:
-            from pentest.database import get_scan_logs
+            from redteam.database import get_scan_logs
             result = get_scan_logs(self.campaign_id, limit=limit, page=1)
             logs = result.get("logs", []) if isinstance(result, dict) else (result or [])
             entries = []
@@ -221,7 +273,7 @@ class ExpertAIScanner(AIScanner):
 
         def _beat():
             try:
-                from pentest.scan_events import heartbeat
+                from redteam.scan_events import heartbeat
                 heartbeat(self.campaign_id)
             except Exception:
                 pass
@@ -403,6 +455,20 @@ Be thorough. Documentation gaps are findings too."""}
                 if self.callbacks.get("on_progress"):
                     pct = int(70 + (analyze_idx + 1) * 30 / total_analyze)
                     self.callbacks["on_progress"](pct, f"Expert analyze {analyze_idx + 1}/{total_analyze}")
+                # ── Extract proposed targets from analysis and inject into exploration ──
+                if analyze_idx > 0:
+                    # Check last assistant message for exploration suggestions
+                    for msg in reversed(msgs):
+                        if msg.get("role") == "assistant" and msg.get("content"):
+                            suggestions = _extract_targets(msg["content"])
+                            if suggestions:
+                                explore_prompts.insert(
+                                    min(explore_idx + 1, len(explore_prompts)),
+                                    f"FEEDBACK FROM ANALYSIS: {suggestions}"
+                                )
+                                total_explore = min(len(explore_prompts), self.explore_rounds)
+                            break
+
                 analyze_idx += 1
 
         self.callbacks["on_finding"] = orig_cb
@@ -523,7 +589,7 @@ IMPORTANT: Write the COMPLETE report. Do not abbreviate. Each section must be fu
         # Store report in DB
         if report:
             try:
-                from pentest.database import _connect
+                from redteam.database import _connect
                 conn = _connect()
                 conn.execute(
                     "UPDATE pentest_campaigns SET expert_report=?, expert_report_md=? WHERE campaign_id=?",

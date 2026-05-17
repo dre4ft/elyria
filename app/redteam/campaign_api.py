@@ -7,9 +7,9 @@ import asyncio
 import threading
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pentest.scan_events import publish, heartbeat, cleanup
+from redteam.scan_events import publish, heartbeat, cleanup
 
-from pentest.database import (
+from redteam.database import (
     init_pentest_db,
     create_campaign,
     list_campaigns,
@@ -30,10 +30,10 @@ from pentest.database import (
     delete_profile,
     _now,
 )
-from pentest.scanner import Scanner
-from pentest.report_generator import generate_report
-from pentest.ai_enhancer import analyze_findings
-from pentest.ai_scanner import AIScanner
+from redteam.scanner import Scanner
+from redteam.report_generator import generate_report
+from redteam.ai_enhancer import analyze_findings
+from redteam.ai_scanner import AIScanner
 
 import ipaddress
 import json
@@ -50,19 +50,7 @@ init_pentest_db()
 # ── Helpers ──
 
 from database.auth_utils import get_auth_user, get_auth_user_teams
-
-def _verify_ownership(resource, user_id, user_teams):
-    """Check if user owns the resource or is in the owning team. Raises 403 if not."""
-    # User owns it
-    if resource.get("user_id") == user_id or not resource.get("user_id"):
-        return
-    # Team check
-    team_ids = resource.get("team_ids", "")
-    if team_ids and user_teams:
-        for t in team_ids.split(","):
-            if t.strip() and t.strip() in user_teams.split(","):
-                return
-    raise HTTPException(403, "Access denied")
+from core.auth import verify_ownership as _verify_ownership
 
 
 # ── Scan Profiles CRUD ──
@@ -215,15 +203,16 @@ def _is_safe_url(url):
             return True
         except ValueError:
             pass
-        # Block common internal hostnames
-        #TODO uncomment 
-        """blocked = ("localhost", "127.0.0.1", "0.0.0.0", "[::1]", "metadata.google.internal",
-                   "169.254.169.254", "instance-data", "169.254.170.2")
-        
+        # Block cloud metadata endpoints and internal-only TLDs (configurable via app_config)
+        from database.app_config import get as _cfg
+        blocked_raw = _cfg("ssrf.blocked_hosts", "")
+        blocked = [h.strip() for h in blocked_raw.split(",") if h.strip()] if blocked_raw else [
+            "metadata.google.internal", "169.254.169.254",
+            "instance-data", "169.254.170.2",
+        ]
         if hostname.lower() in blocked:
-            return False"""
-        # Block link-local and site-local patterns
-        if hostname.endswith(".local") or hostname.endswith(".internal"):
+            return False
+        if hostname.lower().endswith(".local") or hostname.lower().endswith(".internal"):
             return False
         return True
     except Exception:
@@ -440,9 +429,10 @@ async def api_start_scan(profile_id: str, request: Request):
                     explore_rounds=p.get("explore_rounds", 30 if expert_mode else 15),
                     analysis_rounds=p.get("analysis_rounds", 15 if expert_mode else 5),
                     callbacks={"on_log": log_cb, "on_finding": ai_on_finding, "on_progress": progress_cb},
+                    stop_check=lambda: _stop_flags.get(campaign_id, False),
                 )
                 if expert_mode:
-                    from pentest.expert_scanner import ExpertAIScanner
+                    from redteam.expert_scanner import ExpertAIScanner
                     scanner_cls = ExpertAIScanner
                     scanner_kwargs["master_prompt"] = p.get("master_prompt", "")
                     scanner_kwargs["documentation"] = p.get("documentation", "")
@@ -497,7 +487,7 @@ async def api_start_scan(profile_id: str, request: Request):
             # Store AI config in campaign
             ai_cfg = _scan_configs.get(campaign_id, {})
             try:
-                from pentest.database import _connect
+                from redteam.database import _connect
                 conn = _connect()
                 conn.execute(
                     "UPDATE pentest_campaigns SET flash_model=?, pro_model=?, tokens_used=? WHERE campaign_id=?",
@@ -543,7 +533,7 @@ async def api_start_scan(profile_id: str, request: Request):
 
     # Store AI models in campaign now so they're visible immediately
     try:
-        from pentest.database import _connect
+        from redteam.database import _connect
         conn = _connect()
         conn.execute(
             "UPDATE pentest_campaigns SET flash_model=?, pro_model=? WHERE campaign_id=?",
@@ -648,19 +638,27 @@ async def api_get_report(request: Request, campaign_id: str, format: str = "json
         if log:
             finding_logs[f["finding_id"]] = log
 
-    if format == "md" or format == "markdown":
-        md = c.get("expert_report_md") or generate_report(c, findings_raw, ai_insights, finding_logs, scan_config)
-        return Response(content=md, media_type="text/markdown")
+    standard_md = generate_report(c, findings_raw, ai_insights, finding_logs, scan_config)
+    expert_md = c.get("expert_report") or ""
 
-    # Default: JSON with both raw data and rendered report
+    if format == "md" or format == "markdown":
+        return Response(content=standard_md, media_type="text/markdown")
+
+    if format == "expert":
+        if not expert_md:
+            raise HTTPException(404, "No expert report available for this campaign")
+        return Response(content=expert_md, media_type="text/markdown")
+
+    safe_campaign = dict(c)
+    safe_campaign.pop("auth_config", None)
     return {
-        "campaign": c,
+        "campaign": safe_campaign,
         "findings": findings_raw,
         "finding_counts": get_finding_counts(campaign_id),
         "finding_logs": finding_logs,
         "scan_config": scan_config,
-        "report_markdown": c.get("expert_report_md") or generate_report(c, findings_raw, ai_insights, finding_logs, scan_config),
-        "expert_report": c.get("expert_report") or "",
+        "report_markdown": standard_md,
+        "expert_report": expert_md,
     }
 
 

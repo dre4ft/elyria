@@ -40,13 +40,31 @@ def init_db():
     conn.close()
 
 
+def _seal_graph(graph_data, user_id, team_id):
+    """Encrypt the workflow graph JSON."""
+    from database.crypto_store import crypto_seal
+    return crypto_seal(graph_data, user_id, team_id) if graph_data else ""
+
+
+def _open_graph(encrypted, user_id, team_id):
+    """Decrypt the workflow graph JSON."""
+    from database.crypto_store import crypto_open
+    if not encrypted:
+        return {}
+    return crypto_open(encrypted, user_id, team_id)
+
+
 def save_workflow(name, graph, user_id="", description="", team_id=""):
     conn = _connect()
     wf_id = str(uuid.uuid4())
     now = _now()
+    # Encrypt the graph if team-scoped
+    tid = team_id or ""
+    graph_json = json.dumps(graph)
+    payload_enc = _seal_graph({"graph": graph_json}, user_id, tid)
     conn.execute(
-        "INSERT INTO workflow_graphs (workflow_id, name, description, graph, user_id, team_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
-        (wf_id, name, description, json.dumps(graph), user_id, team_id, now, now),
+        "INSERT INTO workflow_graphs (workflow_id, name, description, graph, user_id, team_id, payload_encrypted, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        (wf_id, name, description, graph_json, user_id, tid, payload_enc, now, now),
     )
     conn.commit()
     conn.close()
@@ -56,7 +74,6 @@ def save_workflow(name, graph, user_id="", description="", team_id=""):
 def list_workflows(user_id=None, team_id=""):
     conn = _connect()
     if team_id == "__followed__":
-        # Personal + followed teams
         tc = get_connection()
         followed = [r[0] for r in tc.execute("SELECT team_id FROM user_followed_teams WHERE user_id=?", (user_id,)).fetchall()]
         tc.close()
@@ -75,7 +92,18 @@ def list_workflows(user_id=None, team_id=""):
     else:
         rows = conn.execute("SELECT * FROM workflow_graphs ORDER BY updated_at DESC").fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    results = []
+    for r in rows:
+        d = dict(r)
+        tid = d.get("team_id", "")
+        if d.get("payload_encrypted"):
+            opened = _open_graph(d["payload_encrypted"], d.get("user_id", user_id or ""), tid)
+            if opened.get("graph"):
+                d["graph"] = json.loads(opened["graph"])
+        else:
+            d["graph"] = json.loads(d.get("graph") or "{}")
+        results.append(d)
+    return results
 
 
 def get_workflow(workflow_id):
@@ -84,17 +112,27 @@ def get_workflow(workflow_id):
     conn.close()
     if row:
         d = dict(row)
-        d["graph"] = json.loads(d.get("graph") or "{}")
+        uid = d.get("user_id", "")
+        tid = d.get("team_id", "")
+        if d.get("payload_encrypted"):
+            opened = _open_graph(d["payload_encrypted"], uid, tid)
+            d["graph"] = json.loads(opened.get("graph", "{}"))
+        else:
+            d["graph"] = json.loads(d.get("graph") or "{}")
         return d
     return None
 
 
-def update_workflow(workflow_id, name, graph, description="", team_id=""):
+def update_workflow(workflow_id, name, graph, description="", team_id="", user_id=""):
     conn = _connect()
     now = _now()
+    # Re-encrypt the graph
+    graph_json = json.dumps(graph)
+    tid = team_id or ""
+    payload_enc = _seal_graph({"graph": graph_json}, user_id or "", tid)
     conn.execute(
-        "UPDATE workflow_graphs SET name=?, graph=?, description=?, team_id=?, updated_at=? WHERE workflow_id=?",
-        (name, json.dumps(graph), description, team_id, now, workflow_id),
+        "UPDATE workflow_graphs SET name=?, graph=?, description=?, team_id=?, payload_encrypted=?, updated_at=? WHERE workflow_id=?",
+        (name, graph_json, description, tid, payload_enc, now, workflow_id),
     )
     conn.commit()
     conn.close()

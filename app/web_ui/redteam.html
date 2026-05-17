@@ -51,6 +51,9 @@
     #report-toc-links a:hover { color:#d1d5db; background:rgba(255,255,255,.03); }
     #report-toc-links a.toc-active { color:#c4b5fd; background:rgba(124,58,237,.1); border-left:2px solid #7c3aed; margin-left:-1rem; padding-left:.7rem; }
     .report-anchor { display:block; position:relative; top:-90px; visibility:hidden; }
+    .report-tab-btn { color:#6b7280; border:1px solid transparent; }
+    .report-tab-btn.active { color:#c4b5fd; background:rgba(124,58,237,.1); border-color:rgba(124,58,237,.15); }
+    .report-tab-btn[data-reporttab="expert"].active { color:#22d3ee; background:rgba(6,182,212,.1); border-color:rgba(6,182,212,.15); }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -244,6 +247,10 @@
                 <button data-reporttab="expert" id="report-tab-expert" class="report-tab-btn hidden px-4 py-1.5 text-[11px] font-medium rounded-md transition-all">Expert IA</button>
               </div>
               <div class="flex items-center gap-2">
+                <div id="report-mode-badge" class="hidden px-2.5 py-1 rounded-full bg-accent/15 border border-accent/20 text-[10px] text-accent-light font-semibold flex items-center gap-1.5">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+                  Analyse IA
+                </div>
                 <button id="btn-download-expert-report" class="hidden h-7 px-3 rounded-md bg-accent/15 hover:bg-accent/25 border border-accent/20 hover:border-accent/40 text-[11px] text-accent-light font-medium transition-all flex items-center gap-1.5">Telecharger .md</button>
               </div>
             </div>
@@ -251,7 +258,7 @@
               <nav id="report-toc" class="w-56 flex-shrink-0 hidden">
                 <div class="sticky top-0 pt-1">
                   <div class="flex items-center gap-2 mb-4">
-                    <svg class="w-4 h-4 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"/></svg>
+                    <svg id="report-toc-icon" class="w-4 h-4 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"/></svg>
                     <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Sommaire</span>
                   </div>
                   <div id="report-toc-links" class="space-y-0.5 border-l-2 border-white/5 pl-3"></div>

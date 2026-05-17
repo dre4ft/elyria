@@ -50,6 +50,7 @@ init()
 _DEFAULTS = {
     "app.host":       "127.0.0.1",
     "app.port":       "8000",
+    "app.reload":     "1",
     "catcher.port":               "6767",
     "catcher.intercept_enabled":  "0",
     "proxy.xor_key":  "",  # generated randomly at first boot if left empty
@@ -72,6 +73,11 @@ _DEFAULTS = {
     "oidc.client_secret":     "test-secret",
     "oidc.scope":             "openid profile email",
     "oidc.button_label":      "Test SSO",
+    # ── SSRF protection ──
+    "ssrf.blocked_hosts":     "metadata.google.internal,169.254.169.254,instance-data,169.254.170.2",
+    # ── Logging ──
+    "log.level":              "INFO",
+    "log.dir":                "logs",
 }
 
 _DEFAULT_FQDN = {
@@ -120,13 +126,18 @@ _seed_defaults()
 
 # ── Public API ────────────────────────────────────────────────────────
 def get(key: str, default: str = "") -> str:
-    """Read a config value. Falls back to in-memory default, then arg default."""
+    """Read a config value. Cached 30s. Falls back to in-memory default, then arg default."""
+    from core.cache import cache
+    ck = f"cfg:{key}"
+    val = cache.get(ck)
+    if val is not None:
+        return val
     c = _connect()
     row = c.execute("SELECT value FROM app_config WHERE key=?", (key,)).fetchone()
     c.close()
-    if row:
-        return row[0]
-    return _DEFAULTS.get(key, default)
+    val = row[0] if row else _DEFAULTS.get(key, default)
+    cache.set(ck, val, ttl=30)
+    return val
 
 
 def get_int(key: str, default: int = 0) -> int:
@@ -141,6 +152,9 @@ def set_kv(key: str, value: str):
     c.execute("INSERT OR REPLACE INTO app_config (key,value) VALUES(?,?)", (key, str(value)))
     c.commit()
     c.close()
+    # Invalidate cache
+    from core.cache import cache
+    cache.invalidate(f"cfg:{key}")
 
 
 def get_all() -> dict:

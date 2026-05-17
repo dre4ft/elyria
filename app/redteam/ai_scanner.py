@@ -10,6 +10,8 @@ import json
 import re
 import time
 from urllib.parse import urljoin
+from strike.sandbox.tool import BashTool
+
 
 import requests
 
@@ -46,6 +48,34 @@ def _get_tools():
                         },
                     },
                     "required": ["requests"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "bash",
+                "description": (
+                    "Execute a command in the pentest sandbox. "
+                    "Available tools: nmap, sqlmap, nuclei, ffuf, amass, subfinder, httpx, curl, "
+                    "python3, jq, yq, go. "
+                    "The sandbox has network access to the target. "
+                    "Use this for reconnaissance, exploitation, fuzzing, and data extraction. "
+                    "Chain multiple bash calls: enumerate → analyze → exploit → confirm."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "Shell command to execute in the sandbox. Examples: 'nmap -sV TARGET', 'sqlmap -u http://TARGET/api/users?id=1 --batch', 'nuclei -u http://TARGET -severity critical,high'",
+                        },
+                        "timeout_ms": {
+                            "type": "integer",
+                            "description": "Max execution time in milliseconds (default: 30000)",
+                        },
+                    },
+                    "required": ["command"],
                 },
             },
         },
@@ -93,7 +123,8 @@ def _get_tools():
 class AIScanner:
     def __init__(self, campaign_id, target_url, user_id, auth_config=None,
                  deterministic_findings=None, collection_requests=None, id_list=None,
-                 callbacks=None, description="", explore_rounds=15, analysis_rounds=5):
+                 callbacks=None, description="", explore_rounds=15, analysis_rounds=5,
+                 stop_check=None):
         self.campaign_id = campaign_id
         self.target = target_url.rstrip("/")
         self.user_id = user_id
@@ -105,9 +136,17 @@ class AIScanner:
         self.callbacks = callbacks or {}
         self.explore_rounds = max(1, min(50, int(explore_rounds)))
         self.analysis_rounds = max(1, min(25, int(analysis_rounds)))
+        self.stop_check = stop_check or (lambda: False)
         self.conversation = []
         self._setup_session()
         self._setup_providers()
+        self.bash_tool = BashTool(sandbox=None, manager=None, target=self.target)
+
+    def _cleanup_sandbox(self):
+        try:
+            self.bash_tool.destroy()
+        except Exception:
+            pass
 
     def _setup_session(self):
         self.session = requests.Session()
@@ -257,7 +296,7 @@ class AIScanner:
 
         # Last 15 scan logs for context
         try:
-            from pentest.database import get_scan_logs
+            from redteam.database import get_scan_logs
             result = get_scan_logs(self.campaign_id, limit=15, page=1)
             logs = result.get("logs", []) if isinstance(result, dict) else (result or [])
             if logs:
@@ -276,6 +315,12 @@ class AIScanner:
         """Extensive AI deep scan — 20+ rounds: explore → analyze → probe deeper → verify → report."""
         ai_findings = []
         ai_tokens = {"prompt": 0, "completion": 0, "total": 0}
+
+        # Spawn sandbox for bash tool
+        try:
+            self.bash_tool.spawn(self.target)
+        except Exception as e:
+            print(f"[AI_SCANNER] Sandbox spawn failed: {e} — bash tool disabled", flush=True)
         orig_cb = self.callbacks.get("on_finding")
         def capture(f):
             ai_findings.append(f)
@@ -286,13 +331,18 @@ class AIScanner:
         context = self._build_context_block()
         tools = _get_tools()
 
-        # ── Heartbeat helper ──
+        self._aborted = False
+
         def _beat():
+            if self.stop_check():
+                self._aborted = True
+                return True
             try:
-                from pentest.scan_events import heartbeat
+                from redteam.scan_events import heartbeat
                 heartbeat(self.campaign_id)
             except Exception:
                 pass
+            return False
 
         # ── Token accumulator ──
         def _add_tokens(resp):
@@ -398,21 +448,21 @@ RULES:
 
         # ── Rounds 1-15: Exploration with flash (fast, no reasoning) ──
         exploration_prompts = [
-            "Round 1: Reconnaissance. Make 10-15 requests to map the API surface. Test all collection endpoints with baseline requests. Probe for admin endpoints, old API versions, and hidden paths.",
-            "Round 2: Authorization. Test BOLA/IDOR by substituting IDs from the ID list into collection request paths, query params, and bodies. Try accessing admin endpoints with regular user tokens.",
-            "Round 3: Business logic. Test order/payment/cart endpoints with negative prices, zero quantities, and large discounts. Try coupon codes. Test for workflow bypass.",
-            "Round 4: Injection. Test query params and body fields with SQL injection, XSS, path traversal, and template injection payloads. Look for error messages leaking info.",
-            "Round 5: Authentication. Test without auth headers, with invalid tokens, with expired tokens. Try JWT manipulation (alg:none). Probe password reset and registration flows.",
-            "Round 6: Mass assignment & property auth. PUT/PATCH user/account endpoints adding role=admin, isAdmin=true fields. Try adding sensitive fields to request bodies.",
-            "Round 7: HTTP method abuse. Test DELETE, PUT, PATCH, OPTIONS, TRACE on every collection endpoint. Look for methods that should be blocked but aren't.",
-            "Round 8: Header manipulation. Test with malformed Content-Type, SQLi in User-Agent, extremely large headers, duplicate headers, missing required headers.",
-            "Round 9: Rate limiting & resource consumption. Make many rapid requests. Test with large payloads, deep nesting in JSON, pagination abuse (limit=999999).",
-            "Round 10: Sensitive data. Check every response for API keys, tokens, passwords, PII. Test error responses for stack traces. Check .env and config endpoints.",
-            "Round 11: API versioning. Test /v1/, /v2/, /api/v1/, /api/v2/ variants of collection endpoints. Old versions often have fewer security controls.",
-            "Round 12: Content-type & parsing. Send XML, HTML, form-encoded to JSON endpoints. Send oversized JSON, deeply nested objects, duplicate keys.",
-            "Round 13: Race conditions. Make rapid duplicate requests to state-changing endpoints (order creation, payment). Look for TOCTOU vulnerabilities.",
-            "Round 14: Chained attacks. Combine findings: use low-severity info leaks to enable higher-severity attacks. Try to chain BOLA + mass assignment.",
-            "Round 15: Deep fuzzing. Based on ALL previous results, make 10-15 targeted requests probing the most promising anomalies. Go deep on anything suspicious.",
+            "Round 1: Reconnaissance. Make 10-15 requests to map the API surface. Test all collection endpoints with baseline requests. Probe for admin endpoints, old API versions, and hidden paths. Specifically check: /.well-known/jwks.json, /.well-known/openid-configuration, /api/docs, /graphql, /actuator, /.env, /debug.",
+            "Round 2: Authorization. Test BOLA/IDOR by substituting IDs from the ID list into collection request paths, query params, and bodies. Try accessing admin endpoints with regular user tokens. Test WITHOUT auth headers entirely — many APIs have GraphQL or webhook endpoints that bypass middleware.",
+            "Round 3: Business logic. Test order/payment/cart endpoints with negative prices, zero quantities, and large discounts. Try coupon codes like WELCOME10, VIP50, FREE100. Test for workflow bypass — can you skip steps? Test for negative quantity arbitrage (buy -1 items = refund).",
+            "Round 4: Injection. Test query params and body fields with SQL injection, XSS, path traversal, and template injection payloads. Look for error messages leaking info. Test regex injection in search/filter endpoints — send exponential patterns like '(a+)+$' to trigger ReDoS.",
+            "Round 5: Authentication + JWT. Test without auth headers, with invalid tokens, with expired tokens. Fetch /.well-known/jwks.json — look for symmetric keys (kty:oct) alongside RSA keys. If both RS256 and HS256 exist, forge tokens with the exposed HMAC secret. Test alg:none, alg:HS256 with public key as secret. Test kid injection.",
+            "Round 6: Mass assignment & property auth. PUT/PATCH user/account endpoints adding role=admin, isAdmin=true fields. Try adding sensitive fields to request bodies. Test if PATCH allows partial updates that bypass validation.",
+            "Round 7: HTTP method abuse. Test DELETE, PUT, PATCH, OPTIONS, TRACE on every collection endpoint. Look for methods that should be blocked but aren't. Test POST to GET-only endpoints with override headers (X-HTTP-Method-Override).",
+            "Round 8: Header manipulation. Test with malformed Content-Type, SQLi in User-Agent, extremely large headers, duplicate headers, missing required headers. Test X-Forwarded-Host reflection — if it appears in response bodies/links, you have cache poisoning.",
+            "Round 9: Rate limiting & resource consumption. Make many rapid requests. Test with large payloads, deep nesting in JSON, pagination abuse (limit=999999). Test GraphQL with deeply nested queries for DoS.",
+            "Round 10: Sensitive data. Check every response for API keys, tokens, passwords, PII. Test error responses for stack traces. Check .env and config endpoints. Check response headers — Server, X-Powered-By, X-Auth-Method leak version info for CVE matching.",
+            "Round 11: API versioning. Test /v1/, /v2/, /api/v1/, /api/v2/ variants of collection endpoints. Old versions often have fewer security controls. Test deprecated endpoints mentioned in docs.",
+            "Round 12: Content-type & parsing. Send XML, HTML, form-encoded to JSON endpoints. Send oversized JSON, deeply nested objects, duplicate keys. Test if duplicate query params are handled inconsistently (param pollution).",
+            "Round 13: Race conditions. Identify ALL state-changing endpoints (order creation, transfers, coupon redemption). Send 5 identical concurrent requests in ONE pentest_make_requests call. Check for duplicate orders, double transfers. If you got balance/credit info, try concurrent spends.",
+            "Round 14: JWT deep dive + chaining. If JWKS exists, decode the token (jwt.io). If symmetric key found, FORGE tokens for admin users and test them. Then use forged admin token to access every endpoint. Chain JWT forge → IDOR → business logic. Report the full kill chain.",
+            "Round 15: Blind spot sweep. Review ALL responses from ALL previous rounds. Look for: CORS with Access-Control-Allow-Credentials:true (enables cross-origin auth theft), Cache-Control headers (missing = cache poisoning), GraphQL endpoints (test without auth), webhook/SSRF endpoints, coupon reuse, negative values that passed validation. Probe anything you haven't tested yet.",
         ]
 
         # Use configured rounds (capped in __init__)
@@ -441,8 +491,8 @@ RULES:
             for i in range(explore_idx, batch_end):
                 prompt = exploration_prompts[i]
                 msgs.append({"role": "user", "content": prompt})
+                if _beat(): break
                 try:
-                    _beat()
                     resp = self.flash.chat(msgs, tools=tools)
                     _add_tokens(resp)
                 except Exception:
@@ -452,8 +502,8 @@ RULES:
                     self.conversation = msgs[:]
                 else:
                     msgs.append({"role": "user", "content": "You MUST call tools. Make at least 5 requests with pentest_make_requests."})
+                    if _beat(): break
                     try:
-                        _beat()
                         resp = self.flash.chat(msgs, tools=tools)
                         _add_tokens(resp)
                         await _process_tool_calls(msgs, resp)
@@ -472,16 +522,35 @@ RULES:
 TARGET: {self.target}
 {context}
 
-Each analysis round: review the exploration data above. Call pentest_add_findings for CONFIRMED vulnerabilities. Call pentest_make_requests if you need to verify something. Report progressively — don't wait."""}
+Each analysis round: review the exploration data above. Call pentest_add_findings for CONFIRMED vulnerabilities. Call pentest_make_requests if you need to verify something. Report progressively — don't wait.
+
+OWASP API TOP 10 COVERAGE — track your progress:
+☐ API1 BOLA — Object-level auth on /api/{{resource}}/{{id}} endpoints
+☐ API2 Broken Auth — JWT weaknesses, credential stuffing, token forgery
+☐ API3 Mass Assignment — Adding role/isAdmin fields to PUT/PATCH
+☐ API4 Resource Consumption — ReDoS, large payloads, pagination abuse
+☐ API5 BFLA — Admin endpoints accessible to regular users
+☐ API6 Business Logic — Negative values, coupon abuse, workflow bypass
+☐ API7 SSRF — URL validation bypass, metadata endpoints
+☐ API8 Misconfiguration — Verbose errors, CORS with credentials, security headers
+☐ API9 Inventory — Old API versions, GraphQL, undocumented endpoints
+☐ API10 Unsafe Consumption — Trusting third-party API responses
+
+SUPPLEMENTARY:
+☐ JWT Algorithm Confusion — RS256→HS256 downgrade via JWKS
+☐ Race Conditions — Concurrent requests to state-changing endpoints
+☐ GraphQL — Auth bypass, field suggestions, introspection leak
+☐ Cache Poisoning — X-Forwarded-Host reflection, unkeyed headers
+☐ BOLA via Batch — Per-item auth in bulk endpoints"""}
                 msgs.append({"role": "user", "content": analysis_prompts[analyze_idx]})
+                if _beat(): break
                 try:
-                    _beat()
                     resp = self.pro.chat(msgs, tools=tools)
                     _add_tokens(resp)
                     if not await _process_tool_calls(msgs, resp):
                         msgs.append({"role": "user", "content": "Call pentest_add_findings for every vulnerability you identified. Verify with pentest_make_requests if needed."})
+                        if _beat(): break
                         try:
-                            _beat()
                             resp = self.pro.chat(msgs, tools=tools)
                             _add_tokens(resp)
                             await _process_tool_calls(msgs, resp)
@@ -494,7 +563,51 @@ Each analysis round: review the exploration data above. Call pentest_add_finding
                     self.callbacks["on_progress"](pct, f"AI analyze round {analyze_idx + 1}/{total_analyze}")
                 analyze_idx += 1
 
+        # ══════════════════════════════════════════════════════════
+        # FINAL PASS — Blind spot sweep
+        # ══════════════════════════════════════════════════════════
+        if ai_findings:
+            finding_titles = "\n".join(f"- [{f.get('severity','?')}] {f.get('title','')}" for f in ai_findings)
+            cats_found = {f.get('category','') for f in ai_findings}
+            cats_found_str = ", ".join(sorted(cats_found)) if cats_found else "none"
+        else:
+            finding_titles = "(no findings yet)"
+            cats_found_str = "none"
+
+        blind_spot_prompt = f"""FINAL BLIND SPOT SWEEP.
+
+Your findings so far ({len(ai_findings)} total, categories: {cats_found_str}):
+{finding_titles}
+
+A human pentester would STILL check these — for each one, either confirm it's already covered OR make targeted probe requests NOW:
+
+1. **JWT algorithm confusion**: Did you check if JWKS contains a symmetric key (kty:oct)? If yes, did you FORGE tokens with it and test them? This is the #1 missed vulnerability.
+2. **GraphQL without auth**: Did you test /graphql with NO Authorization header at all? GraphQL endpoints often bypass REST middleware.
+3. **Negative values**: Did you try negative numbers in ALL numeric fields — quantities, prices, amounts? Not just the obvious ones.
+4. **Race conditions**: Did you send concurrent requests to state-changing endpoints? Two identical transfers at the same time?
+5. **Cache poisoning**: Did you check if X-Forwarded-Host or Host headers are reflected in responses? If yes, can you poison links?
+6. **Coupon/promo reuse**: Did you test if the same coupon can be used multiple times in concurrent requests?
+7. **SSRF via parser differential**: If there's a URL validation endpoint, did you test URL parser bypasses (http://safe.com@127.0.0.1)?
+8. **ReDoS in search**: If there's a search endpoint, did you test regex injection with exponential backtracking patterns?
+9. **CORS with credentials**: Is Access-Control-Allow-Credentials:true set? If yes, every authenticated endpoint can be exploited cross-origin.
+10. **Info disclosure in headers**: Do response headers leak Server, X-Powered-By, X-Auth-Method, or version numbers?
+11. **Bulk endpoint IDOR**: If there's a bulk/batch endpoint, does it verify ownership for EACH item or just the first?
+
+For every question above where the answer is NO or UNCERTAIN: call pentest_make_requests NOW with targeted probes. Then call pentest_add_findings for anything you confirm."""
+
+        msgs.append({"role": "user", "content": blind_spot_prompt})
+        if not self._aborted:
+            try:
+                resp = self.pro.chat(msgs, tools=tools)
+                _add_tokens(resp)
+                await _process_tool_calls(msgs, resp)
+            except Exception:
+                pass
+        if self.callbacks.get("on_progress"):
+            self.callbacks["on_progress"](98, "Final blind spot sweep")
+
         self.callbacks["on_finding"] = orig_cb
+        self._cleanup_sandbox()
         return {"findings": ai_findings, "tokens": ai_tokens,
                 "flash_model": self.flash_model,
                 "pro_model": self.pro_model,
@@ -503,6 +616,7 @@ Each analysis round: review the exploration data above. Call pentest_add_finding
     TOOL_MAP = {
         "pentest_make_requests": "_handle_make_requests",
         "pentest_add_findings": "_handle_add_findings",
+        "bash": "_handle_bash",
     }
 
     async def _execute_tool(self, name, args):
@@ -514,6 +628,24 @@ Each analysis round: review the exploration data above. Call pentest_add_finding
                 return await fn(parsed)
             return fn(parsed)
         return json.dumps({"error": f"Unknown tool: {name}"})
+
+    def _handle_bash(self, args):
+        result_str = self.bash_tool.handle(args)
+        # Log bash execution to scan logs
+        try:
+            result = json.loads(result_str)
+            from redteam.database import add_bash_log
+            add_bash_log(
+                campaign_id=self.campaign_id,
+                command=args.get("command", ""),
+                exit_code=result.get("exit_code", -1),
+                stdout=result.get("stdout", ""),
+                stderr=result.get("stderr", ""),
+                elapsed_ms=result.get("elapsed_ms", 0),
+            )
+        except Exception:
+            pass
+        return result_str
 
 
 def _format_tool_calls(raw):

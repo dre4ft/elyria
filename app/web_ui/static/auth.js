@@ -8,18 +8,24 @@
    ═══════════════════════════════════════════════════════════════ */
 
 var SESSION_KEY = 'elyria_token';
+var REFRESH_KEY = 'elyria_refresh_token';
 var _token = null;
+var _refreshToken = null;
 var _user = null;
+var _refreshing = false;  // prevent concurrent refresh attempts
+var _refreshCount = 0;
 var AUTH_API = {
   login: '/api/user/login',
   register: '/api/user/create',
   logout: '/api/user/logout',
+  refresh: '/api/user/refresh',
 };
 
 function initAuth() {
   var isLoginPage = window.location.pathname.endsWith('/login') || window.location.pathname.endsWith('/login.html');
 
   _token = sessionStorage.getItem(SESSION_KEY);
+  _refreshToken = sessionStorage.getItem(REFRESH_KEY);
 
   if (_token) {
     _user = parseUserFromToken(_token);
@@ -64,8 +70,28 @@ function setupFetchInterceptor() {
     }
 
     return originalFetch(url, options).then(function (response) {
-      // 401 catcher — logout and redirect to login (skip on login page itself)
-      if (response.status === 401 && !isLoginPage) {
+      // 401 catcher — try silent refresh first, then logout
+      if (response.status === 401 && !isLoginPage && _refreshToken && !_refreshing) {
+        return trySilentRefresh().then(function (refreshed) {
+          if (refreshed) {
+            // Retry original request with new token
+            options = options || {};
+            options.headers = Object.assign({}, options.headers, {
+              Authorization: 'Bearer ' + _token
+            });
+            return originalFetch(url, options);
+          }
+          // Refresh failed — force logout
+          _token = null;
+          _refreshToken = null;
+          _user = null;
+          sessionStorage.removeItem(SESSION_KEY);
+          sessionStorage.removeItem(REFRESH_KEY);
+          window.location.href = '/login';
+          return response;
+        });
+      }
+      if (response.status === 401 && !isLoginPage && !_refreshToken) {
         _token = null;
         _user = null;
         sessionStorage.removeItem(SESSION_KEY);
@@ -74,6 +100,30 @@ function setupFetchInterceptor() {
       return response;
     });
   };
+}
+
+function trySilentRefresh() {
+  _refreshing = true;
+  return fetch(AUTH_API.refresh, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: _refreshToken }),
+  }).then(function (r) {
+    _refreshing = false;
+    if (!r.ok) return false;
+    return r.json().then(function (data) {
+      _token = data.token;
+      _refreshToken = data.refresh_token;
+      _user = parseUserFromToken(_token);
+      sessionStorage.setItem(SESSION_KEY, _token);
+      sessionStorage.setItem(REFRESH_KEY, _refreshToken);
+      _refreshCount++;
+      return true;
+    });
+  }).catch(function () {
+    _refreshing = false;
+    return false;
+  });
 }
 
 function parseUserFromToken(token) {
@@ -121,8 +171,10 @@ async function logout() {
     try { await fetch(AUTH_API.logout); } catch (_e) {}
   }
   _token = null;
+  _refreshToken = null;
   _user = null;
   sessionStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(REFRESH_KEY);
   window.location.href = '/login';
 }
 
@@ -138,9 +190,11 @@ async function loginUser(username, digest) {
   }
   var data = await res.json();
   _token = data.token;
+  _refreshToken = data.refresh_token || '';
   _user = { userId: data.user_id, username: data.username };
   sessionStorage.setItem(SESSION_KEY, _token);
-  return { success: true, token: data.token, user: _user };
+  if (_refreshToken) sessionStorage.setItem(REFRESH_KEY, _refreshToken);
+  return { success: true, token: data.token, refresh_token: _refreshToken, user: _user };
 }
 
 async function registerUser(username, digest) {
@@ -159,14 +213,23 @@ async function registerUser(username, digest) {
 // ── OIDC / SSO ──
 
 function initOidc() {
-  // Handle OIDC callback: /app#token=xxx → store token and clean URL
+  // Handle OIDC callback: /app#token=xxx&refresh_token=yyy → store tokens
   var hash = window.location.hash;
-  if (hash && hash.startsWith('#token=')) {
-    var token = hash.slice(7);
-    _token = token;
-    _user = parseUserFromToken(token);
-    sessionStorage.setItem(SESSION_KEY, token);
-    // Clean URL
+  if (hash && (hash.startsWith('#token=') || hash.indexOf('token=') > -1)) {
+    // Parse URL-encoded hash params
+    var raw = hash.substring(1); // remove #
+    var params = {};
+    raw.split('&').forEach(function(p) {
+      var parts = p.split('=');
+      if (parts.length === 2) params[parts[0]] = decodeURIComponent(parts[1]);
+    });
+    if (params.token) {
+      _token = params.token;
+      _refreshToken = params.refresh_token || '';
+      _user = parseUserFromToken(_token);
+      sessionStorage.setItem(SESSION_KEY, _token);
+      if (_refreshToken) sessionStorage.setItem(REFRESH_KEY, _refreshToken);
+    }
     window.location.hash = '';
     window.location.reload();
     return;

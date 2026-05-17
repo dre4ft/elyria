@@ -7,7 +7,7 @@ import threading
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pentest.scan_events import publish, cleanup as events_cleanup
+from redteam.scan_events import publish, cleanup as events_cleanup
 
 from blueteam.database import (
     init_blueteam_db, create_profile, list_profiles, get_profile,
@@ -26,17 +26,7 @@ _analysis_progress = {}  # profile_id → {"pct": int, "msg": str, "status": str
 from database.auth_utils import get_auth_user, get_auth_user_teams
 
 
-def _verify_ownership(resource, user_id, user_teams=""):
-    if not resource:
-        raise HTTPException(404, "Not found")
-    if resource.get("user_id") == user_id or not resource.get("user_id"):
-        return
-    team_ids = resource.get("team_ids", "")
-    if team_ids and user_teams:
-        for t in team_ids.split(","):
-            if t.strip() and t.strip() in user_teams.split(","):
-                return
-    raise HTTPException(403, "Access denied")
+from core.auth import verify_ownership as _verify_ownership
 
 
 # ═══════════════════════════════════════════
@@ -47,6 +37,7 @@ def _verify_ownership(resource, user_id, user_teams=""):
 async def api_stop_analysis(profile_id: str, request: Request):
     p = get_profile(profile_id)
     _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
+    _analysis_progress.pop(profile_id, None)
     _running.discard(profile_id)
     update_profile(profile_id, status="stopped")
     publish(profile_id, "done", {"status": "stopped"})
@@ -144,7 +135,7 @@ async def api_import_from_pentest(request: Request):
 
     # Fetch campaign data — verify ownership
     try:
-        from pentest.database import get_campaign, get_campaign_findings
+        from redteam.database import get_campaign, get_campaign_findings
         c = get_campaign(campaign_id)
         if not c:
             raise HTTPException(404, "Campaign not found")
@@ -367,17 +358,6 @@ async def api_start_analysis(profile_id: str, request: Request):
     thread.start()
 
     return {"status": "started", "profile_id": profile_id, "pro_model": pro_model}
-
-
-@app.post("/profiles/{profile_id}/stop")
-async def api_stop_analysis(profile_id: str, request: Request):
-    """Request stop — the thread checks _running and _analysis_progress."""
-    _analysis_progress.pop(profile_id, None)
-    if profile_id in _running:
-        _running.discard(profile_id)
-        update_profile(profile_id, status="stopped")
-        return {"status": "stopped"}
-    return {"status": "not_running"}
 
 
 # ═══════════════════════════════════════════

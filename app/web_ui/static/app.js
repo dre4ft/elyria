@@ -158,6 +158,7 @@ const dom = {
   btnDocModalCancel:$('#btn-doc-modal-cancel'),
   btnDocModalUpload:$('#btn-doc-modal-upload'),
   btnOpenDocs:      $('#btn-open-docs'),
+  docTargetServer:  $('#doc-target-server'),
 
   // Loading
   loadingOverlay: $('#loading-overlay'),
@@ -1597,16 +1598,112 @@ async function loadHistoryEntry(entry) {
 // ─────────────────────────────────────────────
 // CHAT IA
 // ─────────────────────────────────────────────
+// ── Slash command registry ──────────────────────────────────────────────
+const SLASH_COMMANDS = [
+  { cmd: '/explain', desc: 'Analyser une réponse HTTP (status, headers, erreurs)' },
+  { cmd: '/scan',    desc: 'Quick OWASP scan sur un endpoint (SQLi, XSS, traversal)' },
+  { cmd: '/diff',    desc: 'Comparer deux réponses (confirmation BOLA/IDOR)' },
+  { cmd: '/code',    desc: 'Generer du code client HTTP (Python, JS, Go)' },
+];
+let _slashIdx = -1;
+
+function _updateSlashPill() {
+  const pill = document.getElementById('slash-pill');
+  const pillCmd = document.getElementById('slash-pill-cmd');
+  const val = dom.chatInput.value;
+  const cmdMatch = val.match(/^(\/[a-z]+)/);
+  if (cmdMatch && SLASH_COMMANDS.some(c => c.cmd === cmdMatch[1])) {
+    if (pill) pill.classList.remove('hidden');
+    if (pillCmd) pillCmd.textContent = cmdMatch[1];
+    dom.chatInput.style.borderColor = 'rgba(124,58,237,.4)';
+    dom.chatInput.style.boxShadow = '0 0 0 1px rgba(124,58,237,.15)';
+  } else {
+    if (pill) pill.classList.add('hidden');
+    dom.chatInput.style.borderColor = '';
+    dom.chatInput.style.boxShadow = '';
+  }
+}
+
+function _showSlashMenu() {
+  const menu = document.getElementById('slash-menu');
+  if (!menu) return;
+  _slashIdx = -1;
+  _renderSlashMenu();
+  menu.classList.remove('hidden');
+}
+
+function _hideSlashMenu() {
+  const menu = document.getElementById('slash-menu');
+  if (menu) menu.classList.add('hidden');
+  _slashIdx = -1;
+}
+
+function _renderSlashMenu(filter = '') {
+  const menu = document.getElementById('slash-menu');
+  if (!menu) return;
+  const q = filter.toLowerCase();
+  const filtered = SLASH_COMMANDS.filter(c => c.cmd.includes(q) || c.desc.toLowerCase().includes(q));
+  if (filtered.length === 0) { _hideSlashMenu(); return; }
+  menu.innerHTML = filtered.map((c, i) => {
+    const active = i === _slashIdx;
+    return `<button class="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2.5 transition-all ${active ? 'bg-primary/10 border-l-2 border-primary' : 'border-l-2 border-transparent'}" data-idx="${i}">
+      <span class="text-xs font-mono font-bold text-primary-light w-16 flex-shrink-0">${c.cmd}</span>
+      <span class="text-[10px] text-gray-400 truncate">${c.desc}</span>
+    </button>`;
+  }).join('');
+  menu.querySelectorAll('button').forEach(el => {
+    el.addEventListener('mousedown', (e) => { e.preventDefault(); _selectSlash(parseInt(el.dataset.idx)); });
+  });
+}
+
+function _selectSlash(idx) {
+  const tail = dom.chatInput.value.replace(/^\/\S*/, '');
+  const filtered = SLASH_COMMANDS.filter(c => {
+    const prefix = (dom.chatInput.value.match(/^\/\S*/) || [''])[0].toLowerCase();
+    return c.cmd.includes(prefix) || c.desc.toLowerCase().includes(prefix);
+  });
+  if (idx >= 0 && idx < filtered.length) {
+    dom.chatInput.value = filtered[idx].cmd + tail;
+  }
+  _hideSlashMenu();
+  _updateSlashPill();
+  dom.chatInput.focus();
+}
+
 function setupChat() {
   dom.btnToggleChat.addEventListener('click', toggleChat);
   dom.btnCloseChat.addEventListener('click', toggleChat);
   dom.btnClearChat.addEventListener('click', clearChatHistory);
   dom.btnSendChat.addEventListener('click', sendChatMessage);
   dom.chatInput.addEventListener('keydown', (e) => {
+    const menu = document.getElementById('slash-menu');
+    const menuOpen = menu && !menu.classList.contains('hidden');
+
+    if (menuOpen) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); _slashIdx = (_slashIdx + 1) % SLASH_COMMANDS.length; _renderSlashMenu(dom.chatInput.value.slice(1)); return; }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); _slashIdx = _slashIdx <= 0 ? SLASH_COMMANDS.length - 1 : _slashIdx - 1; _renderSlashMenu(dom.chatInput.value.slice(1)); return; }
+      if (e.key === 'Escape')    { e.preventDefault(); _hideSlashMenu(); return; }
+      if (e.key === 'Enter' && _slashIdx >= 0) { e.preventDefault(); _selectSlash(_slashIdx); return; }
+      if (e.key === 'Enter')     { e.preventDefault(); _hideSlashMenu(); sendChatMessage(); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendChatMessage();
     }
+  });
+  dom.chatInput.addEventListener('input', () => {
+    const val = dom.chatInput.value;
+    if (val === '/') { _showSlashMenu(); _updateSlashPill(); return; }
+    if (val.startsWith('/') && !val.includes(' ')) { _showSlashMenu(); _renderSlashMenu(val.slice(1)); _updateSlashPill(); return; }
+    _hideSlashMenu();
+    _updateSlashPill();
+  });
+  // Slash pill close button
+  const pillClose = document.getElementById('slash-pill-close');
+  if (pillClose) pillClose.addEventListener('click', () => {
+    dom.chatInput.value = dom.chatInput.value.replace(/^\/[a-z]+\s*/, '');
+    _updateSlashPill();
+    dom.chatInput.focus();
   });
 }
 
@@ -1789,16 +1886,16 @@ function setupDocModal() {
   // Drag & drop
   dom.docDropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
-    dom.docDropZone.classList.add('border-emerald-500/50', 'bg-emerald-500/[0.04]');
+    dom.docDropZone.classList.add('border-violet-500/50', 'bg-violet-500/[0.04]');
   });
 
   dom.docDropZone.addEventListener('dragleave', () => {
-    dom.docDropZone.classList.remove('border-emerald-500/50', 'bg-emerald-500/[0.04]');
+    dom.docDropZone.classList.remove('border-violet-500/50', 'bg-violet-500/[0.04]');
   });
 
   dom.docDropZone.addEventListener('drop', (e) => {
     e.preventDefault();
-    dom.docDropZone.classList.remove('border-emerald-500/50', 'bg-emerald-500/[0.04]');
+    dom.docDropZone.classList.remove('border-violet-500/50', 'bg-violet-500/[0.04]');
     const file = e.dataTransfer.files[0];
     if (file) setDocFile(file);
   });
@@ -1836,7 +1933,7 @@ function resetDocModal() {
   dom.docMsg.classList.add('hidden');
   dom.docMsg.innerHTML = '';
   dom.btnDocModalUpload.disabled = true;
-  dom.docDropZone.classList.remove('border-emerald-500/30');
+  dom.docDropZone.classList.remove('border-violet-500/30');
 }
 
 function setDocFile(file) {
@@ -1854,7 +1951,7 @@ function setDocFile(file) {
   dom.docFileSize.textContent = formatFileSize(file.size);
   dom.docMsg.classList.add('hidden');
   dom.btnDocModalUpload.disabled = false;
-  dom.docDropZone.classList.add('border-emerald-500/30');
+  dom.docDropZone.classList.add('border-violet-500/30');
 }
 
 async function uploadDocument() {
@@ -1867,10 +1964,12 @@ async function uploadDocument() {
   `;
 
   try {
+    const targetUrl = (dom.docTargetServer && dom.docTargetServer.value.trim()) || 'http://localhost:9000';
     const formData = new FormData();
     formData.append('file', selectedDocFile);
 
-    const res = await fetch(API.uploadOpenAPI, {
+    const qs = `?target_url=${encodeURIComponent(targetUrl)}`;
+    const res = await fetch(API.uploadOpenAPI + qs, {
       method: 'POST',
       headers: { ...getAuthHeader() },
       body: formData,

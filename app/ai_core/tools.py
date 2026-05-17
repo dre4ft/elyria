@@ -1,8 +1,9 @@
 from database import collection_mgmt, json_helper, request_mgmt
 from request_manager.request_api import handle_raw, handle_request
+from ai_core.chat_tools import get_chat_tools, handle_chat_tool, is_slash_command, get_slash_prompt
 
 def get_tools():
-    return [
+    base = [
         {
             "type": "function",
             "function": {
@@ -110,6 +111,7 @@ def get_tools():
             },
         },
     ]
+    return base + get_chat_tools()
 
 
 
@@ -132,8 +134,11 @@ def handle_tool_call(current_user_id, tool_name, parameters):
         return send_raw_request(current_user_id, url=parameters["url"], request=parameters["request"])
     elif tool_name == "get_users_last_five_requests":
         return get_users_last_five_requests(current_user_id)
+    # Chat tools
+    elif tool_name in ("explain_response", "quick_scan", "diff_responses", "generate_code"):
+        return handle_chat_tool(tool_name, parameters)
     else:
-        return json.dumps({"error": f"Unknown tool '{tool_name}'. Available tools: get_collections, get_requests, get_request_by_id, create_request, create_folder, delete_request, delete_folder, get_sent_request_response, send_request, send_request_by_id, send_raw_request. Use one of these instead."})
+        return json.dumps({"error": f"Unknown tool '{tool_name}'."})
 
 def create_structured_request(current_user_id, name,  url, method,folder_id=None, headers=None, body=None):
     headers = json_helper.from_json(headers) if headers else None
