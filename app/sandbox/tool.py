@@ -10,7 +10,7 @@ import json
 import time
 from dataclasses import dataclass, field
 
-from app.sandbox.manager import Sandbox, SandboxManager
+from sandbox.manager import Sandbox, SandboxManager
 
 
 @dataclass

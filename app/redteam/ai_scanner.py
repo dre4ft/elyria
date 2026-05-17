@@ -10,7 +10,7 @@ import json
 import re
 import time
 from urllib.parse import urljoin
-from strike.sandbox.tool import BashTool
+from sandbox.tool import BashTool
 
 
 import requests

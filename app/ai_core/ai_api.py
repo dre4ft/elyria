@@ -111,9 +111,9 @@ async def list_models(request: Request):
         models_dict = models.model_dump()
         return JSONResponse(content={"models": [model['id'] for model in models_dict['data']]})
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="Invalid request")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal error")
 
 
 @app.post("/update_model")
@@ -123,7 +123,7 @@ async def update_model(request: Request, update_request: UpdateModelRequest):
         AI_PROVIDER.update_model(update_request.new_model)
         return JSONResponse(content={"message": f"Model updated to {update_request.new_model}"})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal error")
 
 @app.get("/providers")
 async def get_providers(request: Request):
@@ -144,9 +144,9 @@ async def init_provider(request: Request, init_request: InitProviderRequest):
         )
         return JSONResponse(content={"message": f"Provider {init_request.provider_type} initialized successfully"})
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="Invalid request")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal error")
     
 @app.get("/current_provider")
 def get_provider_config(request: Request):
@@ -181,6 +181,6 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
         import traceback
         print(f"[CHAT ERROR] {type(e).__name__}: {e}", flush=True)
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e)[:200])
+        raise HTTPException(status_code=500, detail="Internal error")
 
 

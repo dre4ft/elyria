@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, Request,HTTPException
 from fastapi.responses import JSONResponse,HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -74,69 +75,72 @@ async def check_authorization(request: Request, call_next):
 
     return await call_next(request)
 @app.get("/")
-async def second_route():
-    try:
-        with open("web_ui/login.html", "r") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Frontend file not found")
-
+async def serve_root():
+    return _serve_html("login.html")
 
 @app.get("/login")
-async def serve_index():
+async def serve_login():
+    return _serve_html("login.html")
+
+def _serve_html(filename: str) -> HTMLResponse:
+    """Serve an HTML file. In production mode, inject cache-busting version."""
     try:
-        with open("web_ui/login.html", "r") as f:
-            return HTMLResponse(content=f.read())
+        with open(f"web_ui/{filename}", "r") as f:
+            html = f.read()
+        if os.getenv("ELYRIA_PRODUCTION", "") == "1":
+            # Cache-busting: use file mtime as version
+            import re
+            bundle_path = "web_ui/static/bundle.min.js"
+            v = str(int(os.path.getmtime(bundle_path))) if os.path.isfile(bundle_path) else "1"
+            html = html.replace("{{VERSION}}", v)
+            page = filename.replace(".html", "")
+            bundle_map = {
+                "index": "bundle.min.js",
+                "workflow": "workflow-bundle.min.js",
+                "redteam": "pentest-bundle.min.js",
+                "blueteam": "blueteam-bundle.min.js",
+            }
+            js_bundle = bundle_map.get(page, "bundle.min.js")
+            html = re.sub(r'<script src="https://cdn\.tailwindcss\.com[^<]*</script>', '', html)
+            html = re.sub(r'<link[^>]*fonts\.googleapis\.com[^>]*>', '', html)
+            html = re.sub(r'<link rel="stylesheet" href="static/styles\.css"[^>]*>',
+                          f'<link rel="stylesheet" href="static/bundle.min.css?v={v}">', html)
+            for script_src in ["static/auth.js", "static/app.js", "static/catcher.js",
+                               "static/workflow.js", "static/pentest.js", "static/blueteam.js",
+                               "static/doc.js", "static/hub.js"]:
+                html = re.sub(rf'<script src="{script_src}"[^>]*></script>', '', html)
+            html = html.replace('</head>',
+                                f'\n  <link rel="stylesheet" href="static/bundle.min.css?v={v}">\n</head>')
+            html = html.replace('<body',
+                                f'<body\n  <script src="static/{js_bundle}?v={v}"></script>')
+        return HTMLResponse(content=html)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Frontend file not found")
 
+
 @app.get("/app")
-async def serve_index():
-    try:
-        with open("web_ui/index.html", "r") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Frontend file not found")
-    
+async def serve_app():
+    return _serve_html("index.html")
+
 @app.get("/workflow")
-async def serve_index():
-    try:
-        with open("web_ui/workflow.html", "r") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Frontend file not found")
+async def serve_workflow():
+    return _serve_html("workflow.html")
 
 @app.get("/hub")
 async def serve_hub():
-    try:
-        with open("web_ui/hub.html", "r") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Frontend file not found")
+    return _serve_html("hub.html")
 
 @app.get("/pentest")
 async def serve_pentest():
-    try:
-        with open("web_ui/redteam.html", "r") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Frontend file not found")
+    return _serve_html("redteam.html")
 
 @app.get("/blueteam")
 async def serve_blueteam():
-    try:
-        with open("web_ui/blueteam.html", "r") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Frontend file not found")
+    return _serve_html("blueteam.html")
 
 @app.get("/doc")
 async def serve_doc():
-    try:
-        with open("web_ui/doc.html", "r") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Frontend file not found")
+    return _serve_html("doc.html")
 
 @app.get("/api/doc")
 async def get_doc(lang: str = "fr"):

@@ -110,7 +110,7 @@ def oidc_login(request: Request):
     """Initiate OIDC login — redirect to provider."""
     oidc = _oidc_config()
     if not oidc:
-        return JSONResponse({"error": "OIDC not configured"}, status_code=400)
+        return JSONResponse(status_code=404, content={"detail": "OIDC not configured"})
 
     meta = _discover(oidc["issuer"])
     redirect_uri = _redirect_uri(request)

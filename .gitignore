@@ -42,3 +42,4 @@ data/
 *.logs*
 *.log*
 enterprise/
+CLAUDE.md

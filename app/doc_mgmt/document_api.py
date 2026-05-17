@@ -89,7 +89,7 @@ async def upload(request : Request, target_url: str="http://localhost:9000", tea
         return JSONResponse(status_code=400, content={"detail": "Unrecognized format — not OpenAPI or Arazzo"})
     except Exception as e:
         print(e)
-        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)[:200]}")
+        raise HTTPException(status_code=500, detail="Import failed")
 
 
 # ── Postman / Bruno import ──────────────────────────────────────────────
