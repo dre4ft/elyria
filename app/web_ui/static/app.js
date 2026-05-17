@@ -19,6 +19,8 @@ const API = {
   deleteRequest: 'api/collections/request',   // DELETE /:id
   deleteFolder:  'api/collections/folder',    // DELETE /:id
   uploadOpenAPI: 'api/document/openapi',       // POST multipart file upload
+  uploadPostman: 'api/document/postman',         // POST multipart file upload
+  uploadBruno:   'api/document/bruno',           // POST multipart file upload
   proxyToggle:   'api/proxies/toggle',          // GET/PUT proxy enabled state
 };
 
@@ -31,8 +33,9 @@ const state = {
   history: [],
   statusFilter: '',
   chatOpen: false,
-  collections: [],             // tree: [{ id, name, type:'folder', children:[], expanded }, { id, name, type:'request', method, url }]
-  activeCollectionId: null,   // ID de la requête de collection actuellement chargée
+  chatSlot: 'pro',             // 'pro' | 'flash'
+  collections: [],
+  activeCollectionId: null,
   proxyEnabled: false,
 };
 
@@ -134,6 +137,8 @@ const dom = {
   btnSendChat:   $('#btn-send-chat'),
   btnToggleChat: $('#btn-toggle-chat'),
   btnCloseChat:  $('#btn-close-chat'),
+  btnChatFlash:  $('#chat-model-flash'),
+  btnChatPro:    $('#chat-model-pro'),
   btnClearChat:  $('#btn-clear-chat'),
   chatContext:   $('#chat-context'),
   chatContextId: $('#chat-context-id'),
@@ -161,7 +166,7 @@ const dom = {
   docTargetServer:  $('#doc-target-server'),
 
   // Loading
-  loadingOverlay: $('#loading-overlay'),
+
 };
 
 // ─────────────────────────────────────────────
@@ -856,6 +861,44 @@ function setupCollections() {
     });
   }
 
+  // Postman import
+  if ($('#postman-file-input')) {
+    $('#postman-file-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        const res = await fetch('/api/document/postman', { method: 'POST', headers: getAuthHeader(), body: fd });
+        const data = await res.json();
+        if (res.ok) {
+          loadCollections();
+          console.log(`[postman] Imported ${data.requests_imported} requests from "${data.collection_name}"`);
+        }
+      } catch (err) {}
+      e.target.value = '';
+    });
+  }
+
+  // Bruno import
+  if ($('#bruno-file-input')) {
+    $('#bruno-file-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        const res = await fetch('/api/document/bruno', { method: 'POST', headers: getAuthHeader(), body: fd });
+        const data = await res.json();
+        if (res.ok) {
+          loadCollections();
+          console.log(`[bruno] Imported ${data.requests_imported} requests from "${data.collection_name}"`);
+        }
+      } catch (err) {}
+      e.target.value = '';
+    });
+  }
+
   if ($('#btn-curl-close')) {
     $('#btn-curl-close').addEventListener('click', () => {
       curlModal.classList.add('hidden');
@@ -882,7 +925,7 @@ function setupCollections() {
         if (!res.ok) { curlError.textContent = data.detail || 'Erreur de compilation'; curlError.classList.remove('hidden'); return; }
         // Show preview
         curlPreview.classList.remove('hidden');
-        $('#curl-preview-method').innerHTML = `<span class="text-accent-light">${esc(data.parsed.method)}</span>`;
+        $('#curl-preview-method').innerHTML = `<span class="text-gray-300 font-bold">${esc(data.parsed.method)}</span>`;
         $('#curl-preview-url').textContent = data.parsed.url;
         $('#curl-preview-headers').textContent = data.parsed.headers && Object.keys(data.parsed.headers).length ? 'Headers: ' + JSON.stringify(data.parsed.headers) : '';
         $('#curl-preview-body').textContent = data.parsed.body ? 'Body: ' + data.parsed.body.substring(0, 200) : '';
@@ -1675,6 +1718,17 @@ function setupChat() {
   dom.btnCloseChat.addEventListener('click', toggleChat);
   dom.btnClearChat.addEventListener('click', clearChatHistory);
   dom.btnSendChat.addEventListener('click', sendChatMessage);
+
+  // Model toggle Flash/Pro
+  if (dom.btnChatFlash && dom.btnChatPro) {
+    _updateModelToggle();
+    dom.btnChatFlash.addEventListener('click', () => {
+      if (state.chatSlot !== 'flash') _switchChatModel('flash');
+    });
+    dom.btnChatPro.addEventListener('click', () => {
+      if (state.chatSlot !== 'pro') _switchChatModel('pro');
+    });
+  }
   dom.chatInput.addEventListener('keydown', (e) => {
     const menu = document.getElementById('slash-menu');
     const menuOpen = menu && !menu.classList.contains('hidden');
@@ -1707,11 +1761,39 @@ function setupChat() {
   });
 }
 
+// ── Model toggle (Flash / Pro) ──
+
+function _updateModelToggle() {
+  const isFlash = state.chatSlot === 'flash';
+  const flashBtn = dom.btnChatFlash, proBtn = dom.btnChatPro;
+  if (!flashBtn || !proBtn) return;
+
+  // Flash button: amber when active, muted when inactive
+  flashBtn.className = isFlash
+    ? 'h-6 px-2.5 text-[10px] font-semibold transition-all bg-amber-500/15 text-amber-400 border-r border-white/5'
+    : 'h-6 px-2.5 text-[10px] font-semibold transition-all bg-transparent text-gray-600 hover:text-amber-400 border-r border-white/5';
+
+  // Pro button: purple when active, muted when inactive
+  proBtn.className = isFlash
+    ? 'h-6 px-2.5 text-[10px] font-semibold transition-all bg-transparent text-gray-600 hover:text-purple-400'
+    : 'h-6 px-2.5 text-[10px] font-semibold transition-all bg-purple-500/15 text-purple-400';
+}
+
+function _switchChatModel(slot) {
+  state.chatSlot = slot;
+  _updateModelToggle();
+  // Reset conversation when switching models to keep quality
+  state.conversation_id = null;
+  // Add a subtle transition message
+  addChatMessage(`_switch_Conversation basculee sur le mode **${slot === 'pro' ? 'Pro' : 'Flash'}**. Nouvelle conversation._`, 'system');
+}
+
 function toggleChat() {
   state.chatOpen = !state.chatOpen;
   if (state.chatOpen) {
     dom.chatPanel.classList.remove('hidden');
     dom.chatPanel.classList.add('flex');
+    _updateModelToggle();
     dom.chatInput.focus();
   } else {
     dom.chatPanel.classList.add('hidden');
@@ -1768,11 +1850,22 @@ function addChatMessage(content, type = 'user') {
     wrapper.innerHTML = `<div class="chat-bubble">${escapeHtml(content)}</div>`;
   } else if (type === 'ai') {
     wrapper.className = 'chat-msg-ai';
+    let html;
+    if (typeof window.marked !== 'undefined' && window.marked.parse) {
+      try {
+        html = window.marked.parse(content, { breaks: true, gfm: true });
+      } catch (e) {
+        console.warn('[chat] markdown parse error:', e);
+        html = escapeHtml(content);
+      }
+    } else {
+      html = escapeHtml(content);
+    }
     wrapper.innerHTML = `
       <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">
         <svg class="w-3.5 h-3.5 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
       </div>
-      <div class="chat-bubble">${content}</div>
+      <div class="chat-bubble markdown-body">${html}</div>
     `;
   } else if (type === 'loading') {
     wrapper.className = 'chat-msg-ai';
@@ -1806,6 +1899,7 @@ async function sendChatMessage() {
   const payload = {
     message,
     conversationId: state.conversation_id || null,
+    slot: state.chatSlot || 'pro',
   };
 
   try {
@@ -2253,13 +2347,13 @@ function setupKeyboardShortcuts() {
 // UTILITIES
 // ─────────────────────────────────────────────
 function showLoading() {
-  dom.loadingOverlay.classList.remove('hidden');
-  dom.loadingOverlay.classList.add('flex');
+  dom.btnSendStruct.disabled = true;
+  dom.btnSendStruct.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity=".25"/><path stroke-linecap="round" d="M12 2a10 10 0 019.95 8.9" opacity=".8"/></svg>`;
 }
 
 function hideLoading() {
-  dom.loadingOverlay.classList.add('hidden');
-  dom.loadingOverlay.classList.remove('flex');
+  dom.btnSendStruct.disabled = false;
+  dom.btnSendStruct.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg> Envoyer`;
 }
 
 function shakeElement(el) {

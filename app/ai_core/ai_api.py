@@ -44,6 +44,29 @@ app = APIRouter(prefix="/api/chat")
 
 AI_PROVIDER = _init_provider_from_db()
 
+def _get_provider_for_slot(slot: str):
+    """Lazy-init the right provider for pro/flash slot."""
+    from database.ai_config_mgmt import get_default_config
+    cfg = get_default_config(slot)
+    if not cfg:
+        return AI_PROVIDER  # fallback to default pro
+    url = cfg["base_url"] or "https://api.openai.com/v1"
+    api_key = cfg.get("api_key", "")
+    if cfg["provider_type"] == "lmstudio":
+        url = url.rstrip("/").replace("/api/v1", "/v1")
+        if not url.endswith("/v1"):
+            url = url.rstrip("/") + "/v1"
+        if not api_key:
+            api_key = "not-needed"
+    if not api_key:
+        api_key = _get_fallback_api_key()
+    return AIWrapper(
+        provider_type=cfg["provider_type"],
+        url=url,
+        api_key=api_key,
+        model=cfg["model"] or ("gpt-4o-mini" if slot == "flash" else "gpt-4o"),
+    )
+
 
 
 """
@@ -55,8 +78,9 @@ AI_PROVIDER = _init_provider_from_db()
 
 
 class ChatRequest(BaseModel):
-    message:str 
+    message:str
     conversation_id:str = None
+    slot: str = "pro"  # "pro" or "flash"
 
 
 class UpdateModelRequest(BaseModel):
@@ -146,7 +170,8 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
             system_prompt = get_slash_prompt(forced_tool, message)
             ai_mgmt.add_message({"role": "system", "content": system_prompt}, user_id, conversation_id)
 
-        response = AI_PROVIDER.chat(
+        provider = _get_provider_for_slot(chat_request.slot) if chat_request.slot else AI_PROVIDER
+        response = provider.chat(
             message=message,
             user_id=user_id,
             conversation_id=conversation_id

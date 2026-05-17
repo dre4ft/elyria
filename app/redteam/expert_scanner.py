@@ -66,6 +66,7 @@ class ExpertAIScanner(AIScanner):
                          deterministic_findings, collection_requests, id_list,
                          callbacks, description, explore_rounds, analysis_rounds,
                          stop_check=stop_check)
+        self.expert_mode = True
         self.master_prompt = master_prompt
         self.documentation = documentation
         self.openapi_spec = openapi_spec
