@@ -76,4 +76,4 @@ de commerce de Paris.
 
 ---
 
-**Pour obtenir une licence commerciale, contactez [contact@elyria.io](mailto:contact@elyria.io).**
+**Pour obtenir une licence commerciale, contactez [contact@elyria.pro](mailto:contact@elyria.pro).**
