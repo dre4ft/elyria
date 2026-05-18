@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 OIDC / SSO Connector — modular, provider-agnostic.
 Supports any standard OIDC provider (Google, Azure AD, Keycloak, Authentik…).

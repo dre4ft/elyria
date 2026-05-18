@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 Team management + User Hub API.
 Decentralized governance: any user can create teams, join requests require 80% approval.

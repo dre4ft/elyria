@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """Parse Bruno collection files (.bru format) into Elyria saved requests.
 
 Bruno uses a plain-text format, one .bru file per request:

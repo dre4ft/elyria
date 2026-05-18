@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 AI-powered deep pentest scanner — optimized two-phase design.
 Phase 2a: Flash model batch-explores in parallel (fast, no reasoning).

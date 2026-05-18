@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 import os
 from fastapi import FastAPI, Request,HTTPException
 from fastapi.responses import JSONResponse,HTMLResponse
@@ -37,10 +40,14 @@ async def check_authorization(request: Request, call_next):
     # HTML shells (/app, /workflow, etc.) are served without auth so the SPA
     # can load auth.js — client-side auth handles the rest.
     PUBLIC_ROUTES = {
-        "/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/blueteam",
+        "/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/blueteam"
         "/api/user/login", "/api/user/create", "/api/user/refresh",
         "/api/user/oidc/login", "/api/user/oidc/callback", "/api/user/oidc/config",
     }
+    BLACKLISTED_PATHS = {"/docs", "/openapi.json", "/static/bundle.min.js", "/static/workflow-bundle.min.js",
+                         "/static/pentest-bundle.min.js", "/static/blueteam-bundle.min.js"}
+    if request.url.path in BLACKLISTED_PATHS:
+        return JSONResponse(status_code=403, content={"detail": "Access to this resource is forbidden"})
     path = request.url.path
     if path in PUBLIC_ROUTES or path.startswith("/static/"):
         return await call_next(request)

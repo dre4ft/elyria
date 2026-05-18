@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """Parse Postman v2.0/v2.1 collection JSON into Elyria saved requests.
 
 Postman format:

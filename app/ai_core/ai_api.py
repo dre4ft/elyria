@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 from fastapi import APIRouter, Request, HTTPException
 from core.auth import get_user, require_admin
 from fastapi.responses import JSONResponse

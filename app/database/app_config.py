@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 Centralized enterprise configuration — single source of truth.
 All settings stored in DB. No .env dependency at runtime.

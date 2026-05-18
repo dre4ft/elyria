@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 Pentest campaign API — FastAPI routes for managing pentest campaigns,
 running scans, viewing findings, and generating reports.

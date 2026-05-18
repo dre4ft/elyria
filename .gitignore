@@ -26,7 +26,7 @@ build/
 *.bak
 *.tmp
 *.claude/
-*test.*
+test.*
 *.pem
 *.key
 *.crt

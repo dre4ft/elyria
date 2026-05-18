@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 Pentest module — database operations (campaigns, findings).
 Integrates into the main SQLite database.
