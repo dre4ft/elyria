@@ -22,6 +22,14 @@ from catcher.catcher_api import app as catcher_router
 from database.app_config_api import app as app_config_router
 from auth_users.oidc_api import app as oidc_router
 
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+try:
+    from enterprise.enterprise import app as enterprise_router, public_endpoints
+except ImportError:
+    enterprise_router = None
+
 import jwt
 from database.user_mgmt import get_key
 
@@ -42,8 +50,11 @@ async def check_authorization(request: Request, call_next):
     PUBLIC_ROUTES = {
         "/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/blueteam",
         "/api/user/login", "/api/user/create", "/api/user/refresh",
+        "/api/user/verify-email", "/api/user/resend-code",
         "/api/user/oidc/login", "/api/user/oidc/callback", "/api/user/oidc/config",
     }
+    if enterprise_router:
+        PUBLIC_ROUTES.update(public_endpoints)
     BLACKLISTED_PATHS = {"/docs", "/openapi.json", "/static/bundle.min.js", "/static/workflow-bundle.min.js",
                          "/static/pentest-bundle.min.js", "/static/blueteam-bundle.min.js"}
     if request.url.path in BLACKLISTED_PATHS:
@@ -180,6 +191,9 @@ app.include_router(ai_config_router)
 app.include_router(catcher_router)
 app.include_router(app_config_router)
 app.include_router(oidc_router)
+
+if enterprise_router:
+    app.include_router(enterprise_router)
 
 
 if __name__ == "__main__":

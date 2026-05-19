@@ -11,27 +11,9 @@
       theme: {
         extend: {
           colors: {
-            base: {
-              900: '#0a0f1c',
-              800: '#0f1629',
-              700: '#141c35',
-              600: '#1a2340',
-              500: '#212b4a',
-            },
-            primary: {
-              DEFAULT: '#7c3aed',
-              light: '#8b5cf6',
-              dark: '#6d28d9',
-              50: 'rgba(124,58,237,0.08)',
-              100: 'rgba(124,58,237,0.15)',
-            },
-            accent: {
-              DEFAULT: '#06b6d4',
-              light: '#22d3ee',
-              dark: '#0891b2',
-              50: 'rgba(6,182,212,0.08)',
-              100: 'rgba(6,182,212,0.15)',
-            },
+            base: { 900:'#0a0f1c',800:'#0f1629',700:'#141c35',600:'#1a2340',500:'#212b4a' },
+            primary: { DEFAULT:'#7c3aed',light:'#8b5cf6',dark:'#6d28d9' },
+            accent: { DEFAULT:'#06b6d4',light:'#22d3ee',dark:'#0891b2' },
           },
         },
       },
@@ -42,59 +24,26 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
-    .auth-input {
-      transition: all 0.2s;
-    }
-    .auth-input:focus {
-      border-color: rgba(124, 58, 237, 0.5);
-      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
-    }
-    .auth-tab {
-      position: relative;
-      transition: all 0.2s;
-    }
-    .auth-tab.active {
-      color: #c4b5fd;
-    }
-    .auth-tab.active::after {
-      content: '';
-      position: absolute;
-      bottom: -1px;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: #7c3aed;
-      border-radius: 2px 2px 0 0;
-    }
-    @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(12px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    .auth-card {
-      animation: fadeInUp 0.4s ease;
-    }
-    @keyframes shake {
-      0%, 100% { transform: translateX(0); }
-      20% { transform: translateX(-4px); }
-      40% { transform: translateX(4px); }
-      60% { transform: translateX(-3px); }
-      80% { transform: translateX(3px); }
-    }
+    .auth-input { transition: all 0.2s; }
+    .auth-input:focus { border-color: rgba(124,58,237,0.5); box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
+    .auth-tab { position: relative; transition: all 0.2s; }
+    .auth-tab.active { color: #c4b5fd; }
+    .auth-tab.active::after { content:''; position:absolute; bottom:-1px; left:0; right:0; height:2px; background:#7c3aed; border-radius:2px 2px 0 0; }
+    @keyframes fadeInUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+    .auth-card { animation: fadeInUp 0.4s ease; }
+    @keyframes shake { 0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)} }
     .shake { animation: shake 0.4s ease; }
-    .error-banner {
-      animation: fadeInUp 0.2s ease;
-    }
+    .error-banner { animation: fadeInUp 0.2s ease; }
+    .pwd-strength-bar { height: 3px; border-radius: 2px; transition: all 0.3s; }
   </style>
 </head>
 <body class="h-full bg-base-900 text-gray-200 font-['Inter',sans-serif] flex items-center justify-center overflow-hidden">
 
-  <!-- Background decoration -->
   <div class="absolute inset-0 overflow-hidden pointer-events-none">
     <div class="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-primary/5 blur-3xl"></div>
     <div class="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-accent/5 blur-3xl"></div>
   </div>
 
-  <!-- Auth Card -->
   <div class="auth-card relative z-10 w-full max-w-md mx-4">
 
     <!-- Logo -->
@@ -103,17 +52,12 @@
       <span class="text-lg font-medium tracking-widest text-slate-400">elyria</span>
     </div>
 
-    <!-- Card -->
     <div class="bg-base-800 border border-white/5 rounded-2xl p-6 shadow-2xl shadow-black/30">
 
       <!-- Tabs -->
       <div class="flex border-b border-white/5 mb-6">
-        <button id="tab-login" class="auth-tab active flex-1 pb-3 text-sm font-semibold text-gray-400 hover:text-gray-200 transition-colors">
-          Connexion
-        </button>
-        <button id="tab-register" class="auth-tab flex-1 pb-3 text-sm font-semibold text-gray-400 hover:text-gray-200 transition-colors">
-          Inscription
-        </button>
+        <button id="tab-login" class="auth-tab active flex-1 pb-3 text-sm font-semibold text-gray-400 hover:text-gray-200 transition-colors">Connexion</button>
+        <button id="tab-register" class="auth-tab flex-1 pb-3 text-sm font-semibold text-gray-400 hover:text-gray-200 transition-colors">Inscription</button>
       </div>
 
       <!-- Error Banner -->
@@ -131,25 +75,21 @@
       <!-- ===== LOGIN FORM ===== -->
       <form id="form-login" class="space-y-4">
         <div>
-          <label class="block text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5">Nom d'utilisateur</label>
-          <input id="login-username" type="text" autocomplete="username" placeholder="admin" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none" />
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5">Email</label>
+          <input id="login-email" type="email" autocomplete="email" placeholder="vous@exemple.fr" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none" />
         </div>
         <div>
           <label class="block text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5">Mot de passe</label>
-          <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none font-['JetBrains_Mono']" />
+          <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••••••" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none font-['JetBrains_Mono']" />
         </div>
         <button id="btn-login" type="submit" class="w-full h-11 rounded-xl bg-gradient-to-r from-primary to-primary-light hover:from-primary-light hover:to-primary text-white text-sm font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98]">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/></svg>
           Se connecter
         </button>
 
-        <!-- SSO / OIDC button (hidden by default, shown if OIDC is configured) -->
+        <!-- SSO -->
         <div id="oidc-section" class="hidden">
-          <div class="flex items-center gap-3 my-3">
-            <div class="flex-1 h-px bg-white/5"></div>
-            <span class="text-[9px] text-gray-600 uppercase tracking-wider">ou</span>
-            <div class="flex-1 h-px bg-white/5"></div>
-          </div>
+          <div class="flex items-center gap-3 my-3"><div class="flex-1 h-px bg-white/5"></div><span class="text-[9px] text-gray-600 uppercase tracking-wider">ou</span><div class="flex-1 h-px bg-white/5"></div></div>
           <button id="btn-oidc-login" class="w-full h-11 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98]">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
             <span id="oidc-btn-label">Connexion SSO</span>
@@ -160,161 +100,223 @@
       <!-- ===== REGISTER FORM ===== -->
       <form id="form-register" class="space-y-4 hidden">
         <div>
-          <label class="block text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5">Nom d'utilisateur</label>
-          <input id="reg-username" type="text" autocomplete="username" placeholder="admin" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none" />
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5">Email</label>
+          <input id="reg-email" type="email" autocomplete="email" placeholder="vous@exemple.fr" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none" />
         </div>
         <div>
           <label class="block text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5">Mot de passe</label>
-          <input id="reg-password" type="password" autocomplete="new-password" placeholder="••••••••" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none font-['JetBrains_Mono']" />
+          <input id="reg-password" type="password" autocomplete="new-password" placeholder="12+ caracteres, Maj, min, chiffre, symbole" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none font-['JetBrains_Mono']" />
+          <div id="pwd-strength" class="mt-1.5 hidden space-y-1">
+            <div class="pwd-strength-bar w-full bg-white/5" id="pwd-bar"></div>
+            <p id="pwd-hint" class="text-[10px] text-gray-500"></p>
+          </div>
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5">Confirmer le mot de passe</label>
+          <input id="reg-confirm" type="password" autocomplete="new-password" placeholder="••••••••••••" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none font-['JetBrains_Mono']" />
+          <p id="confirm-hint" class="hidden text-[10px] text-red-400 mt-1">Les mots de passe ne correspondent pas.</p>
         </div>
         <button id="btn-register" type="submit" class="w-full h-11 rounded-xl bg-gradient-to-r from-accent-dark to-accent hover:from-accent hover:to-accent-light text-white text-sm font-semibold shadow-lg shadow-accent/20 hover:shadow-accent/40 transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98]">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0112 21c-2.003 0-3.933-.479-5.627-1.344"/></svg>
-          Créer un compte
+          Creer un compte
         </button>
       </form>
+
+      <!-- ===== RECOVERY WORDS STEP ===== -->
+      <div id="recovery-step" class="hidden space-y-4">
+        <div class="text-center">
+          <div class="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto mb-3">
+            <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
+          </div>
+          <h3 class="text-sm font-medium text-white mb-1">Vos 12 mots de recuperation</h3>
+          <p class="text-xs text-gray-500 mb-2">Ces mots sont la <strong class="text-amber-400">seule facon</strong> de retrouver vos donnees si vous perdez votre mot de passe. Elyria ne peut pas les recuperer.</p>
+        </div>
+        <div id="recovery-words" class="grid grid-cols-3 gap-2 p-4 rounded-xl bg-amber-500/5 border border-amber-500/15 font-['JetBrains_Mono'] text-xs text-amber-200 tracking-wide"></div>
+        <div class="flex items-start gap-2 p-3 rounded-lg bg-red-500/5 border border-red-500/15">
+          <svg class="w-4 h-4 text-red-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+          <p class="text-[10px] text-red-300 leading-relaxed">Ecrivez-les sur papier. Ne les stockez pas dans un fichier. Ne les partagez pas. Ils ne seront <strong>jamais</strong> reaffichés.</p>
+        </div>
+        <button id="btn-recovery-ack" class="w-full h-11 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-sm font-semibold shadow-lg shadow-amber-600/20 transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98]">
+          J'ai bien note mes mots de recuperation
+        </button>
+      </div>
+
+      <!-- ===== VERIFICATION STEP ===== -->
+      <div id="verify-step" class="hidden space-y-4">
+        <div class="text-center">
+          <div class="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mx-auto mb-3">
+            <svg class="w-5 h-5 text-accent-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+          </div>
+          <h3 class="text-sm font-medium text-white mb-1">Verifiez votre email</h3>
+          <p class="text-xs text-gray-500">Un code a 8 caracteres a ete envoye a <strong id="verify-email-display" class="text-slate-400"></strong></p>
+        </div>
+        <div>
+          <input id="verify-code" type="text" maxlength="8" placeholder="Code de verification" class="auth-input w-full h-10 px-4 rounded-xl bg-base-900/60 border border-white/5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none font-['JetBrains_Mono'] text-center tracking-[0.3em] uppercase" />
+        </div>
+        <button id="btn-verify" class="w-full h-11 rounded-xl bg-gradient-to-r from-accent-dark to-accent hover:from-accent hover:to-accent-light text-white text-sm font-semibold shadow-lg shadow-accent/20 transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98]">
+          Verifier mon email
+        </button>
+        <button id="btn-resend" class="w-full h-9 text-[11px] text-gray-500 hover:text-slate-400 transition-colors">Renvoyer le code</button>
+      </div>
     </div>
 
-    <!-- Footer link -->
     <p class="text-center mt-4 text-[11px] text-gray-600">
-      Retour à <a  onclick="navigateTo('/app')" class="text-primary-light hover:text-primary-light/80 transition-colors cursor-pointer">l'application</a>
+      Retour a <a onclick="navigateTo('/app')" class="text-primary-light hover:text-primary-light/80 transition-colors cursor-pointer">l'application</a>
     </p>
   </div>
 
   <script src="static/auth.js"></script>
   <script>
-    // ── Hash SHA-512 du mot de passe via Web Crypto API ──
-    async function hashPassword(password) {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(password);
-      const hashBuffer = await crypto.subtle.digest('SHA-512', data);
-      return Array.from(new Uint8Array(hashBuffer))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-    }
+    var $ = function(s) { return document.querySelector(s); };
+    var tabLogin = $('#tab-login');
+    var tabRegister = $('#tab-register');
+    var formLogin = $('#form-login');
+    var formRegister = $('#form-register');
+    var verifyStep = $('#verify-step');
+    var errorBanner = $('#auth-error');
+    var errorMsg = $('#auth-error-msg');
+    var successBanner = $('#auth-success');
+    var successMsg = $('#auth-success-msg');
+    var btnLogin = $('#btn-login');
+    var btnRegister = $('#btn-register');
+    var btnVerify = $('#btn-verify');
+    var btnResend = $('#btn-resend');
+    var pwdStrength = $('#pwd-strength');
+    var pwdBar = $('#pwd-bar');
+    var pwdHint = $('#pwd-hint');
+    var confirmHint = $('#confirm-hint');
 
-    // ── DOM refs
-    const $ = (s) => document.querySelector(s);
-
-    const tabLogin    = $('#tab-login');
-    const tabRegister = $('#tab-register');
-    const formLogin   = $('#form-login');
-    const formRegister = $('#form-register');
-    const errorBanner = $('#auth-error');
-    const errorMsg    = $('#auth-error-msg');
-    const successBanner = $('#auth-success');
-    const successMsg  = $('#auth-success-msg');
-    const btnLogin    = $('#btn-login');
-    const btnRegister = $('#btn-register');
-
-    // ── Tab switching
-    tabLogin.addEventListener('click', () => {
-      tabLogin.classList.add('active');
-      tabRegister.classList.remove('active');
-      formLogin.classList.remove('hidden');
-      formRegister.classList.add('hidden');
-      hideMessages();
-    });
-
-    tabRegister.addEventListener('click', () => {
-      tabRegister.classList.add('active');
-      tabLogin.classList.remove('active');
-      formRegister.classList.remove('hidden');
-      formLogin.classList.add('hidden');
-      hideMessages();
-    });
-
-    function hideMessages() {
-      errorBanner.classList.add('hidden');
-      successBanner.classList.add('hidden');
-    }
-
-    function showError(msg) {
-      successBanner.classList.add('hidden');
-      errorMsg.textContent = msg;
-      errorBanner.classList.remove('hidden');
-      // Shake the card
-      const card = document.querySelector('.auth-card');
-      card.classList.remove('shake');
-      void card.offsetWidth;
-      card.classList.add('shake');
-    }
-
-    function showSuccess(msg) {
-      errorBanner.classList.add('hidden');
-      successMsg.textContent = msg;
-      successBanner.classList.remove('hidden');
-    }
-
+    function hideMessages() { errorBanner.classList.add('hidden'); successBanner.classList.add('hidden'); }
+    function showError(msg) { successBanner.classList.add('hidden'); errorMsg.textContent=msg; errorBanner.classList.remove('hidden'); shakeCard(); }
+    function showSuccess(msg) { errorBanner.classList.add('hidden'); successMsg.textContent=msg; successBanner.classList.remove('hidden'); }
+    function shakeCard() { var c=document.querySelector('.auth-card'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake'); }
     function setLoading(btn, loading) {
-      if (loading) {
-        btn.disabled = true;
-        btn.dataset.originalHtml = btn.innerHTML;
-        btn.innerHTML = `<span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> Chargement…`;
-      } else {
-        btn.disabled = false;
-        btn.innerHTML = btn.dataset.originalHtml;
-      }
+      if (loading) { btn.disabled=true; btn.dataset.orig=btn.innerHTML; btn.innerHTML='<span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> Patientez...'; }
+      else { btn.disabled=false; btn.innerHTML=btn.dataset.orig; }
     }
 
-    // ── Login
-    formLogin.addEventListener('submit', async (e) => {
-      e.preventDefault();
+    // ── Password strength indicator ──
+    $('#reg-password').addEventListener('input', function() {
+      var pwd = this.value;
+      if (!pwd) { pwdStrength.classList.add('hidden'); return; }
+      pwdStrength.classList.remove('hidden');
+      var score = 0;
+      if (pwd.length >= 12) score++;
+      if (/[A-Z]/.test(pwd)) score++;
+      if (/[a-z]/.test(pwd)) score++;
+      if (/[0-9]/.test(pwd)) score++;
+      if (/[^A-Za-z0-9]/.test(pwd)) score++;
+      var w = (score/5)*100;
+      var color = score<=2 ? '#ef4444' : score<=3 ? '#f59e0b' : score<=4 ? '#22d3ee' : '#22c55e';
+      pwdBar.style.width = w+'%'; pwdBar.style.background = color;
+      pwdHint.textContent = score<=2 ? 'Mot de passe faible' : score<=3 ? 'Moyen — ajoutez un symbole ou majuscule' : score<=4 ? 'Bon — presque !' : 'Mot de passe fort';
+    });
+
+    $('#reg-confirm').addEventListener('input', function() {
+      var match = this.value === $('#reg-password').value;
+      confirmHint.classList.toggle('hidden', match || !this.value);
+      confirmHint.textContent = match ? '' : 'Les mots de passe ne correspondent pas.';
+    });
+
+    // ── Tabs ──
+    tabLogin.addEventListener('click', function() {
+      tabLogin.classList.add('active'); tabRegister.classList.remove('active');
+      formLogin.classList.remove('hidden'); formRegister.classList.add('hidden'); verifyStep.classList.add('hidden');
       hideMessages();
+    });
+    tabRegister.addEventListener('click', function() {
+      tabRegister.classList.add('active'); tabLogin.classList.remove('active');
+      formRegister.classList.remove('hidden'); formLogin.classList.add('hidden'); verifyStep.classList.add('hidden');
+      hideMessages();
+    });
 
-      const username = $('#login-username').value.trim();
-      const password = $('#login-password').value;
-
-      if (!username) { showError("Le nom d'utilisateur est requis."); return; }
-      if (!password) { showError('Le mot de passe est requis.'); return; }
-
-      // Digest = SHA-512 du mot de passe via Web Crypto API
-      const digest = await hashPassword(password);
-
+    // ── Login ──
+    formLogin.addEventListener('submit', function(e) {
+      e.preventDefault(); hideMessages();
+      var email = $('#login-email').value.trim();
+      var password = $('#login-password').value;
+      if (!email) { showError("L'email est requis."); return; }
+      if (!password) { showError("Le mot de passe est requis."); return; }
       setLoading(btnLogin, true);
-      const result = await loginUser(username, digest);
-      setLoading(btnLogin, false);
-
-      if (result.success) {
-        navigateTo('/app');
-      } else {
-        showError(result.error);
-      }
+      loginUser(email, password).then(function(r) {
+        setLoading(btnLogin, false);
+        if (r.success) { navigateTo('/app'); } else { showError(r.error); }
+      });
     });
 
-    // ── Register
-    formRegister.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      hideMessages();
+    var _verificationToken = '';
+    var recoveryStep = $('#recovery-step');
+    var recoveryWords = $('#recovery-words');
+    var btnRecoveryAck = $('#btn-recovery-ack');
 
-      const username = $('#reg-username').value.trim();
-      const password = $('#reg-password').value;
-
-      if (!username) { showError("Le nom d'utilisateur est requis."); return; }
-      if (!password) { showError('Le mot de passe est requis.'); return; }
-
-      const digest = await hashPassword(password);
-
+    // ── Register ──
+    formRegister.addEventListener('submit', function(e) {
+      e.preventDefault(); hideMessages();
+      var email = $('#reg-email').value.trim();
+      var password = $('#reg-password').value;
+      var confirm = $('#reg-confirm').value;
+      if (!email) { showError("L'email est requis."); return; }
+      if (!password) { showError("Le mot de passe est requis."); return; }
+      if (password !== confirm) { showError("Les mots de passe ne correspondent pas."); return; }
+      if (password.length < 12) { showError("Le mot de passe doit contenir au moins 12 caracteres."); return; }
+      if (!/[A-Z]/.test(password)) { showError("Le mot de passe doit contenir une majuscule."); return; }
+      if (!/[a-z]/.test(password)) { showError("Le mot de passe doit contenir une minuscule."); return; }
+      if (!/[0-9]/.test(password)) { showError("Le mot de passe doit contenir un chiffre."); return; }
+      if (!/[^A-Za-z0-9]/.test(password)) { showError("Le mot de passe doit contenir un symbole."); return; }
       setLoading(btnRegister, true);
-      const result = await registerUser(username, digest);
-      setLoading(btnRegister, false);
-
-      if (result.success) {
-        showSuccess('Compte créé avec succès ! Vous pouvez maintenant vous connecter.');
-        // Switch to login tab after a beat
-        setTimeout(() => tabLogin.click(), 1500);
-        // Pre-fill login username
-        $('#login-username').value = username;
-        $('#login-password').value = '';
-        $('#reg-username').value = '';
-        $('#reg-password').value = '';
-
-      } else {
-        showError(result.error);
-      }
+      registerUser(email, password, confirm).then(function(r) {
+        setLoading(btnRegister, false);
+        if (r.success) {
+          _verificationToken = r.verification_token || '';
+          // Afficher les mots de récupération
+          if (r.recovery_words) {
+            var words = r.recovery_words.split(' ');
+            recoveryWords.innerHTML = words.map(function(w, i) {
+              return '<span class="flex items-center gap-1.5"><span class="text-[10px] text-gray-600 w-4 text-right">' + (i+1) + '</span><span>' + w + '</span></span>';
+            }).join('');
+            formRegister.classList.add('hidden');
+            recoveryStep.classList.remove('hidden');
+            showSuccess('Compte cree ! Conservez vos 12 mots precieusement.');
+          } else {
+            formRegister.classList.add('hidden');
+            verifyStep.classList.remove('hidden');
+            $('#verify-email-display').textContent = email;
+            showSuccess('Compte cree ! Verifiez votre email.');
+          }
+        } else { showError(r.error); }
+      });
     });
 
-    // ── Focus first input
-    $('#login-username').focus();
+    // ── Recovery words acknowledged → go to verification ──
+    btnRecoveryAck.addEventListener('click', function() {
+      recoveryStep.classList.add('hidden');
+      verifyStep.classList.remove('hidden');
+      $('#verify-email-display').textContent = $('#reg-email').value.trim();
+    });
+
+    // ── Verify email ──
+    btnVerify.addEventListener('click', function() {
+      var code = $('#verify-code').value.trim().toUpperCase();
+      if (!code || code.length !== 8) { showError("Le code doit faire 8 caracteres."); return; }
+      if (!_verificationToken) { showError("Session de verification expirée. Rechargez la page."); return; }
+      setLoading(btnVerify, true);
+      verifyEmailCode(_verificationToken, code).then(function(r) {
+        setLoading(btnVerify, false);
+        if (r.success) { showSuccess('Email verifie ! Redirection...'); setTimeout(function(){ navigateTo('/app'); }, 1500); }
+        else { showError(r.error); }
+      });
+    });
+
+    btnResend.addEventListener('click', function() {
+      if (!_verificationToken) { showError("Session de verification expirée."); return; }
+      setLoading(btnResend, true);
+      resendCode(_verificationToken).then(function(r) {
+        setLoading(btnResend, false);
+        if (r.success) { showSuccess(r.message || 'Nouveau code envoye.'); } else { showError(r.error); }
+      });
+    });
+
+    $('#login-email').focus();
   </script>
 </body>
 </html>

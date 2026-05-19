@@ -68,7 +68,7 @@ _DEFAULTS = {
     # ── OIDC / SSO ──
     # Pour tester : lancer `python tools/oidc_test_provider.py` puis passer
     # oidc.enabled à "1"
-    "oidc.enabled":           "1",
+    "oidc.enabled":           "0",
     "oidc.provider_name":     "test",
     "oidc.issuer":            "http://localhost:9001",
     "oidc.client_id":         "elyria-test",
@@ -120,18 +120,44 @@ def _seed_defaults():
 _seed_defaults()
 
 
+# ── Keys that contain secrets → encrypted with server wrap key ──
+_SECRET_KEYS = {
+    "db.pg.password", "oidc.client_secret",
+    "ssl.cert_path", "ssl.key_path",
+}
+
+
+def _decrypt_config(row):
+    """If payload_encrypted present, decrypt value from it."""
+    d = dict(row) if not isinstance(row, dict) else row
+    if d.get("payload_encrypted"):
+        from database.crypto_store import open_system
+        data = open_system(d["payload_encrypted"])
+        if data and "value" in data:
+            return data["value"]
+    return d.get("value", "")
+
+
 # ── Public API ────────────────────────────────────────────────────────
 def get(key: str, default: str = "") -> str:
-    """Read a config value. Cached 30s. Falls back to in-memory default, then arg default."""
+    """Read a config value. Cached 30s. Decrypts if secret."""
     from core.cache import cache
     ck = f"cfg:{key}"
     val = cache.get(ck)
     if val is not None:
         return val
     c = _connect()
-    row = c.execute("SELECT value FROM app_config WHERE key=?", (key,)).fetchone()
+    try:
+        row = c.execute("SELECT value, payload_encrypted FROM app_config WHERE key=?", (key,)).fetchone()
+    except sqlite3.OperationalError:
+        # payload_encrypted column doesn't exist yet (before migration)
+        row = c.execute("SELECT value FROM app_config WHERE key=?", (key,)).fetchone()
     c.close()
-    val = row[0] if row else _DEFAULTS.get(key, default)
+    if row:
+        d = dict(row) if not isinstance(row, dict) else row
+        val = _decrypt_config(d) if key in _SECRET_KEYS else d.get("value", "")
+    else:
+        val = _DEFAULTS.get(key, default)
     cache.set(ck, val, ttl=30)
     return val
 
@@ -145,21 +171,30 @@ def get_int(key: str, default: int = 0) -> int:
 
 def set_kv(key: str, value: str):
     c = _connect()
-    c.execute("INSERT OR REPLACE INTO app_config (key,value) VALUES(?,?)", (key, str(value)))
+    payload = ""
+    plaintext = str(value)
+    if key in _SECRET_KEYS and value:
+        from database.crypto_store import seal_system
+        payload = seal_system({"value": str(value)})
+        plaintext = ""  # clear plaintext for secret keys
+    c.execute(
+        "INSERT OR REPLACE INTO app_config (key, value, payload_encrypted) VALUES(?,?,?)",
+        (key, plaintext, payload),
+    )
     c.commit()
     c.close()
-    # Invalidate cache
     from core.cache import cache
     cache.invalidate(f"cfg:{key}")
 
 
 def get_all() -> dict:
     c = _connect()
-    rows = c.execute("SELECT key, value FROM app_config ORDER BY key").fetchall()
+    rows = c.execute("SELECT key, value, payload_encrypted FROM app_config ORDER BY key").fetchall()
     c.close()
     result = dict(_DEFAULTS)
     for r in rows:
-        result[r["key"]] = r["value"]
+        d = dict(r) if not isinstance(r, dict) else dict(r)
+        result[d["key"]] = _decrypt_config(d) if d["key"] in _SECRET_KEYS else d.get("value", "")
     return result
 
 
@@ -253,23 +288,42 @@ def set_provider_toggle(provider_type: str, enabled: bool):
 # ── API keys ──────────────────────────────────────────────────────────
 def get_api_key(name: str) -> str:
     c = _connect()
-    row = c.execute("SELECT key_value FROM app_api_keys WHERE key_name=?", (name,)).fetchone()
+    row = c.execute("SELECT key_value, payload_encrypted FROM app_api_keys WHERE key_name=?", (name,)).fetchone()
     c.close()
-    return row["key_value"] if row else ""
+    if not row:
+        return ""
+    if row["payload_encrypted"]:
+        from database.crypto_store import open_system
+        data = open_system(row["payload_encrypted"])
+        return data.get("key_value", "") if data else ""
+    return row["key_value"] or ""
 
 
 def set_api_key(name: str, value: str):
     c = _connect()
-    c.execute("INSERT OR REPLACE INTO app_api_keys (key_name,key_value) VALUES(?,?)", (name, value))
+    from database.crypto_store import seal_system
+    payload = seal_system({"key_value": value}) if value else ""
+    c.execute(
+        "INSERT OR REPLACE INTO app_api_keys (key_name, key_value, payload_encrypted) VALUES(?,?,?)",
+        (name, "", payload),
+    )
     c.commit()
     c.close()
 
 
 def get_all_api_keys():
     c = _connect()
-    rows = c.execute("SELECT key_name, key_value FROM app_api_keys ORDER BY key_name").fetchall()
+    rows = c.execute("SELECT key_name, key_value, payload_encrypted FROM app_api_keys ORDER BY key_name").fetchall()
     c.close()
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        d = dict(r)
+        if d.get("payload_encrypted"):
+            from database.crypto_store import open_system
+            data = open_system(d["payload_encrypted"])
+            d["key_value"] = data.get("key_value", "") if data else ""
+        result.append(d)
+    return result
 
 
 # ── URL / host utilities ──────────────────────────────────────────────
