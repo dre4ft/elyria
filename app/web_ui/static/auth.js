@@ -1,9 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════
    Elyria — auth.js
-   Token stocké en sessionStorage.
-   La navigation utilise window.location.href (reload complet).
-   initAuth() vérifie le token au chargement de chaque page.
-   Toutes les requêtes API passent par l'intercepteur fetch qui
+   Token stocke en sessionStorage.
+   Navigation via window.location.href (reload complet).
+   initAuth() verifie le token au chargement de chaque page.
+   Toutes les requetes API passent par l'intercepteur fetch qui
    ajoute automatiquement le header Authorization: Bearer.
    ═══════════════════════════════════════════════════════════════ */
 
@@ -12,13 +12,15 @@ var REFRESH_KEY = 'elyria_refresh_token';
 var _token = null;
 var _refreshToken = null;
 var _user = null;
-var _refreshing = false;  // prevent concurrent refresh attempts
+var _refreshing = false;
 var _refreshCount = 0;
 var AUTH_API = {
   login: '/api/user/login',
   register: '/api/user/create',
   logout: '/api/user/logout',
   refresh: '/api/user/refresh',
+  verifyEmail: '/api/user/verify-email',
+  resendCode: '/api/user/resend-code',
 };
 
 function initAuth() {
@@ -52,7 +54,6 @@ function setupFetchInterceptor() {
   var isLoginPage = window.location.pathname.endsWith('/login') || window.location.pathname.endsWith('/login.html');
 
   window.fetch = function (url, options) {
-    // Build request — add auth header for same-origin requests
     if (_token) {
       var isSameOrigin = false;
       try {
@@ -70,18 +71,15 @@ function setupFetchInterceptor() {
     }
 
     return originalFetch(url, options).then(function (response) {
-      // 401 catcher — try silent refresh first, then logout
       if (response.status === 401 && !isLoginPage && _refreshToken && !_refreshing) {
         return trySilentRefresh().then(function (refreshed) {
           if (refreshed) {
-            // Retry original request with new token
             options = options || {};
             options.headers = Object.assign({}, options.headers, {
               Authorization: 'Bearer ' + _token
             });
             return originalFetch(url, options);
           }
-          // Refresh failed — force logout
           _token = null;
           _refreshToken = null;
           _user = null;
@@ -133,7 +131,7 @@ function parseUserFromToken(token) {
     var payload = JSON.parse(atob(parts[1]));
     return {
       userId: payload.sub,
-      username: payload.username || payload.sub,
+      email: payload.email || payload.sub,
       keyId: payload.kid,
     };
   } catch (_e) {
@@ -149,7 +147,7 @@ function initHeaderUser() {
   var el = document.getElementById('header-username');
   var logoutBtn = document.getElementById('btn-logout');
   if (user && el) {
-    el.textContent = user.username || user.userId || '';
+    el.textContent = user.email || user.userId || '';
     el.classList.remove('hidden');
   }
   if (logoutBtn) logoutBtn.addEventListener('click', logout);
@@ -178,46 +176,89 @@ async function logout() {
   window.location.href = '/login';
 }
 
-async function loginUser(username, digest) {
+// ═══════════════════════════════════════════
+// Auth API (email-based, no client digest)
+// ═══════════════════════════════════════════
+
+async function loginUser(email, password) {
   var res = await fetch(AUTH_API.login, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: username, digest: digest }),
+    body: JSON.stringify({ email: email, password: password }),
   });
+  var data = await res.json().catch(function() { return {}; });
   if (!res.ok) {
-    var data = await res.json().catch(function() { return {}; });
-    return { success: false, error: data.detail || 'Identifiants invalides' };
+    return { success: false, error: data.detail || 'Email ou mot de passe invalide.' };
   }
-  var data = await res.json();
   _token = data.token;
   _refreshToken = data.refresh_token || '';
-  _user = { userId: data.user_id, username: data.username };
+  _user = { userId: data.user_id, email: data.email };
   sessionStorage.setItem(SESSION_KEY, _token);
   if (_refreshToken) sessionStorage.setItem(REFRESH_KEY, _refreshToken);
-  return { success: true, token: data.token, refresh_token: _refreshToken, user: _user };
+  return {
+    success: true,
+    token: data.token,
+    refresh_token: _refreshToken,
+    user: _user,
+    recovery_words: data.recovery_words || '',
+  };
 }
 
-async function registerUser(username, digest) {
+async function registerUser(email, password, confirmPassword) {
   var res = await fetch(AUTH_API.register, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: username, digest: digest }),
+    body: JSON.stringify({ email: email, password: password, confirm_password: confirmPassword }),
   });
+  var data = await res.json().catch(function() { return {}; });
   if (!res.ok) {
-    var data = await res.json().catch(function() { return {}; });
-    return { success: false, error: data.detail || "Échec de l'inscription" };
+    return { success: false, error: data.detail || "Echec de l'inscription." };
+  }
+  return {
+    success: true,
+    userId: data.user_id,
+    email: data.email,
+    verification_token: data.verification_token,
+    recovery_words: data.recovery_words || '',
+  };
+}
+
+async function verifyEmailCode(token, code) {
+  var res = await fetch(AUTH_API.verifyEmail, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: token, code: code }),
+  });
+  var data = await res.json().catch(function() { return {}; });
+  if (!res.ok) {
+    return { success: false, error: data.detail || 'Code invalide.' };
   }
   return { success: true };
 }
 
-// ── OIDC / SSO ──
+async function resendCode(token) {
+  var headers = { 'Content-Type': 'application/json' };
+  if (_token) headers['Authorization'] = 'Bearer ' + _token;
+  var res = await fetch(AUTH_API.resendCode, {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify({ token: token }),
+  });
+  var data = await res.json().catch(function() { return {}; });
+  if (!res.ok) {
+    return { success: false, error: data.detail || 'Erreur.' };
+  }
+  return { success: true };
+}
+
+// ═══════════════════════════════════════════
+// OIDC / SSO
+// ═══════════════════════════════════════════
 
 function initOidc() {
-  // Handle OIDC callback: /app#token=xxx&refresh_token=yyy → store tokens
   var hash = window.location.hash;
   if (hash && (hash.startsWith('#token=') || hash.indexOf('token=') > -1)) {
-    // Parse URL-encoded hash params
-    var raw = hash.substring(1); // remove #
+    var raw = hash.substring(1);
     var params = {};
     raw.split('&').forEach(function(p) {
       var parts = p.split('=');
@@ -235,7 +276,6 @@ function initOidc() {
     return;
   }
 
-  // Fetch OIDC config and show SSO button if enabled
   fetch('/api/user/oidc/config')
     .then(function (r) { return r.json(); })
     .then(function (cfg) {
@@ -252,10 +292,9 @@ function initOidc() {
         }
       }
     })
-    .catch(function () { /* OIDC not available, hide button */ });
+    .catch(function () { /* OIDC not available */ });
 }
 
-// initOidc handles both: SSO button on /login, and #token=xxx on /app callback
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initOidc);
 } else {

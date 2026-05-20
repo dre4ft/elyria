@@ -211,9 +211,9 @@ def _scan(params: dict) -> dict:
             if method == "GET":
                 sep = "&" if "?" in url else "?"
                 probe_url = f"{url}{sep}q={payload}"
-                resp = _make_request("GET", probe_url, headers=headers, verify=False)
+                resp = _make_request("GET", probe_url, headers=headers)
             else:
-                resp = _make_request(method, url, headers=headers, body=payload, verify=False)
+                resp = _make_request(method, url, headers=headers, body=payload)
             body_lower = str(resp.get("body", "")).lower()
             found = [i for i in indicators if i in body_lower]
             if found:
@@ -223,7 +223,7 @@ def _scan(params: dict) -> dict:
 
     # No-auth check
     try:
-        anon = _make_request(method, url, verify=False)
+        anon = _make_request(method, url)
         if anon.get("status_code") == 200:
             findings.append({"payload": "No authentication", "status": 200, "indicators": ["accessible without auth"]})
     except Exception:
@@ -295,7 +295,7 @@ headers = {{
 resp = requests.{method.lower()}(
     "{url}",{b}
     headers=headers,
-    verify=False,
+    verify=True,
 )
 print(resp.status_code, resp.text[:500])"""
     elif language == "javascript":

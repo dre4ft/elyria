@@ -8,7 +8,10 @@ Blue Team API — FastAPI routes for SSDLC security analysis profiles and report
 import json
 import threading
 
+from core.logging import get_logger
 from fastapi import APIRouter, Request, HTTPException
+
+_log = get_logger("blueteam.api")
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from redteam.scan_events import publish, cleanup as events_cleanup
 
@@ -236,7 +239,7 @@ Le rapport original du pentest est fourni dans la documentation ci-dessous."""
             _running.discard(pid)
             events_cleanup(pid)
 
-    print(f"[BLUETEAM] Starting remediation analysis for pentest import, profile={pid}", flush=True)
+    _log.info(f"Starting remediation analysis for pentest import, profile={pid}")
     thread = threading.Thread(target=run_analysis, daemon=True)
     thread.start()
 
@@ -271,6 +274,8 @@ async def api_start_analysis(profile_id: str, request: Request):
         spec_url = p.get("openapi_spec_url", "")
         if spec_url:
             try:
+                from core.security import validate_url_or_raise
+                validate_url_or_raise(spec_url)
                 import requests as req
                 r = req.get(spec_url, timeout=15, allow_redirects=True)
                 if r.status_code == 200:
@@ -356,7 +361,7 @@ async def api_start_analysis(profile_id: str, request: Request):
             _running.discard(profile_id)
             events_cleanup(profile_id)
 
-    print(f"[BLUETEAM] Starting analysis thread for profile {profile_id}, model={pro_model}", flush=True)
+    _log.info(f"Starting analysis thread for profile {profile_id}, model={pro_model}")
     thread = threading.Thread(target=run_analysis, daemon=True)
     thread.start()
 

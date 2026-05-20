@@ -24,12 +24,16 @@ class AIWrapper:
         self.rounds = tools_rounds
 
     def chat(self, message: str, user_id: str, conversation_id: str = None):
+        from ai_core.prompt_guard import sanitize_prompt
+        message, flagged = sanitize_prompt(message)
         conversation_id = ai_mgmt.add_message(self.message_wrapper(message), user_id, conversation_id)
         if not conversation_id:
             raise ValueError("Failed to save message")
 
         for _ in range(self.rounds):
             messages = ai_mgmt.get_conversation_messages(conversation_id=conversation_id)
+            # Sanitize all messages in history (defense in depth)
+            messages = [{**m, "content": sanitize_prompt(m.get("content", ""))[0]} for m in messages]
             ai_return = self.provider.chat(messages, tools=self.tools)
 
             assistant_msg = {"role": "assistant", "content": ai_return["content"]}
@@ -70,6 +74,7 @@ class AIWrapper:
                 return {"conversation_id": conversation_id, "response": ai_return}
 
         messages = ai_mgmt.get_conversation_messages(conversation_id=conversation_id)
+        messages = [{**m, "content": sanitize_prompt(m.get("content", ""))[0]} for m in messages]
         ai_return = self.provider.chat(messages)
         final_msg = {"role": "assistant", "content": ai_return["content"]}
         if ai_return.get("reasoning_content"):

@@ -45,6 +45,18 @@ def init_ai_config():
     conn.close()
 
 
+def _decrypt_api_key(row_dict):
+    """If payload_encrypted is present, extract api_key from it. Fallback to plaintext."""
+    if not row_dict:
+        return row_dict
+    if row_dict.get("payload_encrypted"):
+        from database.crypto_store import open_system
+        data = open_system(row_dict["payload_encrypted"])
+        if data and "api_key" in data:
+            row_dict["api_key"] = data["api_key"]
+    return row_dict
+
+
 def list_provider_configs(slot=None):
     conn = _connect()
     if slot:
@@ -55,14 +67,14 @@ def list_provider_configs(slot=None):
     else:
         rows = conn.execute("SELECT * FROM ai_providers ORDER BY slot, is_default DESC, updated_at DESC").fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    return [_decrypt_api_key(dict(r)) for r in rows]
 
 
 def get_provider_config(config_id):
     conn = _connect()
     row = conn.execute("SELECT * FROM ai_providers WHERE config_id=?", (config_id,)).fetchone()
     conn.close()
-    return dict(row) if row else None
+    return _decrypt_api_key(dict(row)) if row else None
 
 
 def get_default_config(slot):
@@ -73,7 +85,7 @@ def get_default_config(slot):
         (slot,),
     ).fetchone()
     conn.close()
-    return dict(row) if row else None
+    return _decrypt_api_key(dict(row)) if row else None
 
 
 def save_provider_config(slot, name, provider_type, base_url, api_key="", model="", is_default=False):
@@ -82,9 +94,12 @@ def save_provider_config(slot, name, provider_type, base_url, api_key="", model=
     now = _now()
     if is_default:
         conn.execute("UPDATE ai_providers SET is_default=0 WHERE slot=?", (slot,))
+    # Encrypt api_key into payload_encrypted (system-level)
+    from database.crypto_store import seal_system
+    payload = seal_system({"api_key": api_key}) if api_key else ""
     conn.execute(
-        "INSERT INTO ai_providers (config_id, slot, name, provider_type, base_url, api_key, model, is_default, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (cid, slot, name, provider_type, base_url, api_key, model, int(is_default), now, now),
+        "INSERT INTO ai_providers (config_id, slot, name, provider_type, base_url, api_key, model, is_default, created_at, updated_at, payload_encrypted) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (cid, slot, name, provider_type, base_url, "", model, int(is_default), now, now, payload),
     )
     conn.commit()
     conn.close()
@@ -102,10 +117,17 @@ def update_provider_config(config_id, **kwargs):
         conn.execute("UPDATE ai_providers SET is_default=0 WHERE slot=?", (cfg["slot"],))
     sets = ["updated_at=?"]
     args = [now]
-    for k in ("name", "slot", "provider_type", "base_url", "api_key", "model", "is_default"):
+    for k in ("name", "slot", "provider_type", "base_url", "model", "is_default"):
         if k in kwargs and kwargs[k] is not None:
             sets.append(f"{k}=?")
             args.append(kwargs[k])
+    # Encrypt api_key if provided
+    if "api_key" in kwargs and kwargs["api_key"] is not None:
+        from database.crypto_store import seal_system
+        sets.append("payload_encrypted=?")
+        args.append(seal_system({"api_key": kwargs["api_key"]}) if kwargs["api_key"] else "")
+        sets.append("api_key=?")
+        args.append("")  # clear plaintext
     args.append(config_id)
     conn.execute(f"UPDATE ai_providers SET {', '.join(sets)} WHERE config_id=?", args)
     conn.commit()

@@ -13,6 +13,28 @@ _db_lock = Lock()
 _IS_INIT = False
 
 
+INIT_COLLECTION_KEYS = """
+CREATE TABLE IF NOT EXISTS collection_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    collection_id TEXT UNIQUE NOT NULL,
+    encrypted_dek TEXT NOT NULL,
+    team_id TEXT DEFAULT ''
+)
+"""
+
+INIT_VERIFICATION_TOKENS = """
+CREATE TABLE IF NOT EXISTS verification_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT UNIQUE NOT NULL,
+    email TEXT NOT NULL,
+    code TEXT NOT NULL,
+    resend_count INTEGER DEFAULT 0,
+    last_resend_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+)
+"""
+
 INIT_AI_MESSAGES = """
 CREATE TABLE IF NOT EXISTS ai_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,6 +187,51 @@ def _migrate_oidc_columns(cursor, conn):
     conn.commit()
 
 
+def _migrate_crypto_v2_columns(cursor, conn):
+    """Add Argon2id + envelope encryption columns (v2 crypto architecture)."""
+    crypto_cols = [
+        ("salt_pw", "TEXT DEFAULT ''"),
+        ("salt_auth", "TEXT DEFAULT ''"),
+        ("salt_rec", "TEXT DEFAULT ''"),
+        ("auth_verifier", "TEXT DEFAULT ''"),
+        ("master_key_blob_pw", "TEXT DEFAULT ''"),
+        ("master_key_blob_rec", "TEXT DEFAULT ''"),
+        ("recovery_words_shown", "INTEGER DEFAULT 0"),
+        ("pending_recovery", "TEXT DEFAULT ''"),
+        ("failed_login_attempts", "INTEGER DEFAULT 0"),
+        ("locked_until", "TEXT DEFAULT ''"),
+    ]
+    existing = _table_columns(cursor, "users")
+    for col_name, col_def in crypto_cols:
+        if col_name not in existing:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+    # Add wrapped_tvk to team_users
+    _safe_add_column(cursor, "team_users", "wrapped_tvk", "TEXT DEFAULT ''")
+    # Add payload_encrypted to tables storing sensitive data
+    for tbl in ["requests", "ai_messages", "pentest_scan_profiles", "pentest_campaigns",
+                "pentest_findings", "pentest_scan_logs", "blueteam_reports",
+                "ai_providers", "app_config", "app_api_keys", "proxies"]:
+        _safe_add_column(cursor, tbl, "payload_encrypted", "TEXT DEFAULT ''")
+    conn.commit()
+
+
+def _migrate_email_verification_columns(cursor, conn):
+    """Add email + verification columns to users table (safe to call multiple times)."""
+    email_cols = [
+        ("email", "TEXT DEFAULT ''"),
+        ("email_verified", "INTEGER DEFAULT 0"),
+        ("verification_code", "TEXT DEFAULT ''"),
+        ("verification_code_expiry", "TEXT DEFAULT ''"),
+    ]
+    existing = _table_columns(cursor, "users")
+    for col_name, col_def in email_cols:
+        if col_name not in existing:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+    # Make email unique if not already (SQLite doesn't support ALTER ADD CONSTRAINT,
+    # uniqueness is enforced at application level)
+    conn.commit()
+
+
 def init_db():
     global _IS_INIT
     if _IS_INIT:
@@ -180,9 +247,13 @@ def init_db():
         c.execute(INIT_FOLDERS)
         c.execute(INIT_SAVED_REQUESTS)
         c.execute(INIT_KEYS)
+        c.execute(INIT_VERIFICATION_TOKENS)
+        c.execute(INIT_COLLECTION_KEYS)
         conn.commit()
         # ── Migrations: add columns that didn't exist in older schemas ──
         _migrate_oidc_columns(c, conn)
         _migrate_crypto_columns(c, conn)
+        _migrate_crypto_v2_columns(c, conn)
+        _migrate_email_verification_columns(c, conn)
         conn.close()
         _IS_INIT = True

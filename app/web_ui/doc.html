@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Elyria — Documentation</title>
   <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg" />
+  <link rel="alternate icon" type="image/x-icon" href="/static/icons/favicon.ico" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -173,6 +174,7 @@
 
   <script src="static/auth.js"></script>
   <script>
+    const esc = s => { const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; };
     // ── State ──
     let currentLang = 'fr';
 
@@ -241,7 +243,7 @@
               <svg class="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
             </div>
             <p class="text-sm text-gray-500">${currentLang === 'en' ? 'Unable to load documentation.' : 'Impossible de charger la documentation.'}</p>
-            <p class="text-xs text-gray-600 mt-1">${err.message}</p>
+            <p class="text-xs text-gray-600 mt-1">${esc(err.message)}</p>
           </div>
         `;
       }

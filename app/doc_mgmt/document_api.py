@@ -4,10 +4,14 @@
 from fastapi import APIRouter, Request, HTTPException, File, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-import json 
+import json
 from yaml import safe_load
-from doc_mgmt.openapi import parser as openapi_parser 
-from doc_mgmt.arazzo import parser as arazzo_parser 
+
+from core.logging import get_logger
+from doc_mgmt.openapi import parser as openapi_parser
+from doc_mgmt.arazzo import parser as arazzo_parser
+
+_log = get_logger("doc_mgmt")
 
 app = APIRouter(prefix="/api/document")
 
@@ -63,9 +67,11 @@ async def upload(request : Request, target_url: str="http://localhost:9000", tea
                     else:
                         openapi_specs[openapi_file.filename] = safe_load(ofc)
                 except Exception as e:
-                    print(f"OpenAPI file parse error: {e}")
+                    _log.exception(f"OpenAPI file parse error")
             elif openapi_url:
                 try:
+                    from core.security import validate_url_or_raise
+                    validate_url_or_raise(openapi_url)
                     import requests as req
                     r = req.get(openapi_url, timeout=10)
                     if r.status_code == 200:
@@ -74,7 +80,7 @@ async def upload(request : Request, target_url: str="http://localhost:9000", tea
                         except Exception:
                             openapi_specs[openapi_url] = safe_load(r.text)
                 except Exception as e:
-                    print(f"OpenAPI URL fetch error: {e}")
+                    _log.exception(f"OpenAPI URL fetch error")
 
             parsed = arazzo_parser.parse_arazzo(
                 content_as_dict,
@@ -91,7 +97,7 @@ async def upload(request : Request, target_url: str="http://localhost:9000", tea
 
         return JSONResponse(status_code=400, content={"detail": "Unrecognized format — not OpenAPI or Arazzo"})
     except Exception as e:
-        print(e)
+        _log.exception(f"document creation error")
         raise HTTPException(status_code=500, detail="Import failed")
 
 

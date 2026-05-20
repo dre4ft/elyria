@@ -34,4 +34,4 @@ votre usage spécifique.
 ## Contact
 
 Pour obtenir une licence commerciale ou toute question :
-[contact@elyria.io](mailto:contact@elyria.io)
+[contact@elyria.pro](mailto:contact@elyria.io)

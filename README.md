@@ -14,13 +14,11 @@
 
 **IA Copilot** — Agent IA intégré (OpenAI, Anthropic, Ollama, LM Studio, DeepSeek). Création de collections, exécution de tests, analyse de résultats. Function calling natif.
 
-**Catcher** — Proxy intercepteur HTTP. Forward, Drop, Load dans le builder. Historique avec réponses. Polling variable (500ms–10s).
-
 **Collections** — Arborescence dossiers/requêtes. Multi-teams avec permissions. Import OpenAPI, Postman. Export curl.
 
 **Éditeur JSON** — Auto-pairing `{}[]""`, validation en temps réel, formatage (Ctrl+Shift+F) sur tous les champs JSON.
 
-**Auth** — Login/password (SHA-512 → SHA3-512 + sel, JWT HS512 éphémère). Connecteur OIDC modulaire (Google, Azure, Keycloak…) avec découverte automatique et provisioning JIT.
+**Auth** — Login/email, Argon2id, JWT HS512 éphémère, 12 mots de récupération BIP39. Envelope encryption (AES-256-GCM) — master key + DEK par collection. Zero-knowledge at rest : DB dump = données illisibles. Connecteur OIDC modulaire (Google, Azure, Keycloak…).
 
 ---
 
@@ -43,38 +41,28 @@ Démarre sur `https://127.0.0.1:8000`. Hot-reload activé.
 
 ## Configuration
 
-Tout en base de données — pas de `.env`. Interface **Hub > Admin Config** ou API :
+Le fichier **`elyria.cfg`** à la racine remplace le `.env`. C'est un INI standard :
 
-```json
-{
-  "settings": {
-    "app.host": "127.0.0.1",     "app.port": "8000",
-    "catcher.port": "6767",       "proxy.xor_key": "elyria-proxy-k",
-    "db.backend": "sqlite",       "db.sqlite.path": "database.db"
-  },
-  "fqdn_whitelist": [
-    {"category": "fetch", "pattern": "localhost"},
-    {"category": "proxy", "pattern": "localhost"},
-    {"category": "llm",   "pattern": "api.openai.com"}
-  ],
-  "provider_toggles": [
-    {"provider_type": "openai", "enabled": 1},
-    {"provider_type": "ollama", "enabled": 1}
-  ],
-  "api_keys": [{"key_name": "openai_api_key", "key_value": "***"}]
-}
+```ini
+[server]     host, port, reload
+[ssl]        cert_path, key_path, verify
+[database]   backend (sqlite/postgres), pg_*
+[logging]    level (DEBUG/INFO/WARNING/ERROR), dir
+[oidc]       enabled, issuer, client_id, client_secret
+[security]   server_wrap_key, blocked_hosts
 ```
+
+Override par variable d'environnement : `ELYRIA_SERVER_PORT=9000` → `[server].port`.
 
 ### SSO OIDC
 
-```json
-{
-  "oidc.enabled": "1",
-  "oidc.issuer": "https://accounts.google.com",
-  "oidc.client_id": "…",
-  "oidc.client_secret": "…",
-  "oidc.button_label": "Google"
-}
+Dans `elyria.cfg`, section `[oidc]` :
+```ini
+enabled = 1
+issuer = https://accounts.google.com
+client_id = …
+client_secret = …
+button_label = Google
 ```
 
 Test local : `python tools/oidc_test_provider.py` → user `alice` / `password123`.
@@ -85,8 +73,10 @@ Test local : `python tools/oidc_test_provider.py` → user `alice` / `password12
 
 - **SQLite** embarqué (PostgreSQL supporté)
 - **Python** pur — moins de 100 Mo RAM au repos
-- **JWT HS512** éphémères (clés en DB, durée 1h, rotation par session)
+- **Argon2id** + envelope encryption (AES-256-GCM) — master key, DEK, TVK
+- **JWT HS512** éphémères (clés dérivées HMAC, durée 1h, rotation par session)
 - **Static files** servis par FastAPI/Starlette
+- **153 tests automatisés** — architecture crypto, OWASP Top 10, garde-fous
 
 ---
 
@@ -109,7 +99,7 @@ Elyria tourne sur un **Raspberry Pi 4 (carte SD 64 Go)** derrière ma box.
 - **LLM rapide / tests** → provider externe (OpenAI, Anthropic, DeepSeek)
 - **LLM local / hors-ligne** → **GPT-OSS-20B** via LM Studio sur mon poste principal — le Pi appelle `http://<ip-du-poste>:1234/v1`
 
-Le Pi gère le serveur, la DB, le proxy Catcher, et les workflows. L'inférence locale reste sur la machine principale qui a le GPU. Zero lag en usage solo.
+Le Pi gère le serveur, la DB, et les workflows. L'inférence locale reste sur la machine principale qui a le GPU. Zero lag en usage solo.
 
 ---
 

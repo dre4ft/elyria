@@ -282,8 +282,10 @@ async def api_start_scan(profile_id: str, request: Request):
     spec_content = _spec_cache.pop(profile_id, None)
     if not spec_content:
         spec_url = p.get("openapi_spec_url", "")
-        if spec_url and _is_safe_url(spec_url):
+        if spec_url:
             try:
+                from core.security import validate_url_or_raise
+                validate_url_or_raise(spec_url)
                 import requests as req
                 spec_resp = req.get(spec_url, timeout=15, allow_redirects=True)
                 if spec_resp.status_code == 200:

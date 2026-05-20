@@ -464,24 +464,57 @@ Le Hub (accessible via l'icône utilisateur dans le header) centralise la gestio
 - **Suivre/Ne plus suivre** : les teams suivies apparaissent dans vos filtres de collections, workflows et pentest.
 - **Copier l'ID** : cliquez sur l'icône de copie à côté du Team ID.
 
-### 11.2. Admin Config
+### 11.2. Configuration serveur (`elyria.cfg`)
 
-Toute la configuration d'Elyria est centralisée dans **Hub > Admin Config**. Plus besoin de fichier `.env`.
+Elyria se configure via le fichier **`elyria.cfg`** à la racine du projet. C'est un fichier INI standard, sans dépendance `.env`.
 
-**Settings** : clés/valeurs modifiables en direct :
-- `app.host`, `app.port` — binding du serveur
-- `catcher.port` — port du proxy intercepteur
-- `ssl.cert_path`, `ssl.key_path` — certificats TLS
-- `db.backend`, `db.pg.*` — base de données (SQLite ou PostgreSQL)
-- `proxy.xor_key` — clé de chiffrement du proxy dans le JWT
+**Sections disponibles :**
 
-**FQDN Whitelist** : contrôle quels hosts sont autorisés par catégorie (`fetch`, `proxy`, `llm`). Supporte les wildcards `*.domaine.com`.
+```ini
+[server]
+host = 127.0.0.1     # Adresse d'écoute
+port = 8000          # Port
+reload = 1           # Hot reload (0 en production)
 
-**Provider Toggles** : active/désactive des types de providers LLM (`openai`, `ollama`, `lmstudio`, `anthropic`, `deepseek`).
+[ssl]
+cert_path = cert.pem # Chemin certificat TLS
+key_path = key.pem   # Chemin clé privée
+verify = 0           # Vérification SSL sortant (1 en production)
 
-**API Keys** : stockées chiffrées en base. La clé `openai_api_key` sert de fallback quand un provider n'a pas sa propre clé configurée.
+[database]
+backend = sqlite     # sqlite ou postgres
+sqlite_path = database.db
+pg_host = localhost  # PostgreSQL (si backend=postgres)
+pg_port = 5432
+pg_database = elyria
+pg_user = elyria
+pg_password = elyria
 
-Modification via l'UI ou l'API : `PUT /api/admin/config/settings/{key}`.
+[logging]
+level = INFO         # DEBUG, INFO, WARNING, ERROR
+dir = logs
+
+[oidc]
+enabled = 0          # 1 pour activer le SSO
+provider_name =      # Nom du provider
+issuer =             # URL de découverte OIDC
+client_id =          # Client ID
+client_secret =      # Client Secret
+
+[security]
+server_wrap_key =    # Clé de chiffrement (64 hex chars). Générée si absente.
+blocked_hosts = metadata.google.internal,169.254.169.254,host.docker.internal
+```
+
+**Ordre de priorité :**
+1. Variables d'environnement `ELYRIA_*` (ex: `ELYRIA_SERVER_PORT=9000`)
+2. Base de données `app_config` (modifiable via l'API admin)
+3. Fichier `elyria.cfg`
+4. Valeurs par défaut codées en dur
+
+**Override par env var** : le format est `ELYRIA_SECTION_KEY`. Exemples :
+- `ELYRIA_SERVER_PORT=9000` → `[server].port`
+- `ELYRIA_DATABASE_PG_PASSWORD=secret` → `[database].pg_password`
 
 ### 11.3. Proxy
 

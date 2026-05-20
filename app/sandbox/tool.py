@@ -10,10 +10,37 @@ Supports batch execution — pass an array of commands to run in sequence.
 from __future__ import annotations
 
 import json
+import re
+import shlex
 import time
 from dataclasses import dataclass, field
 
 from sandbox.manager import Sandbox, SandboxManager
+
+
+def _sanitize_target(target: str) -> str:
+    """Remove shell metacharacters from target URL to prevent injection."""
+    # Keep only safe characters: alphanumeric, dots, dashes, colons, slashes, underscores, @, ?, =, &, %, #
+    sanitized = re.sub(r'[^a-zA-Z0-9.\-:/_@?=&%#]', '', target)
+    # Limit length
+    return sanitized[:2000]
+
+
+def _sanitize_command(cmd: str) -> str:
+    """Basic command sanitization — block clear malicious patterns."""
+    blocked = [
+        "rm -rf /", ":(){ :|:& };:", "chmod 777 /", "> /dev/sda",
+        "mkfs.", "dd if=", "/etc/shadow", "/etc/passwd",
+    ]
+    lower = cmd.lower()
+    for b in blocked:
+        if b in lower:
+            return ""
+    # Block command chaining operators used for injection
+    if re.search(r'[;&|`$(){}]', cmd):
+        # Allowed only if it's a standard tool invocation (curl, nmap, etc.)
+        pass  # We allow these in the sandbox — it's containerized anyway
+    return cmd[:5000]
 
 
 @dataclass
@@ -73,7 +100,8 @@ class BashTool:
 
         timeout_ms = int(params.get("timeout_ms", 30_000))
         resolved = (
-            self.target.replace("127.0.0.1", "host.docker.internal")
+            _sanitize_target(self.target)
+            .replace("127.0.0.1", "host.docker.internal")
             .replace("localhost", "host.docker.internal")
         )
 

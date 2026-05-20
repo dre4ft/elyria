@@ -18,20 +18,69 @@ from database.workflow_graph_api import app as workflow_graph_router
 from database.proxy_api import app as proxy_router
 from database.teams_api import app as teams_router
 from ai_core.ai_config_api import app as ai_config_router
-from catcher.catcher_api import app as catcher_router
-from database.app_config_api import app as app_config_router
 from auth_users.oidc_api import app as oidc_router
+
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+try:
+    from enterprise.enterprise import app as enterprise_router, public_endpoints
+except ImportError:
+    enterprise_router = None
 
 import jwt
 from database.user_mgmt import get_key
 
 app = FastAPI()
 
+# ── CORS ──
+if os.getenv("ELYRIA_PRODUCTION", "") == "1":
+    _cors_origins = ["https://*.elyria.pro"]
+else:
+    _cors_origins = ["http://localhost:*", "http://127.0.0.1:*"]
+
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
 # ── Audit logging middleware (outermost — runs first, finishes last) ──
 from core.audit import audit_middleware, init_audit_db
 init_audit_db()
 
 app.middleware("http")(audit_middleware)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    # Anti-MIME sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    # Anti-clickjacking
+    response.headers["X-Frame-Options"] = "DENY"
+    # Referrer policy
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # Disable unused browser features
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # HSTS (browsers ignore on HTTP, safe to always set)
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # CSP — script-src allows Tailwind CDN + inline (required by the SPA)
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "connect-src 'self'; "
+        "img-src 'self' data:; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+    return response
 
 
 @app.middleware("http")
@@ -42,8 +91,12 @@ async def check_authorization(request: Request, call_next):
     PUBLIC_ROUTES = {
         "/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/blueteam",
         "/api/user/login", "/api/user/create", "/api/user/refresh",
+        "/api/user/verify-email", "/api/user/resend-code",
+        "/api/user/reset-password", "/api/user/reset-password/confirm",
         "/api/user/oidc/login", "/api/user/oidc/callback", "/api/user/oidc/config",
     }
+    if enterprise_router:
+        PUBLIC_ROUTES.update(public_endpoints)
     BLACKLISTED_PATHS = {"/docs", "/openapi.json", "/static/bundle.min.js", "/static/workflow-bundle.min.js",
                          "/static/pentest-bundle.min.js", "/static/blueteam-bundle.min.js"}
     if request.url.path in BLACKLISTED_PATHS:
@@ -65,8 +118,20 @@ async def check_authorization(request: Request, call_next):
         return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
 
     try:
-        unverified = jwt.decode(token, options={"verify_signature": False})
-        kid = unverified.get("kid")
+        # Extract KID: header first (RFC 7515), fallback to payload (legacy)
+        import base64 as _b64, json as _json
+        kid = None
+        parts = token.split(".")
+        for idx in (0, 1):
+            raw = parts[idx]
+            raw += "=" * (4 - len(raw) % 4)
+            try:
+                obj = _json.loads(_b64.urlsafe_b64decode(raw))
+                kid = obj.get("kid")
+                if kid:
+                    break
+            except Exception:
+                continue
         if not kid:
             return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
         secret = get_key(kid)
@@ -112,7 +177,7 @@ def _serve_html(filename: str) -> HTMLResponse:
             html = re.sub(r'<link[^>]*fonts\.googleapis\.com[^>]*>', '', html)
             html = re.sub(r'<link rel="stylesheet" href="static/styles\.css"[^>]*>',
                           f'<link rel="stylesheet" href="static/bundle.min.css?v={v}">', html)
-            for script_src in ["static/auth.js", "static/app.js", "static/catcher.js",
+            for script_src in ["static/auth.js", "static/app.js",
                                "static/workflow.js", "static/pentest.js", "static/blueteam.js",
                                "static/doc.js", "static/hub.js"]:
                 html = re.sub(rf'<script src="{script_src}"[^>]*></script>', '', html)
@@ -177,26 +242,27 @@ app.include_router(workflow_graph_router)
 app.include_router(proxy_router)
 app.include_router(teams_router)
 app.include_router(ai_config_router)
-app.include_router(catcher_router)
-app.include_router(app_config_router)
 app.include_router(oidc_router)
+
+if enterprise_router:
+    app.include_router(enterprise_router)
 
 
 if __name__ == "__main__":
     import os
     import uvicorn
-    from database.app_config import get
+    from core.config import get, get_int, get_bool
 
-    cert = get("ssl.cert_path")
-    key = get("ssl.key_path")
+    cert = get("ssl", "cert_path")
+    key = get("ssl", "key_path")
     ssl_kwargs = {}
     if cert and key and os.path.isfile(cert) and os.path.isfile(key):
         ssl_kwargs = {"ssl_certfile": cert, "ssl_keyfile": key}
 
     uvicorn.run(
         "entrypoint:app",
-        host=get("app.host", "127.0.0.1"),
-        port=int(get("app.port", "8000")),
-        reload=get("app.reload", "0") == "1",
+        host=get("server", "host", "127.0.0.1"),
+        port=get_int("server", "port", 8000),
+        reload=get_bool("server", "reload", False),
         **ssl_kwargs,
     )
