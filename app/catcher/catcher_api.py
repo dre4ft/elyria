@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 Catcher — Burp-like HTTP forward proxy interceptor.
 External tools (browser, Postman) connect to localhost:8080.

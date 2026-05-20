@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 AI Provider configuration API — flash and pro slots, multi-provider.
 """
@@ -191,7 +194,7 @@ async def api_get_default_slot(request: Request, slot: str):
     get_user(request)
     cfg = get_default_config(slot)
     if not cfg:
-        raise HTTPException(404, f"No default provider for slot '{slot}'")
+        raise HTTPException(404, "No default provider configured for this slot")
     return _mask_key(cfg)
 
 
@@ -263,7 +266,7 @@ async def api_list_models(request: Request, config_id: str):
                 ids.append(str(m))
         return {"models": ids}
     except Exception as e:
-        raise HTTPException(500, f"Failed to list models: {str(e)}")
+        raise HTTPException(500, "Failed to list models")
 
 
 @app.get("/{config_id}")

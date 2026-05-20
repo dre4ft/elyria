@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 64" fill="none">
+  <!-- Toile -->
+  <g transform="translate(0,0)">
+    <polygon points="62,32 47,57.98 17,57.98 2,32 17,6.02 47,6.02"
+      stroke="#94a3b8" stroke-width="2" stroke-linejoin="round"/>
+    <line x1="47" y1="6.02" x2="62" y2="32"
+      stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4"/>
+
+    <line x1="32" y1="32" x2="62" y2="32" stroke="#94a3b8" stroke-width="1.5"/>
+    <line x1="32" y1="32" x2="47" y2="57.98" stroke="#94a3b8" stroke-width="1.5"/>
+    <line x1="32" y1="32" x2="17" y2="57.98" stroke="#94a3b8" stroke-width="1.5"/>
+    <line x1="32" y1="32" x2="2" y2="32" stroke="#94a3b8" stroke-width="1.5"/>
+    <line x1="32" y1="32" x2="17" y2="6.02" stroke="#94a3b8" stroke-width="1.5"/>
+    <line x1="32" y1="32" x2="47" y2="6.02" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 3.5"/>
+
+    <polygon points="54,32 43,51.05 21,51.05 10,32 21,12.95 43,12.95"
+      stroke="#94a3b8" stroke-width="1.2" stroke-linejoin="round"/>
+    <line x1="43" y1="12.95" x2="54" y2="32"
+      stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4 3"/>
+
+    <polygon points="46,32 39,44.12 25,44.12 18,32 25,19.88 39,19.88"
+      stroke="#94a3b8" stroke-width="1" stroke-linejoin="round"/>
+
+    <polygon points="39,32 35.5,38.06 28.5,38.06 25,32 28.5,25.94 35.5,25.94"
+      stroke="#94a3b8" stroke-width="0.8" stroke-linejoin="round"/>
+
+    <circle cx="54" cy="32" r="1.2" fill="#64748b"/>
+    <circle cx="43" cy="51.05" r="1.2" fill="#64748b"/>
+    <circle cx="21" cy="51.05" r="1.2" fill="#64748b"/>
+    <circle cx="10" cy="32" r="1.2" fill="#64748b"/>
+    <circle cx="21" cy="12.95" r="1.2" fill="#64748b"/>
+    <circle cx="43" cy="12.95" r="1.2" fill="#64748b"/>
+
+    <circle cx="46" cy="32" r="1" fill="#64748b"/>
+    <circle cx="39" cy="44.12" r="1" fill="#64748b"/>
+    <circle cx="25" cy="44.12" r="1" fill="#64748b"/>
+    <circle cx="18" cy="32" r="1" fill="#64748b"/>
+    <circle cx="25" cy="19.88" r="1" fill="#64748b"/>
+    <circle cx="39" cy="19.88" r="1" fill="#64748b"/>
+
+    <circle cx="32" cy="32" r="2" fill="#64748b"/>
+  </g>
+
+  <text x="80" y="41" font-family="Inter, system-ui, sans-serif" font-weight="300"
+    font-size="28" letter-spacing="0.12em" fill="#94a3b8">
+    elyria
+  </text>
+</svg>

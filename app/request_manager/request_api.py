@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 import requests
 from requests import exceptions
 import json
@@ -13,35 +16,22 @@ import ssl
 import socket
 
 def _get_proxy_from_request(request: Request) -> dict:
-    """XOR-decrypt proxy URL from JWT claim 'pry', then check if enabled."""
+    """Look up user's favorite proxy from DB. Returns None if disabled or not set."""
     try:
-        payload = getattr(request.state, "token_obj", None)
-        if not payload or not isinstance(payload, dict): return None
-        proxy_xor = payload.get("pry")
-        if not proxy_xor: return None
-        import base64
-        from database.app_config import get as _cfg
-        xor_key = _cfg("proxy.xor_key", "elyria-proxy-k")
-        encrypted = base64.urlsafe_b64decode(proxy_xor)
-        key_bytes = xor_key.encode()
-        result = bytearray(len(encrypted))
-        for i in range(len(encrypted)):
-            result[i] = encrypted[i] ^ key_bytes[i % len(key_bytes)]
-        url = bytes(result).rstrip(b'\x00').decode()
-        if url:
-            # Check if proxy is enabled for this user
-            user_id = getattr(request.state, "token", None)
-            if user_id:
-                from database.connection import get_connection
-                conn = get_connection()
-                row = conn.execute(
-                    "SELECT enabled FROM user_favorite_proxy WHERE user_id=?",
-                    (user_id,)
-                ).fetchone()
-                conn.close()
-                if row and not row[0]:
-                    return None  # Proxy disabled
-            return {"http": url, "https": url}
+        user_id = getattr(request.state, "token", None)
+        if not user_id:
+            return None
+        from database.connection import get_connection
+        conn = get_connection()
+        row = conn.execute(
+            """SELECT p.url, f.enabled FROM user_favorite_proxy f
+               JOIN proxies p ON f.proxy_id = p.proxy_id
+               WHERE f.user_id = ?""",
+            (user_id,),
+        ).fetchone()
+        conn.close()
+        if row and row["enabled"] and row["url"]:
+            return {"http": row["url"], "https": row["url"]}
     except Exception:
         pass
     return None
@@ -108,24 +98,22 @@ def _make_request(url : str,method :str ,headers:dict=None,query_params:dict =No
                 "headers":dict(resp.headers),
                 "body" : resp.text if not resp.text.startswith("{") or resp.text.startswith("[") else  json.dumps(resp.json())}
 
-    except requests.exceptions.ProxyError as e:
-        raise Exception(f"Proxy unreachable: {e}")
-    except requests.exceptions.SSLError as e:
-        raise Exception(f"SSL/TLS error — cert may be self-signed or invalid: {e}")
-    except requests.exceptions.ConnectionError as e:
-        if proxies:
-            raise Exception(f"Connection failed via proxy (disable proxy to connect directly): {e}")
-        raise Exception(f"Connection failed — target unreachable: {e}")
-    except Exception as e:
-        raise Exception(f"Request failed: {e}")
+    except requests.exceptions.ProxyError:
+        raise HTTPException(status_code=502, detail="Proxy unreachable")
+    except requests.exceptions.SSLError:
+        raise HTTPException(status_code=502, detail="SSL error")
+    except requests.exceptions.ConnectionError:
+        raise HTTPException(status_code=502, detail="Connection failed")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Request failed")
 
 
 
 
 def _handle_response(request_uuid:str,result:dict,valide_type:type):
-    if isinstance(result,valide_type):
+    if isinstance(result, valide_type):
         return JSONResponse(content={'request_uuid':request_uuid,'response':result})
-    return HTTPException(status_code=500,detail=result)
+    raise HTTPException(status_code=500, detail="Request failed")
 
 def _send_request(protocol="http", host="127.0.0.1", port=8000, raw_request=""):
     try:
@@ -159,7 +147,7 @@ def _send_request(protocol="http", host="127.0.0.1", port=8000, raw_request=""):
 
             except (socket.error, ConnectionError, OSError) as e:
                 print(f"[DEBUG HTTP] connection failed: {e}", flush=True)
-                raise Exception(f"[HTTP SOCKET ERROR] {str(e)}")
+                raise HTTPException(status_code=502, detail="Connection failed")
 
         elif protocol == "https":
             try:
@@ -194,13 +182,13 @@ def _send_request(protocol="http", host="127.0.0.1", port=8000, raw_request=""):
 
             except (ssl.SSLError, socket.error, ConnectionError, OSError) as e:
                 print(f"[DEBUG HTTPS] failed: {e}", flush=True)
-                raise Exception(f"[HTTPS SOCKET ERROR] {str(e)}")
+                raise HTTPException(status_code=502, detail="Connection failed")
 
         else:
              raise Exception("[ERROR] Unsupported protocol")
 
     except Exception as e:
-         raise Exception(f"[FATAL ERROR] {str(e)}")
+         raise HTTPException(status_code=500, detail="Request failed")
 
 
 """
@@ -251,7 +239,7 @@ def handle_raw(user_id: str, url: str, request: str,is_done_by_ai:bool=False):
 
 
     except Exception as e:
-        return None, {"error": str(e)}
+        return None, {"detail": "Request failed"}
     
 
     
@@ -318,7 +306,7 @@ def handle_request(user_id : str, url : str,method :str ,headers:dict=None,query
         add_request(request_uuid=request_uuid,author=author,request=req,response=resp,is_done_by_ai=is_done_by_ai)
         return request_uuid,resp
     except Exception as e:
-        raise HTTPException(status_code=500, detail={"error":str(e)}) 
+        raise HTTPException(status_code=500, detail="Request failed") 
 
 
 

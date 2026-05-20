@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """Chat assistant tools — API client scope only.
 
 Slash commands force a tool. The LLM can also call them autonomously.

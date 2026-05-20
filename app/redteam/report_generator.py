@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 Pentest report generator — produces a professional-grade markdown report.
 Pure markdown, no inline HTML — rendered client-side by marked.js.

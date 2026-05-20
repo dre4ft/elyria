@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 from fastapi import APIRouter,Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
@@ -24,14 +27,13 @@ def _generate_request_uuid()->str:
     return str(uuid_utils.uuid4())
 
 
-def create_jwt_token(user_id: str, secret_key: str, key_id: str, expires_in: int = 3600, proxy_xor: str = "", username: str = "") -> str:
+def create_jwt_token(user_id: str, secret_key: str, key_id: str, expires_in: int = 3600, username: str = "") -> str:
     payload = {
         "kid": key_id,
         "sub": user_id,
         "username": username or user_id,
         "iat": int(time.time()),
         "exp": time.time() + expires_in,
-        "pry": proxy_xor,
     }
     token = jwt.encode(payload, secret_key, algorithm="HS512")
     return token
@@ -91,31 +93,13 @@ async def login(request: LoginRequest):
         user_key = derive_and_store_user_key(user["user_id"], request.digest, salt)
         # Persist wrapped key for recovery (password reset)
         wrap_and_persist_user_key(user["user_id"], user_key)
-        # Look up proxy, XOR-encrypt with server key for JWT embed
-        proxy_xor = ""
-        try:
-            import base64
-            from database.connection import get_connection
-            conn = get_connection()
-            row = conn.execute("SELECT p.url FROM user_favorite_proxy u JOIN proxies p ON u.proxy_id=p.proxy_id WHERE u.user_id=?", (user["user_id"],)).fetchone()
-            conn.close()
-            if row and row[0]:
-                from database.app_config import get as _cfg
-                xor_key = _cfg("proxy.xor_key", "elyria-proxy-k")
-                url_bytes = row[0].encode()
-                key_bytes = xor_key.encode()
-                result = bytearray(len(url_bytes))
-                for i in range(len(url_bytes)):
-                    result[i] = url_bytes[i] ^ key_bytes[i % len(key_bytes)]
-                proxy_xor = base64.urlsafe_b64encode(bytes(result)).decode()
-        except Exception: pass
         key_id = _generate_request_uuid()
         key = secrets.token_bytes(64).hex()
         # Generate refresh token (random, stored as SHA3-512 hash in DB)
         refresh_token = secrets.token_hex(64)
         refresh_hash = hashlib.sha3_512(refresh_token.encode()).hexdigest()
         add_key(key_id, key, user["user_id"], refresh_token_hash=refresh_hash)
-        token = create_jwt_token(user["user_id"], key, key_id, proxy_xor=proxy_xor, username=user.get("username", ""))
+        token = create_jwt_token(user["user_id"], key, key_id, username=user.get("username", ""))
         from core.audit import info
         info("user.login", user_id=user["user_id"], success=True)
         return JSONResponse(content={
@@ -144,9 +128,9 @@ async def logout(request: Request):
                 info("user.logout", user_id=user_id, success=True)
                 return JSONResponse(content={"message": "Logged out successfully"})
             else:
-                raise HTTPException(status_code=400, detail="Invalid token")
+                raise HTTPException(status_code=401, detail="Invalid token")
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+            raise HTTPException(status_code=500, detail="Logout failed")
     raise HTTPException(status_code=401, detail="Not authenticated")
 
 

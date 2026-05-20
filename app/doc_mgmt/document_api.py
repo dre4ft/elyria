@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 from fastapi import APIRouter, Request, HTTPException, File, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -89,7 +92,7 @@ async def upload(request : Request, target_url: str="http://localhost:9000", tea
         return JSONResponse(status_code=400, content={"detail": "Unrecognized format — not OpenAPI or Arazzo"})
     except Exception as e:
         print(e)
-        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)[:200]}")
+        raise HTTPException(status_code=500, detail="Import failed")
 
 
 # ── Postman / Bruno import ──────────────────────────────────────────────

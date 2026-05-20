@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 Centralized enterprise configuration — single source of truth.
 All settings stored in DB. No .env dependency at runtime.
@@ -53,7 +56,6 @@ _DEFAULTS = {
     "app.reload":     "1",
     "catcher.port":               "6767",
     "catcher.intercept_enabled":  "0",
-    "proxy.xor_key":  "",  # generated randomly at first boot if left empty
     "ssl.cert_path":  "cert.pem",
     "ssl.key_path":   "key.pem",
     "db.backend":     "sqlite",
@@ -105,12 +107,6 @@ def _seed_defaults():
         )
     # Ensure oidc.enabled exists (but don't force-enable it)
     c.execute("INSERT OR IGNORE INTO app_config (key,value) VALUES('oidc.enabled','0')")
-    # Generate a random proxy XOR key if still empty / default
-    row = c.execute("SELECT value FROM app_config WHERE key='proxy.xor_key'").fetchone()
-    if not row or not row["value"] or row["value"] == "elyria-proxy-k":
-        import secrets
-        c.execute("INSERT OR REPLACE INTO app_config (key,value) VALUES('proxy.xor_key',?)",
-                  (secrets.token_hex(32),))
     for cat, hosts in _DEFAULT_FQDN.items():
         for h in hosts:
             c.execute("INSERT OR IGNORE INTO app_fqdn_whitelist (category,pattern) VALUES(?,?)", (cat, h))
@@ -294,4 +290,4 @@ def validate_fqdn_or_raise(url: str, category: str = "fetch"):
         return  # relative URLs or unparseable — let the request layer handle it
     if not is_fqdn_allowed(host, category):
         from fastapi import HTTPException
-        raise HTTPException(403, f"Host '{host}' not allowed by {category} whitelist")
+        raise HTTPException(403, "Host not allowed")

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 AI-enhanced pentest analysis — leverages the existing AI infrastructure to
 provide deeper vulnerability analysis, exploitation guidance, and business logic assessment.

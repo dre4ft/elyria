@@ -26,7 +26,7 @@ build/
 *.bak
 *.tmp
 *.claude/
-*test.*
+test.*
 *.pem
 *.key
 *.crt
@@ -42,6 +42,7 @@ data/
 *.logs*
 *.log*
 enterprise/
+CLAUDE.md
 
 # wrangler files
 .wrangler

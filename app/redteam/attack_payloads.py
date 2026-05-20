@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 Intelligent attack payload generation based on schema types and parameter names.
 Used by the deterministic scanner to craft targeted, context-aware attack probes.

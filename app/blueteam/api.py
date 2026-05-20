@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 Blue Team API — FastAPI routes for SSDLC security analysis profiles and reports.
 """

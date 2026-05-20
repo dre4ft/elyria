@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 OIDC / SSO Connector — modular, provider-agnostic.
 Supports any standard OIDC provider (Google, Azure AD, Keycloak, Authentik…).
@@ -110,7 +113,7 @@ def oidc_login(request: Request):
     """Initiate OIDC login — redirect to provider."""
     oidc = _oidc_config()
     if not oidc:
-        return JSONResponse({"error": "OIDC not configured"}, status_code=400)
+        return JSONResponse(status_code=404, content={"detail": "OIDC not configured"})
 
     meta = _discover(oidc["issuer"])
     redirect_uri = _redirect_uri(request)

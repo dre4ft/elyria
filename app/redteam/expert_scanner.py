@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Elyria
+
 """
 Expert Pentest Scanner — Documentation-aware, master-prompt-driven,
 high-round deep scan with analysis→exploration feedback loop.
