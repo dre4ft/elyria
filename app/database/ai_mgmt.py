@@ -24,7 +24,8 @@ def get_conversation_messages(conversation_id: str):
         rows = cursor.fetchall()
         return [json_helper.to_json(_decrypt_message_row(dict(r), r["user_id"]).get("message", "")) for r in rows]
     except Exception as e:
-        print("get_conversation_messages error:", e)
+        from core.logging import get_logger
+        get_logger(__name__).exception("get_conversation_messages error")
         return []
     finally:
         if conn:
@@ -46,7 +47,8 @@ def add_message(message :dict, user_id: str, conversation_id: str=None):
         conn.commit()
         return conversation_id
     except Exception as e:
-        print("add_message error:", e)
+        from core.logging import get_logger
+        get_logger(__name__).exception("add_message error")
         return None
     finally:
         if conn:

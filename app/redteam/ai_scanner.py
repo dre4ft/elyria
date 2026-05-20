@@ -9,14 +9,16 @@ Phase 2b: Pro model deep-analyzes results (with reasoning).
 
 import asyncio
 import json
-
 import re
 import time
 from urllib.parse import urljoin
-from sandbox.tool import BashTool
-
 
 import requests
+
+from core.logging import get_logger
+from sandbox.tool import BashTool
+
+_log = get_logger("redteam.scanner")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -355,7 +357,7 @@ class AIScanner:
         spawn_result = self.bash_tool.spawn(self.target)
         if spawn_result.get("status") != "ok":
             msg = f"Sandbox unavailable — bash tool disabled ({spawn_result.get('detail', 'unknown error')})"
-            print(f"[AI_SCANNER] {msg}", flush=True)
+            _log.info(f"{msg}")
             if self.callbacks.get("on_progress"):
                 self.callbacks["on_progress"](0, msg)
         orig_cb = self.callbacks.get("on_finding")

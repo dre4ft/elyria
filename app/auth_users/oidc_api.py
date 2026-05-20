@@ -21,6 +21,9 @@ import time
 import uuid
 
 import jwt
+from core.logging import get_logger
+
+_log = get_logger("oidc")
 from authlib.integrations.requests_client import OAuth2Session
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, JSONResponse
@@ -59,7 +62,7 @@ def _discover(issuer: str) -> dict:
         return _discover._cache[issuer]
     import requests
     well_known = issuer.rstrip("/") + "/.well-known/openid-configuration"
-    resp = requests.get(well_known, timeout=10)
+    resp = requests.get(well_known, timeout=10, verify=True)
     resp.raise_for_status()
     meta = resp.json()
     _discover._cache[issuer] = meta
@@ -163,9 +166,10 @@ def oidc_callback(request: Request, code: str = "", state: str = "", error: str 
             },
             headers={"Accept": "application/json"},
             timeout=10,
+            verify=True,
         )
         if token_resp.status_code != 200:
-            print(f"[oidc] token endpoint error: {token_resp.status_code} {token_resp.text[:200]}")
+            _log.error(f"token endpoint error: {token_resp.status_code} {token_resp.text[:200]}")
             return RedirectResponse("/login?error=token_exchange_failed")
         token = token_resp.json()
 
@@ -220,7 +224,7 @@ def oidc_callback(request: Request, code: str = "", state: str = "", error: str 
     except jwt.InvalidTokenError as e:
         return RedirectResponse(f"/login?error=invalid_token")
     except Exception as e:
-        print(f"[oidc] callback error: {e}")
+        _log.exception(f"callback error")
         return RedirectResponse("/login?error=server_error")
 
 

@@ -5,6 +5,9 @@ from database.database import connect
 from database import json_helper
 import uuid_utils
 from datetime import datetime
+from core.logging import get_logger
+
+_log = get_logger(__name__)
 
 
 def _generate_collection_id(prefix: str) -> str:
@@ -28,7 +31,7 @@ def create_folder(name: str, author_user_id: str, parent_id: str = None, team_id
         conn.commit()
         return folder_id
     except Exception as e:
-        print("create_folder error:", e)
+        _log.exception("create_folder error")
         return None
     finally:
         if conn:
@@ -46,7 +49,7 @@ def get_folders_by_user(author_user_id: str):
         )
         return [dict(row) for row in cursor.fetchall()]
     except Exception as e:
-        print("get_folders_by_user error:", e)
+        _log.exception("get_folders_by_user error")
         return []
     finally:
         if conn:
@@ -73,7 +76,7 @@ def delete_folder(folder_id: str, author_user_id: str):
         conn.commit()
         return True
     except Exception as e:
-        print("delete_folder error:", e)
+        _log.exception("delete_folder error")
         return False
     finally:
         if conn:
@@ -126,7 +129,7 @@ def get_request_by_id(saved_request_id: str, requester_user_id: str = ""):
             return d
         return None
     except Exception as e:
-        print("get_request_by_id error:", e)
+        _log.exception("get_request_by_id error")
         return None
     finally:
         if conn:
@@ -187,7 +190,7 @@ def create_saved_request(name: str, author_user_id: str, folder_id: str = None,
         conn.commit()
         return saved_id
     except Exception as e:
-        print("create_saved_request error:", e)
+        _log.exception("create_saved_request error")
         return None
     finally:
         if conn:
@@ -218,7 +221,7 @@ def get_saved_requests_by_user(author_user_id: str):
             rows.append(d)
         return rows
     except Exception as e:
-        print("get_saved_requests_by_user error:", e)
+        _log.exception("get_saved_requests_by_user error")
         return []
     finally:
         if conn:
@@ -273,7 +276,7 @@ def update_saved_request(saved_request_id: str, author_user_id: str, **kwargs):
         conn.commit()
         return cursor.rowcount > 0
     except Exception as e:
-        print("update_saved_request error:", e)
+        _log.exception("update_saved_request error")
         return False
     finally:
         if conn:
@@ -292,7 +295,7 @@ def delete_saved_request(saved_request_id: str, author_user_id: str):
         conn.commit()
         return cursor.rowcount > 0
     except Exception as e:
-        print("delete_saved_request error:", e)
+        _log.exception("delete_saved_request error")
         return False
     finally:
         if conn:
@@ -343,7 +346,7 @@ def get_collection_tree(author_user_id: str, team_ids: list = None):
                         seen_saved_ids.add(d["saved_request_id"])
                         saved.append(d)
             except Exception as e:
-                print(f"Team tree load error for {tid}: {e}")
+                _log.warning(f"Team tree load error for {tid}: {e}")
 
     folder_map = {}
     for f in folders:

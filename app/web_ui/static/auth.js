@@ -195,7 +195,13 @@ async function loginUser(email, password) {
   _user = { userId: data.user_id, email: data.email };
   sessionStorage.setItem(SESSION_KEY, _token);
   if (_refreshToken) sessionStorage.setItem(REFRESH_KEY, _refreshToken);
-  return { success: true, token: data.token, refresh_token: _refreshToken, user: _user };
+  return {
+    success: true,
+    token: data.token,
+    refresh_token: _refreshToken,
+    user: _user,
+    recovery_words: data.recovery_words || '',
+  };
 }
 
 async function registerUser(email, password, confirmPassword) {

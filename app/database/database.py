@@ -197,6 +197,9 @@ def _migrate_crypto_v2_columns(cursor, conn):
         ("master_key_blob_pw", "TEXT DEFAULT ''"),
         ("master_key_blob_rec", "TEXT DEFAULT ''"),
         ("recovery_words_shown", "INTEGER DEFAULT 0"),
+        ("pending_recovery", "TEXT DEFAULT ''"),
+        ("failed_login_attempts", "INTEGER DEFAULT 0"),
+        ("locked_until", "TEXT DEFAULT ''"),
     ]
     existing = _table_columns(cursor, "users")
     for col_name, col_def in crypto_cols:
@@ -209,8 +212,6 @@ def _migrate_crypto_v2_columns(cursor, conn):
                 "pentest_findings", "pentest_scan_logs", "blueteam_reports",
                 "ai_providers", "app_config", "app_api_keys", "proxies"]:
         _safe_add_column(cursor, tbl, "payload_encrypted", "TEXT DEFAULT ''")
-    # catcher_history is created dynamically, add migration support
-    _safe_add_column(cursor, "catcher_history", "payload_encrypted", "TEXT DEFAULT ''")
     conn.commit()
 
 

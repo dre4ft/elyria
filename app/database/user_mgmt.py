@@ -199,6 +199,75 @@ def mark_email_verified(email: str):
 
 
 # ═══════════════════════════════════════════
+# Account Lockout
+# ═══════════════════════════════════════════
+
+MAX_FAILED_ATTEMPTS = 10
+LOCKOUT_MINUTES = 15
+
+
+def get_login_lockout(email: str) -> tuple[bool, str]:
+    """Check if account is locked. Returns (is_locked, message)."""
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT failed_login_attempts, locked_until FROM users WHERE email = ?",
+            (email,),
+        ).fetchone()
+        if not row:
+            return False, ""
+        if row["locked_until"]:
+            locked = datetime.strptime(row["locked_until"], "%Y-%m-%d %H:%M:%S")
+            if datetime.now() < locked:
+                remaining = int((locked - datetime.now()).total_seconds() / 60) + 1
+                return True, f"Compte temporairement verrouille. Reessayez dans {remaining} minute(s)."
+            # Lock expired, reset
+            conn.execute("UPDATE users SET locked_until = '', failed_login_attempts = 0 WHERE email = ?", (email,))
+            conn.commit()
+        return False, ""
+    finally:
+        conn.close()
+
+
+def increment_failed_login(email: str):
+    """Record a failed login attempt. Locks account after MAX_FAILED_ATTEMPTS."""
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT failed_login_attempts FROM users WHERE email = ?", (email,)
+        ).fetchone()
+        if row:
+            count = (row["failed_login_attempts"] or 0) + 1
+            if count >= MAX_FAILED_ATTEMPTS:
+                locked = datetime.now() + timedelta(minutes=LOCKOUT_MINUTES)
+                conn.execute(
+                    "UPDATE users SET failed_login_attempts = ?, locked_until = ? WHERE email = ?",
+                    (count, locked.strftime("%Y-%m-%d %H:%M:%S"), email),
+                )
+            else:
+                conn.execute(
+                    "UPDATE users SET failed_login_attempts = ? WHERE email = ?",
+                    (count, email),
+                )
+            conn.commit()
+    finally:
+        conn.close()
+
+
+def reset_failed_login(email: str):
+    """Clear failed login counter on successful login."""
+    conn = connect()
+    try:
+        conn.execute(
+            "UPDATE users SET failed_login_attempts = 0, locked_until = '' WHERE email = ?",
+            (email,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ═══════════════════════════════════════════
 # Verification Tokens (anti-abuse: token binds email, max 3 resends, 2min cooldown)
 # ═══════════════════════════════════════════
 

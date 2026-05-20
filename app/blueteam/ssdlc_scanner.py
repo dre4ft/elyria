@@ -7,9 +7,12 @@ Multi-round analysis → comprehensive security requirements report.
 """
 
 import json
-
 import time
 from urllib.parse import urljoin
+
+from core.logging import get_logger
+
+_log = get_logger("blueteam.scanner")
 
 
 class SSDLCAnalyzer:
@@ -92,9 +95,9 @@ class SSDLCAnalyzer:
         return "\n".join(parts)
 
     def run(self):
-        print(f"[BLUETEAM] Starting SSDLC analysis — target: {self.target}", flush=True)
-        print(f"[BLUETEAM] Analysis rounds: {self.analysis_rounds}, Report rounds: {self.report_rounds}", flush=True)
-        print(f"[BLUETEAM] Pro model: {self.pro_model}", flush=True)
+        _log.info(f"[BLUETEAM] Starting SSDLC analysis — target: {self.target}")
+        _log.info(f"[BLUETEAM] Analysis rounds: {self.analysis_rounds}, Report rounds: {self.report_rounds}")
+        _log.info(f"[BLUETEAM] Pro model: {self.pro_model}")
 
         context = self._build_context()
         ai_tokens = {"total": 0}
@@ -112,14 +115,14 @@ class SSDLCAnalyzer:
                 pass
 
         def _progress(pct, msg):
-            print(f"[BLUETEAM] Progress {pct}% — {msg}", flush=True)
+            _log.info(f"[BLUETEAM] Progress {pct}% — {msg}")
             if self.callbacks.get("on_progress"):
                 self.callbacks["on_progress"](pct, msg)
 
         # ═══════════════════════════════════════
         # PHASE 1 — Multi-round Security Analysis
         # ═══════════════════════════════════════
-        print(f"[BLUETEAM] Phase 1 — Starting {self.analysis_rounds} analysis rounds...", flush=True)
+        _log.info(f"[BLUETEAM] Phase 1 — Starting {self.analysis_rounds} analysis rounds...")
 
         system = {"role": "system", "content": f"""You are an EXPERT SSDLC (Secure Software Development Lifecycle) security architect. You analyze API specifications and documentation through a security-by-design lens.
 
@@ -161,14 +164,14 @@ ANALYSIS FRAMEWORK:
             try:
                 _beat()
                 _progress(10 + i * 60 // self.analysis_rounds, f"Analyse SSDLC round {i+1}/{self.analysis_rounds}")
-                print(f"[BLUETEAM] Analysis round {i+1}/{self.analysis_rounds} — calling LLM...", flush=True)
+                _log.info(f"[BLUETEAM] Analysis round {i+1}/{self.analysis_rounds} — calling LLM...")
                 resp = self.pro.chat(msgs, tools=None)
                 _add_tokens(resp)
                 content = resp.get("content", "")
-                print(f"[BLUETEAM] Analysis round {i+1} — response: {len(content)} chars, tokens so far: {ai_tokens['total']}", flush=True)
+                _log.info(f"[BLUETEAM] Analysis round {i+1} — response: {len(content)} chars, tokens so far: {ai_tokens['total']}")
                 msgs.append({"role": "assistant", "content": content})
             except Exception as e:
-                print(f"[BLUETEAM] Analysis round {i+1} FAILED: {e}", flush=True)
+                _log.info(f"[BLUETEAM] Analysis round {i+1} FAILED: {e}")
                 msgs.append({"role": "assistant", "content": f"[Error: {e}]"})
                 continue
 
@@ -176,7 +179,7 @@ ANALYSIS FRAMEWORK:
         # PHASE 2 — Report Writing
         # ═══════════════════════════════════════
 
-        print(f"[BLUETEAM] Phase 2 — Starting {self.report_rounds} report writing rounds...", flush=True)
+        _log.info(f"[BLUETEAM] Phase 2 — Starting {self.report_rounds} report writing rounds...")
         _progress(75, "Redaction du rapport SSDLC...")
 
         report_system = {"role": "system", "content": f"""You are an EXPERT SSDLC security architect writing a comprehensive security-by-design report.
@@ -258,14 +261,14 @@ Mermaid syntax rules:
                 _beat()
                 _progress(75 + (ri + 1) * 25 // self.report_rounds,
                          f"Redaction rapport {ri+1}/{self.report_rounds}")
-                print(f"[BLUETEAM] Report round {ri+1}/{self.report_rounds} — calling LLM...", flush=True)
+                _log.info(f"[BLUETEAM] Report round {ri+1}/{self.report_rounds} — calling LLM...")
                 resp = self.pro.chat(report_msgs, tools=None)
                 _add_tokens(resp)
                 content = resp.get("content", "")
-                print(f"[BLUETEAM] Report round {ri+1} — response: {len(content)} chars, total tokens: {ai_tokens['total']}", flush=True)
+                _log.info(f"[BLUETEAM] Report round {ri+1} — response: {len(content)} chars, total tokens: {ai_tokens['total']}")
                 report_msgs.append({"role": "assistant", "content": content})
             except Exception as e:
-                print(f"[BLUETEAM] Report round {ri+1} FAILED: {e}", flush=True)
+                _log.info(f"[BLUETEAM] Report round {ri+1} FAILED: {e}")
                 report_msgs.append({"role": "assistant", "content": f"[Error: {e}]"})
 
         # Collect final report — concatenate sections in order (each round = one section)
@@ -280,7 +283,7 @@ Mermaid syntax rules:
         finding_ids = re.findall(r'\| (?:SSDLC|REQ)-\d+', report)
 
         _progress(100, "Analyse SSDLC terminee")
-        print(f"[BLUETEAM] Analysis complete — {len(report)} chars report, {ai_tokens['total']} total tokens", flush=True)
+        _log.info(f"[BLUETEAM] Analysis complete — {len(report)} chars report, {ai_tokens['total']} total tokens")
 
         return {
             "report_markdown": report,

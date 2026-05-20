@@ -378,18 +378,19 @@ function loadWfSaveTeams() {
   }).then(teams => {
     if(!teams.length) return;
     // Remove any previously loaded team options (keep the first default one)
-    while(sel.options.length > 1) sel.remove(1);
-    teams.forEach(t => { sel.innerHTML += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; });
+    let baseOpt = sel.options[0] ? `<option value="${sel.options[0].value}">${sel.options[0].text}</option>` : '';
+    teams.forEach(t => { baseOpt += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; });
+    sel.innerHTML = baseOpt;
   }).catch(e => { console.error('loadWfSaveTeams:', e); });
 }
 
 function loadWfTeamFilter() {
   const sel = document.getElementById('wf-team-filter-select'); if(!sel) return;
-  sel.innerHTML = '<option value="">Tout</option><option value="__personal__">Personnel</option>';
-  sel.value = wfTeamFilter;
   sel.onchange = () => { wfTeamFilter = sel.value; loadSavedWorkflows(); loadSavedRequests(); };
   fetch('/api/user/followed-teams', {headers:{...getAuthHeader()}}).then(r => r.json()).then(teams => {
-    teams.forEach(t => { sel.innerHTML += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; });
+    let opts = '<option value="">Tout</option><option value="__personal__">Personnel</option>';
+    teams.forEach(t => { opts += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; });
+    sel.innerHTML = opts;
     sel.value = wfTeamFilter;
   }).catch(() => {});
 }
@@ -1135,14 +1136,13 @@ function parseYamlPattern(val) {
 async function loadArazzoTeams() {
   const sel = dom.arazzoTeamSelect;
   if (!sel) return;
-  sel.innerHTML = '<option value="">Personnel</option>';
   try {
     const res = await fetch('/api/teams', { headers: { ...getAuthHeader() } });
     if (res.ok) {
       const teams = await res.json();
-      teams.forEach(t => {
-        sel.innerHTML += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`;
-      });
+      let opts = '<option value="">Personnel</option>';
+      teams.forEach(t => { opts += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; });
+      sel.innerHTML = opts;
     }
   } catch {}
 }

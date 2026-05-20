@@ -94,7 +94,9 @@ async function loadTeamsForFilter() {
     const r = await fetch('/api/teams', {headers:{...getAuthHeader()}});
     if(!r.ok) return;
     const teams = await r.json();
-    teams.forEach(t => { sel.innerHTML += `<option value="${t.team_id}">${esc(t.name)}</option>`; });
+    let opts = sel.innerHTML;
+    teams.forEach(t => { opts += `<option value="${t.team_id}">${esc(t.name)}</option>`; });
+    sel.innerHTML = opts;
   } catch {}
 }
 
@@ -235,8 +237,9 @@ async function loadCollections(selectedId = '') {
 function loadTeams(selectedId = '') {
   const sel = $('#bt-modal-team'); if(!sel) return;
   fetch('/api/teams',{headers:{...getAuthHeader()}}).then(r=>r.json()).then(teams=>{
-    sel.innerHTML = '<option value="">Personnel</option>';
-    teams.forEach(t=>{ sel.innerHTML += `<option value="${t.team_id}">${esc(t.name)}</option>`; });
+    let opts = '<option value="">Personnel</option>';
+    teams.forEach(t=>{ opts += `<option value="${t.team_id}">${esc(t.name)}</option>`; });
+    sel.innerHTML = opts;
     if(selectedId) sel.value = selectedId;
   }).catch(()=>{});
 }

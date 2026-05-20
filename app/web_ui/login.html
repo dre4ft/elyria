@@ -240,7 +240,22 @@
       setLoading(btnLogin, true);
       loginUser(email, password).then(function(r) {
         setLoading(btnLogin, false);
-        if (r.success) { navigateTo('/app'); } else { showError(r.error); }
+        if (r.success) {
+          if (r.recovery_words) {
+            // Premier login : afficher les mots de récupération
+            var words = r.recovery_words.split(' ');
+            recoveryWords.innerHTML = words.map(function(w, i) {
+              return '<span class="flex items-center gap-1.5"><span class="text-[10px] text-gray-600 w-4 text-right">' + (i+1) + '</span><span>' + w + '</span></span>';
+            }).join('');
+            formLogin.classList.add('hidden');
+            recoveryStep.classList.remove('hidden');
+            showSuccess('Conservez vos 12 mots de recuperation — ils ne seront plus jamais affiches.');
+            // After recovery words acknowledged, navigate to app
+            btnRecoveryAck.onclick = function() { navigateTo('/app'); };
+          } else {
+            navigateTo('/app');
+          }
+        } else { showError(r.error); }
       });
     });
 
@@ -267,22 +282,10 @@
       registerUser(email, password, confirm).then(function(r) {
         setLoading(btnRegister, false);
         if (r.success) {
-          _verificationToken = r.verification_token || '';
-          // Afficher les mots de récupération
-          if (r.recovery_words) {
-            var words = r.recovery_words.split(' ');
-            recoveryWords.innerHTML = words.map(function(w, i) {
-              return '<span class="flex items-center gap-1.5"><span class="text-[10px] text-gray-600 w-4 text-right">' + (i+1) + '</span><span>' + w + '</span></span>';
-            }).join('');
-            formRegister.classList.add('hidden');
-            recoveryStep.classList.remove('hidden');
-            showSuccess('Compte cree ! Conservez vos 12 mots precieusement.');
-          } else {
-            formRegister.classList.add('hidden');
-            verifyStep.classList.remove('hidden');
-            $('#verify-email-display').textContent = email;
-            showSuccess('Compte cree ! Verifiez votre email.');
-          }
+          showSuccess(r.message || 'Compte cree. Verifiez votre email.');
+          formRegister.classList.add('hidden');
+          tabLogin.click();
+          $('#login-email').value = email;
         } else { showError(r.error); }
       });
     });

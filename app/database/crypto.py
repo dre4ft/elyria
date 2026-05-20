@@ -250,7 +250,14 @@ _server_wrap_key: bytes | None = None
 def get_server_wrap_key() -> bytes:
     global _server_wrap_key
     if _server_wrap_key is None:
+        # Try env var first, then .cfg file
         raw = os.getenv("ELYRIA_SERVER_WRAP_KEY", "")
+        if not raw:
+            try:
+                from core.config import get as _cfg
+                raw = _cfg("security", "server_wrap_key", "")
+            except Exception:
+                pass
         if raw:
             try:
                 _server_wrap_key = bytes.fromhex(raw)
@@ -258,7 +265,8 @@ def get_server_wrap_key() -> bytes:
             except ValueError:
                 pass
         _server_wrap_key = secrets.token_bytes(32)
-        print("[crypto] ELYRIA_SERVER_WRAP_KEY not set — using ephemeral key.")
+        from core.logging import get_logger
+        get_logger(__name__).warning("[crypto] ELYRIA_SERVER_WRAP_KEY not set in env or elyria.cfg — using ephemeral key. System-level encrypted configs will be lost on restart.")
     return _server_wrap_key
 
 

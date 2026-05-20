@@ -48,6 +48,9 @@ _tvk_cache: dict[tuple[str, str], tuple[bytes, float]] = {}
 # Scoped by user_id to prevent cross-user BOLA/IDOR attacks via cache
 _dek_cache: dict[tuple[str, str], tuple[bytes, float]] = {}
 
+# Pending recovery words for first login (user_id → words)
+_pending_recovery: dict[str, str] = {}
+
 
 def _prune(cache: dict, ttl: float):
     now = time.time()
@@ -83,13 +86,17 @@ def register_master_key(user_id: str, password: str,
     rec_key = derive_rec_key(recovery_words, salt_rec)
     mp_blob_rec = wrap_master_key(master_key, rec_key)
 
+    # Encrypt recovery words with pw_key for first-login handoff
+    pending_rec = aes_encrypt_string(pw_key, recovery_words)
+
     # Store in DB
     conn = get_connection()
     conn.execute(
         """UPDATE users SET auth_verifier = ?, salt_pw = ?, salt_auth = ?, salt_rec = ?,
-           master_key_blob_pw = ?, master_key_blob_rec = ?, recovery_words_shown = 1
+           master_key_blob_pw = ?, master_key_blob_rec = ?, recovery_words_shown = 0,
+           pending_recovery = ?
            WHERE user_id = ?""",
-        (auth_verifier, salt_pw, salt_auth, salt_rec, mp_blob_pw, mp_blob_rec, user_id),
+        (auth_verifier, salt_pw, salt_auth, salt_rec, mp_blob_pw, mp_blob_rec, pending_rec, user_id),
     )
     conn.commit()
     conn.close()
@@ -117,7 +124,7 @@ def login_and_unlock(user_id: str, password: str) -> bytes | None:
     """
     conn = get_connection()
     row = conn.execute(
-        "SELECT salt_pw, auth_verifier, master_key_blob_pw FROM users WHERE user_id = ?",
+        "SELECT salt_pw, auth_verifier, master_key_blob_pw, pending_recovery, recovery_words_shown FROM users WHERE user_id = ?",
         (user_id,),
     ).fetchone()
     conn.close()
@@ -127,7 +134,6 @@ def login_and_unlock(user_id: str, password: str) -> bytes | None:
 
     auth_candidate, pw_key = derive_auth_and_key(password, row["salt_pw"])
     if not verify_auth(password, row["salt_pw"], row["auth_verifier"]):
-        # Redundant but explicit: compare directly
         import secrets as _secrets
         if not _secrets.compare_digest(auth_candidate, row["auth_verifier"]):
             return None
@@ -136,9 +142,25 @@ def login_and_unlock(user_id: str, password: str) -> bytes | None:
     if not master_key:
         return None
 
+    # ── First login : déchiffrer les mots de récupération ──
+    if not row["recovery_words_shown"] and row["pending_recovery"]:
+        words = aes_decrypt_string(pw_key, row["pending_recovery"])
+        if words:
+            _pending_recovery[user_id] = words
+            # Effacer de la DB immédiatement
+            conn2 = get_connection()
+            conn2.execute("UPDATE users SET pending_recovery = '', recovery_words_shown = 1 WHERE user_id = ?", (user_id,))
+            conn2.commit()
+            conn2.close()
+
     _prune(_master_key_cache, _USER_CACHE_TTL)
     _master_key_cache[user_id] = (master_key, time.time())
     return master_key
+
+
+def consume_pending_recovery(user_id: str) -> str:
+    """Return recovery words if this was the first login. Empty string otherwise."""
+    return _pending_recovery.pop(user_id, "")
 
 
 def get_master_key(user_id: str) -> bytes | None:

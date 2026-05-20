@@ -3,17 +3,55 @@
 
 """
 Centralized enterprise configuration — single source of truth.
-All settings stored in DB. No .env dependency at runtime.
 
-Tables:
-  app_config          — key/value store for all settings
-  app_fqdn_whitelist  — FQDN whitelists by category (fetch, proxy, llm)
-  app_provider_toggle — enable/disable provider types
+Priority order:
+  1. Environment variables (ELYRIA_ prefix, e.g. ELYRIA_SERVER_HOST)
+  2. DB app_config table (user/admin overrides via API)
+  3. elyria.cfg file (project root)
+  4. _DEFAULTS dict (hardcoded fallbacks)
 """
 
+import os
 import re
 import sqlite3
+from configparser import ConfigParser
 from database.connection import get_connection
+
+
+def _load_cfg_file() -> dict:
+    """Read elyria.cfg from project root. Returns flat key/value dict."""
+    result = {}
+    cfg_paths = [
+        os.path.join(os.path.dirname(__file__), "..", "..", "elyria.cfg"),
+        os.path.join(os.getcwd(), "elyria.cfg"),
+        "elyria.cfg",
+    ]
+    for path in cfg_paths:
+        if os.path.isfile(path):
+            parser = ConfigParser()
+            parser.read(path)
+            for section in parser.sections():
+                for key, value in parser[section].items():
+                    result[f"{section}.{key}"] = value
+            break
+    return result
+
+
+# Load .cfg once at import time
+_CFG_VALUES = _load_cfg_file()
+
+
+def _env_overrides() -> dict:
+    """Read ELYRIA_* env vars. ELYRIA_SERVER_HOST → server.host."""
+    result = {}
+    for k, v in os.environ.items():
+        if k.startswith("ELYRIA_") and k != "ELYRIA_PRODUCTION" and k != "ELYRIA_SERVER_WRAP_KEY":
+            key = k[7:].lower().replace("_", ".")
+            result[key] = v
+    return result
+
+
+_ENV_VALUES = _env_overrides()
 
 
 def _connect():
@@ -54,8 +92,6 @@ _DEFAULTS = {
     "app.host":       "127.0.0.1",
     "app.port":       "8000",
     "app.reload":     "1",
-    "catcher.port":               "6767",
-    "catcher.intercept_enabled":  "0",
     "ssl.cert_path":  "cert.pem",
     "ssl.key_path":   "key.pem",
     "db.backend":     "sqlite",
@@ -140,24 +176,44 @@ def _decrypt_config(row):
 
 # ── Public API ────────────────────────────────────────────────────────
 def get(key: str, default: str = "") -> str:
-    """Read a config value. Cached 30s. Decrypts if secret."""
+    """
+    Read a config value. Priority: env var → DB → .cfg file → hardcoded defaults.
+    Cached 30s. Decrypts if secret.
+    """
     from core.cache import cache
     ck = f"cfg:{key}"
     val = cache.get(ck)
     if val is not None:
         return val
+
+    # 1. Environment variable override
+    if key in _ENV_VALUES:
+        val = _ENV_VALUES[key]
+        cache.set(ck, val, ttl=30)
+        return val
+
+    # 2. Database (user/admin overrides)
     c = _connect()
     try:
         row = c.execute("SELECT value, payload_encrypted FROM app_config WHERE key=?", (key,)).fetchone()
     except sqlite3.OperationalError:
-        # payload_encrypted column doesn't exist yet (before migration)
         row = c.execute("SELECT value FROM app_config WHERE key=?", (key,)).fetchone()
     c.close()
     if row:
         d = dict(row) if not isinstance(row, dict) else row
         val = _decrypt_config(d) if key in _SECRET_KEYS else d.get("value", "")
-    else:
-        val = _DEFAULTS.get(key, default)
+        if val:  # DB value exists and is non-empty
+            cache.set(ck, val, ttl=30)
+            return val
+
+    # 3. .cfg file
+    if key in _CFG_VALUES:
+        val = _CFG_VALUES[key]
+        cache.set(ck, val, ttl=30)
+        return val
+
+    # 4. Hardcoded defaults
+    val = _DEFAULTS.get(key, default)
     cache.set(ck, val, ttl=30)
     return val
 

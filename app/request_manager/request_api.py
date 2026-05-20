@@ -1,13 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Elyria
 
-import requests
-from requests import exceptions
 import json
 import sqlite3
+
+import requests
+from requests import exceptions
 from fastapi import APIRouter,Header,Depends,Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
+
+from core.logging import get_logger
+
+_log = get_logger("request_manager")
 from pydantic import BaseModel, Field
 from .utils import _generate_request_uuid
 from typing import Literal, List,Optional
@@ -77,7 +82,12 @@ def raw_http_parser(content: str, is_response: bool = False):
 
         
 #TODO  ajouter un meilleurs gestion de l'auth 
-def _make_request(url : str,method :str ,headers:dict=None,query_params:dict =None,body:str=None,_json :dict=None,auth :str = None,allow_redirect:bool=False,proxies:dict=None)->dict:
+def _make_request(url : str,method :str ,headers:dict=None,query_params:dict =None,body:str=None,_json :dict=None,auth :str = None,allow_redirect:bool=False,proxies:dict=None, verify_ssl:bool|None=None)->dict:
+    from core.security import validate_url_or_raise
+    validate_url_or_raise(url)
+    if verify_ssl is None:
+        from database.app_config import get as _cfg
+        verify_ssl = _cfg("ssl.verify", "0") == "1"
     if auth:
         if not headers:
             headers = {}
@@ -91,7 +101,7 @@ def _make_request(url : str,method :str ,headers:dict=None,query_params:dict =No
                                json=_json,
                                allow_redirects=allow_redirect,
                                proxies=proxies,
-                               verify=False)
+                               verify=verify_ssl)
 
         return {"status_code" : resp.status_code,
                 "url":resp.url,
@@ -142,11 +152,11 @@ def _send_request(protocol="http", host="127.0.0.1", port=8000, raw_request=""):
                             break
 
                     result = response.decode(errors="ignore")
-                    print(f"[DEBUG HTTP] {host}:{port} → {len(result)} bytes response", flush=True)
+                    _log.debug(f"[HTTP] {host}:{port} → {len(result)} bytes response")
                     return result
 
             except (socket.error, ConnectionError, OSError) as e:
-                print(f"[DEBUG HTTP] connection failed: {e}", flush=True)
+                _log.debug(f"[HTTP] connection failed: {e}")
                 raise HTTPException(status_code=502, detail="Connection failed")
 
         elif protocol == "https":
@@ -155,11 +165,11 @@ def _send_request(protocol="http", host="127.0.0.1", port=8000, raw_request=""):
                 context.check_hostname = False
                 context.verify_mode = ssl.CERT_NONE
 
-                print(f"[DEBUG HTTPS] connecting to {host}:{port}...", flush=True)
+                _log.debug(f"[HTTPS] connecting to {host}:{port}...")
                 sock = socket.create_connection((host, port), timeout=5)
-                print(f"[DEBUG HTTPS] TCP connected, starting TLS handshake...", flush=True)
+                _log.debug(f"[HTTPS] TCP connected, starting TLS handshake...")
                 ssock = context.wrap_socket(sock, server_hostname=host)
-                print(f"[DEBUG HTTPS] TLS OK, sending {len(raw_request)} bytes", flush=True)
+                _log.debug(f"[HTTPS] TLS OK, sending {len(raw_request)} bytes")
                 ssock.settimeout(5)
                 ssock.sendall(raw_request.encode())
 
@@ -169,19 +179,19 @@ def _send_request(protocol="http", host="127.0.0.1", port=8000, raw_request=""):
                     try:
                         chunk = ssock.recv(4096)
                         if not chunk:
-                            print(f"[DEBUG HTTPS] server closed, got {chunks} chunks, {len(response)} bytes", flush=True)
+                            _log.debug(f"[HTTPS] server closed, got {chunks} chunks, {len(response)} bytes")
                             break
                         response += chunk
                         chunks += 1
                     except socket.timeout:
-                        print(f"[DEBUG HTTPS] timeout after {chunks} chunks, {len(response)} bytes", flush=True)
+                        _log.debug(f"[HTTPS] timeout after {chunks} chunks, {len(response)} bytes")
                         break
 
                 result = response.decode(errors="ignore")
                 return result
 
             except (ssl.SSLError, socket.error, ConnectionError, OSError) as e:
-                print(f"[DEBUG HTTPS] failed: {e}", flush=True)
+                _log.debug(f"[HTTPS] failed: {e}")
                 raise HTTPException(status_code=502, detail="Connection failed")
 
         else:
@@ -270,7 +280,7 @@ def handle_raw(user_id: str, url: str, request: str,is_done_by_ai:bool=False):
     return request_uuid,resp
 
 
-def handle_request(user_id : str, url : str,method :str ,headers:dict=None,query_params:dict =None,body:str=None,_json :dict=None,auth :str = None,allow_redirect:bool=False,proxies:dict=None,is_done_by_ai:bool=False):
+def handle_request(user_id : str, url : str,method :str ,headers:dict=None,query_params:dict =None,body:str=None,_json :dict=None,auth :str = None,allow_redirect:bool=False,proxies:dict=None,is_done_by_ai:bool=False, verify_ssl:bool|None=None):
 
     request_uuid = _generate_request_uuid()
     author = user_id
@@ -302,7 +312,8 @@ def handle_request(user_id : str, url : str,method :str ,headers:dict=None,query
                             headers=hdrs,
                             _json=_json,
                             allow_redirect=allow_redirect,
-                            proxies=proxies)
+                            proxies=proxies,
+                            verify_ssl=verify_ssl)
         add_request(request_uuid=request_uuid,author=author,request=req,response=resp,is_done_by_ai=is_done_by_ai)
         return request_uuid,resp
     except Exception as e:
@@ -324,7 +335,8 @@ class RESTRequest(BaseModel):
     method : str
     url : str
     headers : dict  = None
-    body : str = None 
+    body : str = None
+    verify_ssl : bool = True
 
 
 class WWWFormRequest(BaseModel):
@@ -377,7 +389,8 @@ def rest_request(request : RESTRequest, _request:Request):
     token = _request.state.token
     proxies = _get_proxy_from_request(_request)
     req_uuid, resp = handle_request(user_id=token, method=request.method, url=request.url,
-                                     body=body, _json=_json, headers=headers, proxies=proxies)
+                                     body=body, _json=_json, headers=headers, proxies=proxies,
+                                     verify_ssl=request.verify_ssl)
     return _handle_response(req_uuid, resp, dict)
 
 

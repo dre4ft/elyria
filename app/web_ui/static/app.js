@@ -637,7 +637,8 @@ async function sendStructured() {
   const headers = getHeaders();
   const body = dom.reqBody.value.trim();
 
-  const payload = { url, method };
+  const verifySsl = document.getElementById('chk-verify-ssl')?.checked ?? true;
+  const payload = { url, method, verify_ssl: verifySsl };
   if (Object.keys(headers).length > 0) payload.headers = headers;
   if (body) payload.body = body;
 
@@ -1305,12 +1306,14 @@ async function showCreateModal(title, placeholder, callback) {
   dom.btnModalOk.callback = callback;
   // Populate team dropdown
   const teamSel = $('#modal-team');
-  if(teamSel) { teamSel.innerHTML = '<option value="">Personnel</option>';
+  if(teamSel) {
+    let opts = '<option value="">Personnel</option>';
     try {
       const r = await fetch('/api/teams', {headers:{...getAuthHeader()}});
       const teams = r.ok ? await r.json() : [];
-      teams.forEach(t => { teamSel.innerHTML += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; });
-    } catch {} }
+      teams.forEach(t => { opts += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; });
+    } catch {} finally { teamSel.innerHTML = opts; }
+  }
   dom.createModal.classList.remove('hidden');
   dom.createModal.classList.add('flex');
   dom.modalInput.focus();
@@ -2492,14 +2495,15 @@ document.head.appendChild(shakeStyle);
 let currentTeamFilter = '';
 function loadTeamFilterSelect() {
   const sel = $('#team-filter-select'); if(!sel) { console.log('team-filter-select not found'); return; }
-  sel.innerHTML = '<option value="">Tout</option><option value="__personal__">Personnel</option>';
-  sel.value = currentTeamFilter;
   sel.onchange = () => { currentTeamFilter = sel.value; loadCollections(); };
   fetch('/api/user/followed-teams', {headers:{...getAuthHeader()}}).then(r => {
     if(!r.ok) throw new Error('HTTP '+r.status);
     return r.json();
   }).then(teams => {
-    if(teams.length) { teams.forEach(t => { sel.innerHTML += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; }); }
+    let opts = '<option value="">Tout</option><option value="__personal__">Personnel</option>';
+    if(teams.length) { teams.forEach(t => { opts += `<option value="${t.team_id}">${escapeHtml(t.name)}</option>`; }); }
+    sel.innerHTML = opts;
+    sel.value = currentTeamFilter;
     sel.value = currentTeamFilter;
   }).catch(e => { console.log('Team filter load error:', e); });
 }

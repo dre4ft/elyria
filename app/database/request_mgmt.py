@@ -75,10 +75,12 @@ def add_request(request_uuid:str, author:str,  request:dict,response:dict,is_don
         conn.commit()
         return cursor.lastrowid
     except Exception as e:
+        from core.logging import get_logger
+        logger = get_logger(__name__)
         if type(e).__name__ in ("IntegrityError", "UniqueViolation"):
-            print("Integrity error ! :", e)
+            logger.warning(f"Integrity error: {e}")
         else:
-            print("Unexpected error ? :", e)
+            logger.exception(f"Unexpected error in add_request")
         return None
     finally:
         if conn:
@@ -113,7 +115,8 @@ def get_requests_by_id(request_uuid:str):
             return _decrypt_request_row(d, d.get("author_user_id", ""))
         return None
     except Exception as e:
-        print("Unexpected error:", e)
+        from core.logging import get_logger
+        get_logger(__name__).exception("Unexpected error in get_requests_by_id")
         return None
     finally:
         if conn:
@@ -128,7 +131,8 @@ def get_requests_by_userid(author_user_id:str, limit : int = 10, offset :int =0)
         cursor.execute("SELECT * FROM requests WHERE author_user_id=? LIMIT ? OFFSET ?",(author_user_id,limit,offset))
         return [_decrypt_request_row(dict(row), author_user_id) for row in cursor.fetchall()]
     except Exception as e:
-        print("Unexpected error:", e)
+        from core.logging import get_logger
+        get_logger(__name__).exception("Unexpected error in get_requests_by_userid")
         return None
     finally:
         if conn:
@@ -142,7 +146,8 @@ def get_last_n_requests_by_user(author_user_id:str, n:int = 5):
         cursor.execute("SELECT * FROM requests WHERE author_user_id=? ORDER BY date DESC LIMIT ?",(author_user_id,n))
         return [_decrypt_request_row(dict(row), author_user_id) for row in cursor.fetchall()]
     except Exception as e:
-        print("Unexpected error:", e)
+        from core.logging import get_logger
+        get_logger(__name__).exception("Unexpected error in get_last_n_requests_by_user")
         return None
     finally:
         if conn:

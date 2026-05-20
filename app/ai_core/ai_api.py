@@ -3,10 +3,13 @@
 
 from fastapi import APIRouter, Request, HTTPException
 from core.auth import get_user, require_admin
+from core.logging import get_logger
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from .ai_wrapper import AIWrapper
 from database import ai_mgmt
+
+_log = get_logger("ai_api")
 
 
 def _get_fallback_api_key():
@@ -182,7 +185,7 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
         return JSONResponse(content=response)
     except Exception as e:
         import traceback
-        print(f"[CHAT ERROR] {type(e).__name__}: {e}", flush=True)
+        _log.exception(f"Chat error: {type(e).__name__}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Internal error")
 

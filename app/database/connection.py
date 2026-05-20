@@ -17,15 +17,37 @@ import threading
 
 # ── Config from environment (falling back to hardcoded) ──
 
-_DB_BACKEND = os.getenv("DB_BACKEND", os.getenv("DB_PATH", "").endswith(".db") and "sqlite" or "sqlite")
-_DB_PATH = os.getenv("DB_PATH", "database.db")
-_PG_HOST = os.getenv("PG_HOST", "localhost")
-_PG_PORT = int(os.getenv("PG_PORT", "5432"))
-_PG_DATABASE = os.getenv("PG_DATABASE", "elyria")
-_PG_USER = os.getenv("PG_USER", "elyria")
-_PG_PASSWORD = os.getenv("PG_PASSWORD", "elyria")
-_POOL_MIN = int(os.getenv("DB_POOL_MIN", "2"))
-_POOL_MAX = int(os.getenv("DB_POOL_MAX", "10"))
+# Read config from elyria.cfg (bootstrap), fall back to env vars
+try:
+    from core.config import get as _cfg, get_int as _cfg_int
+    _DB_BACKEND = _cfg("database", "backend", "sqlite")
+    _DB_PATH = _cfg("database", "sqlite_path", "database.db")
+    _PG_HOST = _cfg("database", "pg_host", "localhost")
+    _PG_PORT = _cfg_int("database", "pg_port", 5432)
+    _PG_DATABASE = _cfg("database", "pg_database", "elyria")
+    _PG_USER = _cfg("database", "pg_user", "elyria")
+    _PG_PASSWORD = _cfg("database", "pg_password", "elyria")
+    _POOL_MIN = _cfg_int("database", "pool_min", 2)
+    _POOL_MAX = _cfg_int("database", "pool_max", 10)
+except Exception:
+    _DB_BACKEND = os.getenv("DB_BACKEND", os.getenv("DB_PATH", "").endswith(".db") and "sqlite" or "sqlite")
+    _DB_PATH = os.getenv("DB_PATH", "database.db")
+    _PG_HOST = os.getenv("PG_HOST", "localhost")
+    _PG_PORT = int(os.getenv("PG_PORT", "5432"))
+    _PG_DATABASE = os.getenv("PG_DATABASE", "elyria")
+    _PG_USER = os.getenv("PG_USER", "elyria")
+    _PG_PASSWORD = os.getenv("PG_PASSWORD", "elyria")
+    _POOL_MIN = int(os.getenv("DB_POOL_MIN", "2"))
+    _POOL_MAX = int(os.getenv("DB_POOL_MAX", "10"))
+
+# Warn if using default credentials in production
+if os.getenv("ELYRIA_PRODUCTION", "") == "1":
+    if _PG_USER == "elyria" and _PG_PASSWORD == "elyria":
+        import sys
+        print("WARNING: Using default PostgreSQL credentials in production. Configure [database] section in elyria.cfg.", file=sys.stderr)
+    if _DB_BACKEND == "sqlite":
+        import sys
+        print("WARNING: Using SQLite in production. Set backend=postgres in elyria.cfg [database] section.", file=sys.stderr)
 
 
 def is_postgres():
