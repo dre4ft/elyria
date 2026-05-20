@@ -18,7 +18,6 @@ from database.workflow_graph_api import app as workflow_graph_router
 from database.proxy_api import app as proxy_router
 from database.teams_api import app as teams_router
 from ai_core.ai_config_api import app as ai_config_router
-from database.app_config_api import app as app_config_router
 from auth_users.oidc_api import app as oidc_router
 
 import sys
@@ -243,7 +242,6 @@ app.include_router(workflow_graph_router)
 app.include_router(proxy_router)
 app.include_router(teams_router)
 app.include_router(ai_config_router)
-app.include_router(app_config_router)
 app.include_router(oidc_router)
 
 if enterprise_router:
