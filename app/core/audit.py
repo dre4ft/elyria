@@ -51,7 +51,8 @@ def audit(level: str, action: str, *,
           method: str = "",
           path: str = "",
           duration_ms: int = 0,
-          extra: dict = None):
+          extra: dict = None,
+          **kwargs):
     """
     Record an audit event.
 
@@ -71,6 +72,7 @@ def audit(level: str, action: str, *,
     if ip: parts.append(f"ip={ip}")
     if method and path: parts.append(f"{method} {path}")
     if detail: parts.append(f"detail={detail[:200]}")
+    if kwargs: parts.append("extra=" + " ".join(f"{k}={str(v)[:80]}" for k, v in kwargs.items()))
     msg = " | ".join(parts)
 
     # 1. Write to log file / console

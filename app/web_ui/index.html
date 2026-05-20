@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Elyria — API Client</title>
   <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg" />
+  <link rel="alternate icon" type="image/x-icon" href="/static/icons/favicon.ico" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -452,13 +453,18 @@
           <div class="w-6 h-6 rounded-lg bg-fuchsia-500/15 border border-fuchsia-500/20 flex items-center justify-center">
             <svg class="w-3.5 h-3.5 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
           </div>
-          <span class="text-xs font-semibold text-white">JWT Decoder</span>
+          <span class="text-xs font-semibold text-white">JWT</span>
+          <div class="flex rounded-md bg-base-700 border border-white/5 overflow-hidden ml-2">
+            <button id="jwt-tab-decode" class="px-2.5 py-1 text-[10px] font-semibold bg-fuchsia-500/15 text-fuchsia-400 transition-colors">Decoder</button>
+            <button id="jwt-tab-encode" class="px-2.5 py-1 text-[10px] font-semibold text-gray-500 hover:text-gray-300 transition-colors">Encoder</button>
+          </div>
         </div>
         <button id="btn-close-jwt" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
       </div>
-      <div class="p-4 flex flex-col gap-3 flex-1 overflow-y-auto scrollbar-thin">
+      <!-- DECODE TAB -->
+      <div id="jwt-decode-tab" class="p-4 flex flex-col gap-3 flex-1 overflow-y-auto scrollbar-thin">
         <textarea id="jwt-input" placeholder="Collez un token JWT ici..." class="w-full h-20 p-3 rounded-lg bg-base-900/60 border border-white/5 text-xs font-['JetBrains_Mono'] text-gray-300 placeholder-gray-700 resize-none focus:outline-none focus:border-fuchsia-500/40 transition-all scrollbar-thin"></textarea>
         <div id="jwt-output" class="space-y-3 hidden">
           <div class="rounded-lg bg-base-900/60 border border-white/5 overflow-hidden">
@@ -488,6 +494,44 @@
               <span class="text-[10px] uppercase tracking-widest text-emerald-400 font-semibold">Claims</span>
             </div>
             <pre id="jwt-claims-content" class="p-3 text-[11px] font-mono text-emerald-200 whitespace-pre-wrap break-all"></pre>
+          </div>
+        </div>
+      </div>
+      <!-- ENCODE TAB -->
+      <div id="jwt-encode-tab" class="p-4 flex flex-col gap-3 flex-1 overflow-y-auto scrollbar-thin hidden">
+        <div>
+          <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Algorithme</label>
+          <select id="jwt-enc-alg" class="w-full h-9 px-2 rounded-lg bg-base-900/60 border border-white/5 text-xs text-gray-200 mt-1 font-mono">
+            <option value="HS256">HS256</option>
+            <option value="HS384">HS384</option>
+            <option value="HS512" selected>HS512</option>
+            <option value="RS256">RS256</option>
+            <option value="none">none</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Header (JSON)</label>
+          <textarea id="jwt-enc-header" placeholder='{"alg":"HS512","typ":"JWT","kid":"key-1"}' class="w-full h-20 p-3 rounded-lg bg-base-900/60 border border-white/5 text-xs font-['JetBrains_Mono'] text-gray-300 placeholder-gray-700 resize-none focus:outline-none focus:border-fuchsia-500/40 transition-all scrollbar-thin mt-1"></textarea>
+        </div>
+        <div>
+          <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Payload (JSON)</label>
+          <textarea id="jwt-enc-payload" placeholder='{"sub":"123","name":"test","iat":1716239022}' class="w-full h-28 p-3 rounded-lg bg-base-900/60 border border-white/5 text-xs font-['JetBrains_Mono'] text-gray-300 placeholder-gray-700 resize-none focus:outline-none focus:border-fuchsia-500/40 transition-all scrollbar-thin mt-1"></textarea>
+        </div>
+        <div id="jwt-enc-secret-group">
+          <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Secret / Cle (pour HS256/384/512)</label>
+          <input id="jwt-enc-secret" type="text" placeholder="votre-secret" class="w-full h-9 px-3 rounded-lg bg-base-900/60 border border-white/5 text-xs font-mono text-gray-300 placeholder-gray-700 focus:outline-none focus:border-emerald-500/40 transition-all mt-1" />
+        </div>
+        <button id="jwt-enc-generate" class="w-full h-10 rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2 active:scale-[0.98]">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
+          Generer le token
+        </button>
+        <div id="jwt-enc-result" class="hidden space-y-2">
+          <label class="text-[10px] uppercase tracking-widest text-emerald-400 font-semibold">Token genere</label>
+          <div class="relative">
+            <pre id="jwt-enc-output" class="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/15 text-[10px] font-mono text-emerald-200 whitespace-pre-wrap break-all overflow-x-auto"></pre>
+            <button id="jwt-enc-copy" class="absolute top-2 right-2 w-6 h-6 rounded bg-base-700 hover:bg-base-600 flex items-center justify-center text-gray-400 hover:text-gray-200 transition-colors" title="Copier">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg>
+            </button>
           </div>
         </div>
       </div>

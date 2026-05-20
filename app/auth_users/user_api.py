@@ -76,13 +76,13 @@ def _hash_password(password: str, salt: str) -> str:
 
 def _create_jwt(user_id: str, secret: str, key_id: str, email: str = "", expires_in: int = 3600) -> str:
     payload = {
-        "kid": key_id,
         "sub": user_id,
         "email": email,
         "iat": int(time.time()),
         "exp": time.time() + expires_in,
     }
-    return jwt.encode(payload, secret, algorithm="HS512")
+    headers = {"kid": key_id}
+    return jwt.encode(payload, secret, algorithm="HS512", headers=headers)
 
 
 # ═══════════════════════════════════════════
@@ -142,7 +142,10 @@ async def create_user(request: CreateUserRequest):
 
     email = request.email.strip().lower()
 
-    # ── Anti-énumération : toujours retourner 201, même si le compte existe ──
+    # ── Anti-énumération : toujours retourner 201 ──
+    # Pour les nouveaux comptes : on crée et on retourne le token de vérification.
+    # Pour les comptes existants : on simule le succès sans rien créer.
+    verification_token = ""
     if not is_email_taken(email):
         user_id = _generate_uuid()
         salt_legacy = secrets.token_bytes(16).hex()
@@ -159,7 +162,7 @@ async def create_user(request: CreateUserRequest):
         register_master_key(user_id, request.password, salt_pw, salt_auth, salt_rec)
 
         code = _generate_verification_code()
-        create_verification_token(email, code, ttl_minutes=30)
+        verification_token = create_verification_token(email, code, ttl_minutes=30)
 
         from core.mail import send_verification_code
         send_verification_code(email, code)
@@ -167,7 +170,8 @@ async def create_user(request: CreateUserRequest):
         audit_info("user.created", user_id=user_id, email=email)
 
     return JSONResponse(content={
-        "message": "Si cette adresse est eligible, un email de verification a ete envoye."
+        "message": "Si cette adresse est eligible, un email de verification a ete envoye.",
+        "verification_token": verification_token,
     }, status_code=201)
 
 
@@ -261,7 +265,6 @@ async def logout(request: Request):
 @app.post("/refresh")
 async def refresh_session(request: RefreshRequest):
     from database.user_mgmt import verify_refresh_token, consume_refresh, rotate_key
-    from database.crypto_store import load_user_key, set_user_key
 
     row = verify_refresh_token(request.refresh_token)
     if not row:
@@ -271,10 +274,8 @@ async def refresh_session(request: RefreshRequest):
         delete_key(row["key_id"])
         raise HTTPException(status_code=401, detail="Limite de refresh atteinte — veuillez vous reconnecter.")
 
-    # V2 crypto: master_key is per-session, refresh doesn't need to re-derive
-    # (master_key stays in memory cache until TTL expires or logout)
+    # V2 crypto: master_key stays in memory cache until TTL expires or logout
     from database.crypto_store import get_master_key
-    # If master_key expired from cache, user must re-login
     mk = get_master_key(row["user_id"])
     if not mk:
         raise HTTPException(status_code=401, detail="Session expiree — veuillez vous reconnecter.")

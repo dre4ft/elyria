@@ -434,16 +434,14 @@ def add_key(key_id: str, key_value: str, user_id: str = None,
 
 
 def get_key(key_id: str):
-    """Return the JWT signing secret (derived, not the stored value)."""
+    """Return the stored JWT signing secret."""
     conn = connect()
     cursor = conn.cursor()
     try:
         cursor.execute("SELECT key_value FROM keys WHERE key_id = ?", (key_id,))
         row = cursor.fetchone()
         if row:
-            # The stored value is HMAC-derived; we return the same derivation
-            # for verification (both sides compute the same HMAC)
-            return _derive_jwt_secret(key_id)
+            return row["key_value"]
         return None
     except Exception as e:
         logger.error(f"Error fetching key: {e}")

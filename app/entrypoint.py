@@ -72,8 +72,8 @@ async def security_headers(request: Request, call_next):
     # CSP — script-src allows Tailwind CDN + inline (required by the SPA)
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
-        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "connect-src 'self'; "
         "img-src 'self' data:; "
         "font-src 'self' https://fonts.gstatic.com; "
@@ -119,13 +119,20 @@ async def check_authorization(request: Request, call_next):
         return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
 
     try:
-        # Extract KID from header without verifying signature (avoids alg=none risk)
+        # Extract KID: header first (RFC 7515), fallback to payload (legacy)
         import base64 as _b64, json as _json
-        header_raw = token.split(".")[0]
-        # Add padding for base64url decode
-        header_raw += "=" * (4 - len(header_raw) % 4)
-        header = _json.loads(_b64.urlsafe_b64decode(header_raw))
-        kid = header.get("kid")
+        kid = None
+        parts = token.split(".")
+        for idx in (0, 1):
+            raw = parts[idx]
+            raw += "=" * (4 - len(raw) % 4)
+            try:
+                obj = _json.loads(_b64.urlsafe_b64decode(raw))
+                kid = obj.get("kid")
+                if kid:
+                    break
+            except Exception:
+                continue
         if not kid:
             return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
         secret = get_key(kid)

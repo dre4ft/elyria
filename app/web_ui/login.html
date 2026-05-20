@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Elyria — Connexion</title>
   <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg" />
+  <link rel="alternate icon" type="image/x-icon" href="/static/icons/favicon.ico" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -282,10 +283,18 @@
       registerUser(email, password, confirm).then(function(r) {
         setLoading(btnRegister, false);
         if (r.success) {
-          showSuccess(r.message || 'Compte cree. Verifiez votre email.');
-          formRegister.classList.add('hidden');
-          tabLogin.click();
-          $('#login-email').value = email;
+          if (r.verification_token) {
+            _verificationToken = r.verification_token;
+            formRegister.classList.add('hidden');
+            verifyStep.classList.remove('hidden');
+            $('#verify-email-display').textContent = email;
+            showSuccess('Compte cree ! Un code de verification a ete envoye a ' + email);
+          } else {
+            showSuccess(r.message || 'Si cette adresse est eligible, un email a ete envoye.');
+            formRegister.classList.add('hidden');
+            tabLogin.click();
+            $('#login-email').value = email;
+          }
         } else { showError(r.error); }
       });
     });

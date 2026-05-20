@@ -2217,6 +2217,92 @@ function setupJWTPanel() {
       decodeJWT(token);
     });
   }
+  // Tab switching
+  const tabDecode = $('#jwt-tab-decode');
+  const tabEncode = $('#jwt-tab-encode');
+  const decodeTab = $('#jwt-decode-tab');
+  const encodeTab = $('#jwt-encode-tab');
+  if (tabDecode && tabEncode) {
+    tabDecode.addEventListener('click', () => {
+      tabDecode.className = 'px-2.5 py-1 text-[10px] font-semibold bg-fuchsia-500/15 text-fuchsia-400 transition-colors';
+      tabEncode.className = 'px-2.5 py-1 text-[10px] font-semibold text-gray-500 hover:text-gray-300 transition-colors';
+      if (decodeTab) decodeTab.classList.remove('hidden');
+      if (encodeTab) encodeTab.classList.add('hidden');
+    });
+    tabEncode.addEventListener('click', () => {
+      tabEncode.className = 'px-2.5 py-1 text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 transition-colors';
+      tabDecode.className = 'px-2.5 py-1 text-[10px] font-semibold text-gray-500 hover:text-gray-300 transition-colors';
+      if (decodeTab) decodeTab.classList.add('hidden');
+      if (encodeTab) encodeTab.classList.remove('hidden');
+    });
+  }
+  // Encode button
+  const btnGenerate = $('#jwt-enc-generate');
+  if (btnGenerate) {
+    btnGenerate.addEventListener('click', () => {
+      const alg = $('#jwt-enc-alg')?.value || 'HS512';
+      const headerStr = $('#jwt-enc-header')?.value.trim() || `{"alg":"${alg}","typ":"JWT"}`;
+      const payloadStr = $('#jwt-enc-payload')?.value || '';
+      const secret = $('#jwt-enc-secret')?.value || '';
+      const resultDiv = $('#jwt-enc-result');
+      const output = $('#jwt-enc-output');
+      if (!resultDiv || !output) return;
+      try {
+        const header = JSON.parse(headerStr);
+        const payload = JSON.parse(payloadStr);
+        const b64Encode = (obj) => {
+          const str = JSON.stringify(obj);
+          // Use browser-native base64url
+          const b64 = btoa(unescape(encodeURIComponent(str)));
+          return b64.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+        };
+        const hdrB64 = b64Encode(header);
+        const payB64 = b64Encode(payload);
+        let sig = '';
+        if (alg !== 'none') {
+          if (!secret) {
+            output.textContent = 'Erreur : un secret est requis pour ' + alg;
+            resultDiv.classList.remove('hidden');
+            return;
+          }
+          // Web Crypto HMAC signing
+          const encoder = new TextEncoder();
+          const keyData = encoder.encode(secret);
+          const data = encoder.encode(hdrB64 + '.' + payB64);
+          const hashAlg = alg === 'HS256' ? 'SHA-256' : alg === 'HS384' ? 'SHA-384' : 'SHA-512';
+          crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: hashAlg }, false, ['sign'])
+            .then(key => crypto.subtle.sign('HMAC', key, data))
+            .then(sigBytes => {
+              const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sigBytes)))
+                .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+              const token = hdrB64 + '.' + payB64 + '.' + sigB64;
+              output.textContent = token;
+              resultDiv.classList.remove('hidden');
+            })
+            .catch(e => { output.textContent = 'Erreur de signature : ' + e.message; resultDiv.classList.remove('hidden'); });
+          return;
+        }
+        const token = hdrB64 + '.' + payB64 + '.';
+        output.textContent = token;
+        resultDiv.classList.remove('hidden');
+      } catch (e) {
+        output.textContent = 'Erreur JSON dans le payload : ' + e.message;
+        resultDiv.classList.remove('hidden');
+      }
+    });
+  }
+  // Copy button
+  const btnCopy = $('#jwt-enc-copy');
+  if (btnCopy) {
+    btnCopy.addEventListener('click', () => {
+      const output = $('#jwt-enc-output');
+      if (!output?.textContent) return;
+      navigator.clipboard.writeText(output.textContent).then(() => {
+        btnCopy.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>';
+        setTimeout(() => { btnCopy.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg>'; }, 1500);
+      }).catch(() => {});
+    });
+  }
 }
 
 function decodeJWT(token) {
