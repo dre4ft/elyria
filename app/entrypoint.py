@@ -146,6 +146,15 @@ async def check_authorization(request: Request, call_next):
         return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
 
     return await call_next(request)
+
+# ── Gatekeeper (registered LAST = runs FIRST, outermost wall) ──
+try:
+    from enterprise.gatekeeper import gatekeeper_middleware as _gate_mw, gate_app as _gate_app
+    app.middleware("http")(_gate_mw)
+    app.include_router(_gate_app)
+except ImportError:
+    pass  # Gatekeeper not installed — skip the wall
+
 @app.get("/")
 async def serve_root():
     return _serve_html("login.html")
