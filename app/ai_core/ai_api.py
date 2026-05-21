@@ -48,7 +48,11 @@ def _init_provider_from_db():
 
 app = APIRouter(prefix="/api/chat")
 
-AI_PROVIDER = _init_provider_from_db()
+try:
+    AI_PROVIDER = _init_provider_from_db()
+except Exception as e:
+    _log.warning(f"AI provider init failed — chat will be unavailable: {e}")
+    AI_PROVIDER = None
 
 def _get_provider_for_slot(slot: str):
     """Lazy-init the right provider for pro/flash slot."""
