@@ -232,11 +232,14 @@ def set_kv(key: str, value: str):
     if key in _SECRET_KEYS and value:
         from database.crypto_store import seal_system
         payload = seal_system({"value": str(value)})
-        plaintext = ""  # clear plaintext for secret keys
-    c.execute(
-        "INSERT OR REPLACE INTO app_config (key, value, payload_encrypted) VALUES(?,?,?)",
-        (key, plaintext, payload),
-    )
+        plaintext = ""
+    try:
+        c.execute(
+            "INSERT OR REPLACE INTO app_config (key, value, payload_encrypted) VALUES(?,?,?)",
+            (key, plaintext, payload),
+        )
+    except sqlite3.OperationalError:
+        c.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES(?,?)", (key, plaintext))
     c.commit()
     c.close()
     from core.cache import cache
@@ -245,7 +248,10 @@ def set_kv(key: str, value: str):
 
 def get_all() -> dict:
     c = _connect()
-    rows = c.execute("SELECT key, value, payload_encrypted FROM app_config ORDER BY key").fetchall()
+    try:
+        rows = c.execute("SELECT key, value, payload_encrypted FROM app_config ORDER BY key").fetchall()
+    except sqlite3.OperationalError:
+        rows = c.execute("SELECT key, value FROM app_config ORDER BY key").fetchall()
     c.close()
     result = dict(_DEFAULTS)
     for r in rows:
@@ -344,11 +350,14 @@ def set_provider_toggle(provider_type: str, enabled: bool):
 # ── API keys ──────────────────────────────────────────────────────────
 def get_api_key(name: str) -> str:
     c = _connect()
-    row = c.execute("SELECT key_value, payload_encrypted FROM app_api_keys WHERE key_name=?", (name,)).fetchone()
+    try:
+        row = c.execute("SELECT key_value, payload_encrypted FROM app_api_keys WHERE key_name=?", (name,)).fetchone()
+    except sqlite3.OperationalError:
+        row = c.execute("SELECT key_value FROM app_api_keys WHERE key_name=?", (name,)).fetchone()
     c.close()
     if not row:
         return ""
-    if row["payload_encrypted"]:
+    if "payload_encrypted" in row.keys() and row["payload_encrypted"]:
         from database.crypto_store import open_system
         data = open_system(row["payload_encrypted"])
         return data.get("key_value", "") if data else ""
@@ -359,22 +368,28 @@ def set_api_key(name: str, value: str):
     c = _connect()
     from database.crypto_store import seal_system
     payload = seal_system({"key_value": value}) if value else ""
-    c.execute(
-        "INSERT OR REPLACE INTO app_api_keys (key_name, key_value, payload_encrypted) VALUES(?,?,?)",
-        (name, "", payload),
-    )
+    try:
+        c.execute(
+            "INSERT OR REPLACE INTO app_api_keys (key_name, key_value, payload_encrypted) VALUES(?,?,?)",
+            (name, "", payload),
+        )
+    except sqlite3.OperationalError:
+        c.execute("INSERT OR REPLACE INTO app_api_keys (key_name, key_value) VALUES(?,?)", (name, value))
     c.commit()
     c.close()
 
 
 def get_all_api_keys():
     c = _connect()
-    rows = c.execute("SELECT key_name, key_value, payload_encrypted FROM app_api_keys ORDER BY key_name").fetchall()
+    try:
+        rows = c.execute("SELECT key_name, key_value, payload_encrypted FROM app_api_keys ORDER BY key_name").fetchall()
+    except sqlite3.OperationalError:
+        rows = c.execute("SELECT key_name, key_value FROM app_api_keys ORDER BY key_name").fetchall()
     c.close()
     result = []
     for r in rows:
         d = dict(r)
-        if d.get("payload_encrypted"):
+        if "payload_encrypted" in d.keys() and d.get("payload_encrypted"):
             from database.crypto_store import open_system
             data = open_system(d["payload_encrypted"])
             d["key_value"] = data.get("key_value", "") if data else ""
