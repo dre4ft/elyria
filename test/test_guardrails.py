@@ -153,13 +153,22 @@ class TestCORS:
 
 class TestSecurityHeaders:
     """Validation des headers de sécurité sur les réponses HTTP."""
+    @staticmethod
+    def _get_gate_cookie():
+        try:
+            from enterprise.gatekeeper import GATE_KEY, _sign_gate_token
+        except ImportError:
+            return ""
+        return _sign_gate_token(GATE_KEY) if GATE_KEY else ""
 
     def test_csp_header_format(self):
         """Le CSP contient les directives essentielles."""
         from entrypoint import app
         from fastapi.testclient import TestClient
         client = TestClient(app)
-        response = client.get("/login")
+        gc = self._get_gate_cookie()
+        cookies = {'elyria_gate': gc} if gc else {}
+        response = client.get("/login", cookies=cookies)
         csp = response.headers.get("content-security-policy", "")
         assert "default-src" in csp, f"CSP missing default-src: {csp}"
         assert "frame-ancestors 'none'" in csp, f"CSP missing frame-ancestors: {csp}"
@@ -169,21 +178,27 @@ class TestSecurityHeaders:
         from fastapi.testclient import TestClient
         from entrypoint import app
         client = TestClient(app)
-        response = client.get("/login")
+        gc = self._get_gate_cookie()
+        cookies = {'elyria_gate': gc} if gc else {}
+        response = client.get("/login", cookies=cookies)
         assert response.headers.get("x-content-type-options") == "nosniff"
 
     def test_x_frame_options(self):
         from fastapi.testclient import TestClient
         from entrypoint import app
         client = TestClient(app)
-        response = client.get("/login")
+        gc = self._get_gate_cookie()
+        cookies = {'elyria_gate': gc} if gc else {}
+        response = client.get("/login", cookies=cookies)
         assert response.headers.get("x-frame-options") == "DENY"
 
     def test_hsts(self):
         from fastapi.testclient import TestClient
         from entrypoint import app
         client = TestClient(app)
-        response = client.get("/login")
+        gc = self._get_gate_cookie()
+        cookies = {'elyria_gate': gc} if gc else {}
+        response = client.get("/login", cookies=cookies)
         assert "max-age=31536000" in response.headers.get("strict-transport-security", "")
 
 
