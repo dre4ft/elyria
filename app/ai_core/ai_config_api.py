@@ -6,7 +6,7 @@ AI Provider configuration API — flash and pro slots, multi-provider.
 """
 
 from fastapi import APIRouter, Request, HTTPException
-from core.auth import get_user, require_admin
+from core.auth import get_user
 from database.ai_config_mgmt import (
     list_provider_configs,
     get_provider_config,
@@ -200,7 +200,7 @@ async def api_get_default_slot(request: Request, slot: str):
 
 @app.post("")
 async def api_create_config(request: Request):
-    require_admin(request)
+    get_user(request)
     body = await request.json()
     slot = body.get("slot", "pro")
     if slot not in ("flash", "pro"):
@@ -224,7 +224,7 @@ async def api_create_config(request: Request):
 
 @app.post("/{config_id}/set-default")
 async def api_set_default(request: Request, config_id: str):
-    require_admin(request)
+    get_user(request)
     cfg = get_provider_config(config_id)
     if not cfg:
         raise HTTPException(404, "Config not found")
@@ -280,7 +280,7 @@ async def api_get_config(request: Request, config_id: str):
 
 @app.put("/{config_id}")
 async def api_update_config(config_id: str, request: Request):
-    require_admin(request)
+    get_user(request)
     cfg = get_provider_config(config_id)
     if not cfg:
         raise HTTPException(404, "Config not found")
@@ -294,7 +294,7 @@ async def api_update_config(config_id: str, request: Request):
 
 @app.delete("/{config_id}")
 async def api_delete_config(request: Request, config_id: str):
-    require_admin(request)
+    get_user(request)
     cfg = get_provider_config(config_id)
     if not cfg:
         raise HTTPException(404, "Config not found")

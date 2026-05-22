@@ -42,24 +42,45 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script>
+  if(/Mobi|Android|iPhone/i.test(navigator.userAgent)&&window.innerWidth<768&&!location.pathname.endsWith('/m')){
+    location.replace('/m');
+  }
+</script>
 </head>
 <body class="h-full bg-base-900 text-gray-200 font-['Inter',sans-serif] overflow-hidden">
 
+  <!-- ===== MOBILE NAV OVERLAY ===== -->
+  <div id="mobile-nav-overlay" class="hidden fixed inset-0 z-50 bg-base-900/90 backdrop-blur-sm" onclick="toggleMobileNav()"></div>
+  <div id="mobile-nav" class="hidden fixed left-0 top-12 bottom-0 w-56 z-50 bg-base-800 border-r border-white/5 p-4 flex flex-col gap-1 overflow-y-auto">
+    <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-3 px-2">Navigation</div>
+    <button onclick="navigateTo('/app');toggleMobileNav()" class="mobile-nav-link h-11 flex items-center gap-3 px-3 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-all">Client API</button>
+    <button onclick="navigateTo('/workflow');toggleMobileNav()" class="mobile-nav-link h-11 flex items-center gap-3 px-3 rounded-lg text-sm text-gray-400 hover:text-green-400 hover:bg-white/5 transition-all">Workflows</button>
+    <button onclick="navigateTo('/pentest');toggleMobileNav()" class="mobile-nav-link h-11 flex items-center gap-3 px-3 rounded-lg text-sm text-gray-400 hover:text-red-400 hover:bg-white/5 transition-all">Red Team</button>
+    <button onclick="navigateTo('/blueteam');toggleMobileNav()" class="mobile-nav-link h-11 flex items-center gap-3 px-3 rounded-lg text-sm text-gray-400 hover:text-blue-400 hover:bg-white/5 transition-all">Blue Team</button>
+    <button onclick="navigateTo('/doc');toggleMobileNav()" class="mobile-nav-link h-11 flex items-center gap-3 px-3 rounded-lg text-sm text-gray-400 hover:text-purple-400 hover:bg-white/5 transition-all">Docs</button>
+    <button onclick="navigateTo('/hub');toggleMobileNav()" class="mobile-nav-link h-11 flex items-center gap-3 px-3 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-all">Hub</button>
+  </div>
+
   <!-- ===== TOP BAR ===== -->
-  <header class="h-12 bg-base-800 border-b border-white/5 flex items-center justify-between px-5 shrink-0 z-50 relative">
+  <header class="h-12 bg-base-800 border-b border-white/5 flex items-center justify-between px-3 md:px-5 shrink-0 z-40 relative">
     <!-- LEFT: Logo + Feature nav -->
     <div class="flex items-center gap-2">
       <a href="/app" class="flex items-center gap-2 no-underline flex-shrink-0">
         <img src="/static/icons/icon.svg" class="w-7 h-7" alt="" />
-        <span class="text-sm font-medium tracking-widest text-slate-400">elyria</span>
+        <span class="text-sm font-medium tracking-widest text-slate-400 hidden md:inline">elyria</span>
       </a>
-      <div class="w-px h-5 bg-white/10"></div>
-      <nav class="flex items-center gap-1">
+      <div class="w-px h-5 bg-white/10 hidden md:block"></div>
+      <nav class="hidden md:flex items-center gap-1">
         <button onclick="navigateTo('/workflow')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-green-400 hover:bg-green-500/5 transition-all">Workflows</button>
         <button onclick="navigateTo('/pentest')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-red-400 hover:bg-red-500/5 transition-all">Red Team</button>
         <button onclick="navigateTo('/blueteam')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-blue-400 hover:bg-blue-500/5 transition-all">Blue Team</button>
         <button onclick="navigateTo('/doc')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-purple-400 hover:bg-purple-500/5 transition-all">Docs</button>
       </nav>
+      <!-- Mobile hamburger -->
+      <button onclick="toggleMobileNav()" class="md:hidden h-8 w-8 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-400 flex items-center justify-center flex-shrink-0">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+      </button>
     </div>
     <!-- CENTER: Feature actions -->
     <div class="flex items-center gap-2">
@@ -94,7 +115,8 @@
   <div class="flex h-[calc(100vh-3rem)]">
 
     <!-- ===== SIDEBAR — COLLECTIONS + HISTORY ===== -->
-    <aside id="sidebar" class="w-72 min-w-[272px] bg-base-800 border-r border-white/5 flex flex-col shrink-0">
+    <div id="sidebar-overlay" class="hidden fixed inset-0 z-30 bg-base-900/80 backdrop-blur-sm md:hidden" onclick="toggleSidebar()"></div>
+    <aside id="sidebar" class="w-72 min-w-[272px] max-w-[85vw] bg-base-800 border-r border-white/5 flex-col shrink-0 hidden md:flex md:relative fixed left-0 top-12 bottom-0 z-40">
 
       <!-- Sidebar header -->
       <div class="px-4 pt-3 pb-0 shrink-0">

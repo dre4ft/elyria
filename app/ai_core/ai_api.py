@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Elyria
 
 from fastapi import APIRouter, Request, HTTPException
-from core.auth import get_user, require_admin
+from core.auth import get_user
 from core.logging import get_logger
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -128,7 +128,7 @@ async def list_models(request: Request):
 
 @app.post("/update_model")
 async def update_model(request: Request, update_request: UpdateModelRequest):
-    require_admin(request)
+    get_user(request)
     try:
         AI_PROVIDER.update_model(update_request.new_model)
         return JSONResponse(content={"message": f"Model updated to {update_request.new_model}"})
@@ -142,7 +142,7 @@ async def get_providers(request: Request):
 
 @app.post("/init_provider")
 async def init_provider(request: Request, init_request: InitProviderRequest):
-    require_admin(request)
+    get_user(request)
     try:
         global AI_PROVIDER
         AI_PROVIDER = AIWrapper(

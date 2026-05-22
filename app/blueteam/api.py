@@ -187,7 +187,7 @@ Le rapport original du pentest est fourni dans la documentation ci-dessous."""
         target_url=c.get('target_url', ''),
         user_id=user_id,
         team_ids=get_auth_user_teams(request),
-        description=f"Analyse de remediation importee depuis le pentest (campagne {campaign_id[:8]}...)",
+        description=f"Analyse de remediation importee depuis le pentest (campagne {campaign_id[:8]})",
         master_prompt=master_prompt,
         documentation=documentation,
         source_type="pentest",

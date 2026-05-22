@@ -89,7 +89,7 @@ async def check_authorization(request: Request, call_next):
     # HTML shells (/app, /workflow, etc.) are served without auth so the SPA
     # can load auth.js — client-side auth handles the rest.
     PUBLIC_ROUTES = {
-        "/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/blueteam",
+        "/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/blueteam", "/m",
         "/api/user/login", "/api/user/create", "/api/user/refresh",
         "/api/user/verify-email", "/api/user/resend-code",
         "/api/user/reset-password", "/api/user/reset-password/confirm",
@@ -219,6 +219,10 @@ async def serve_pentest():
 async def serve_blueteam():
     return _serve_html("blueteam.html")
 
+@app.get("/m")
+async def serve_mobile():
+    return _serve_html("m.html")
+
 @app.get("/doc")
 async def serve_doc():
     return _serve_html("doc.html")
@@ -274,4 +278,6 @@ if __name__ == "__main__":
         port=get_int("server", "port", 8000),
         reload=get_bool("server", "reload", False),
         **ssl_kwargs,
+        reload_dir="app/",
+        reload_excludes=["logs/*", "*.db"]
     )
