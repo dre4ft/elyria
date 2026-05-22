@@ -1810,6 +1810,21 @@ function toggleSidebar() {
   if (!sidebar) return;
   const collapsed = sidebar.dataset.collapsed === 'true';
   sidebar.dataset.collapsed = collapsed ? 'false' : 'true';
+  // On mobile: show/hide with overlay
+  if (window.innerWidth < 768) {
+    sidebar.classList.toggle('hidden', collapsed);
+    sidebar.classList.toggle('flex', !collapsed);
+    document.getElementById('sidebar-overlay')?.classList.toggle('hidden', collapsed);
+  }
+}
+
+function toggleMobileNav() {
+  const nav = document.getElementById('mobile-nav');
+  const overlay = document.getElementById('mobile-nav-overlay');
+  if (!nav || !overlay) return;
+  const open = !nav.classList.contains('hidden');
+  nav.classList.toggle('hidden', open);
+  overlay.classList.toggle('hidden', open);
 }
 
 function clearChatHistory() {
