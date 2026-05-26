@@ -4,25 +4,6 @@
 
 ---
 
-## Table of Contents
-
-1. [Overview](#1--overview)
-2. [Quick Start](#2--quick-start)
-3. [Main Interface](#3--main-interface)
-4. [Collections](#4--collections)
-5. [History](#5--history)
-6. [Catcher (Proxy Interceptor)](#6--catcher-proxy-interceptor)
-7. [AI Assistant](#7--ai-assistant)
-8. [Document Import (OpenAPI / Arazzo)](#8--document-import-openapi--arazzo)
-9. [Raw HTTP Requests](#9--raw-http-requests)
-10. [Workflow Builder](#10--workflow-builder)
-11. [The Hub](#11--the-hub)
-12. [Red Team / Pentest](#12--red-team--pentest)
-13. [Blue Team / SSDLC](#13--blue-team--ssdlc)
-14. [Keyboard Shortcuts](#14--keyboard-shortcuts)
-
----
-
 ## 1. Overview
 
 Elyria is a complete API client combining:
@@ -35,6 +16,7 @@ Elyria is a complete API client combining:
 - **Built-in AI Assistant** — create collections, run tests, and analyze results via chat
 - **Red Team / Pentest** — scan your APIs with the OWASP API Top 10 engine + AI deep scan
 - **Blue Team / SSDLC** — security-by-design analysis of your specs producing security requirements reports
+- **Grey Team / OSINT** — passive domain reconnaissance (DNS, WHOIS, SSL, subdomains, tech stack, emails, GitHub, Google)
 - **OpenAPI / Arazzo import** — import your specs to auto-generate collections
 
 ---
@@ -509,7 +491,48 @@ You can import a Red Team campaign to generate a remediation plan:
 
 ---
 
-## 14. Keyboard Shortcuts
+## 14. Grey Team / OSINT
+
+The Grey Team module (accessible via the header or `/greyteam`) performs **passive reconnaissance** (OSINT) on a target domain. Unlike Red Team which actively attacks, Grey Team collects public information without directly interacting with target servers.
+
+### 14.1. OSINT Profiles
+
+- **Create a profile**: "+" button in the "Domains" sidebar
+- **Configure**: name, target domain, description, OSINT modules, AI analysis rounds
+- **Team filter**: dropdown in the sidebar
+- **Edit**: Edit button in the dashboard header
+- **Delete**: Delete button in the dashboard header
+
+### 14.2. Dashboard
+
+- **Risk Score**: 0-100 gauge based on finding count and severity
+- **Counters**: Critical, High, Total Findings
+- **6 indicator cards**: DNS Health, SSL/TLS, HTTP Security, Subdomains, Email Exposure, Tech Stack
+- **Scan progress**: progress bar with adaptive polling
+
+### 14.3. OSINT Modules (Phase 1)
+
+13 passive collection modules running in parallel: DNS Records, WHOIS, SSL/TLS, Cert Transparency (crt.sh + Cert Spotter + AlienVault OTX), HTTP Headers, Web Paths, Tech Fingerprint (30+ patterns: CMS, frameworks, CDN/WAF), Email Enumeration, Trivial Pages (80+ paths: .env, .git, wp-admin, backups, configs), Wayback Machine, GitHub Dorks, Google Dorks, Frontend Code (secrets, API endpoints, CVEs, AI deobfuscation).
+
+### 14.4. Phase 2 — AI Refinement
+
+The AI agent (Flash + Pro models) enriches findings:
+
+- **osint_refine_finding**: exploitability score (1-10), MITRE ATT&CK vector, remediation priority
+- **osint_create_finding**: creates new findings discovered during analysis
+- **osint_correlate_findings**: chains findings into attack scenarios
+- **bash**: passive OSINT commands in sandbox (dig, whois, curl crt.sh/archive.org/GitHub API)
+
+### 14.5. Findings and Filters
+
+- Table sorted by severity with title, category, description
+- **Filters**: severity, module type, source (Deterministic / AI Refined)
+- **Detail panel**: description, evidence, remediation, AI analysis
+- **Automatic refresh** during the scan
+
+---
+
+## 15. Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
