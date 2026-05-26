@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Elyria</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#0a0f1c;color:#d1d5db;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;overflow:hidden}
+    .gate{text-align:center;max-width:360px;width:100%;padding:2rem}
+    .gate-logo{width:48px;height:48px;margin:0 auto 1.5rem;opacity:.6}
+    .gate h1{font-size:1rem;font-weight:400;color:#94a3b8;letter-spacing:.2em;margin-bottom:.25rem}
+    .gate p{font-size:.7rem;color:#475569;margin-bottom:1.5rem}
+    .gate input{width:100%;padding:.75rem 1rem;background:#0f1629;border:1px solid rgba(255,255,255,.06);border-radius:.75rem;color:#94a3b8;font-family:monospace;font-size:.8rem;text-align:center;outline:none;transition:border-color .2s;letter-spacing:.1em}
+    .gate input:focus{border-color:rgba(148,163,184,.3)}
+    .gate input::placeholder{color:#334155}
+    .gate button{width:100%;margin-top:.75rem;padding:.65rem;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.15);border-radius:.75rem;color:#94a3b8;font-size:.75rem;cursor:pointer;transition:all .2s}
+    .gate button:hover{background:rgba(148,163,184,.15)}
+    .gate .err{margin-top:.75rem;font-size:.65rem;color:#475569;min-height:1rem}
+    .gate .shake{animation:shake .4s ease}
+    @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+  </style>
+</head>
+<body>
+<div class="gate">
+  <svg class="gate-logo" viewBox="0 0 64 64" fill="none"><polygon points="62,32 47,57.98 17,57.98 2,32 17,6.02 47,6.02" stroke="#94a3b8" stroke-width="2" stroke-linejoin="round"/><line x1="47" y1="6.02" x2="62" y2="32" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4"/><line x1="32" y1="32" x2="62" y2="32" stroke="#94a3b8" stroke-width="1.5"/><line x1="32" y1="32" x2="47" y2="57.98" stroke="#94a3b8" stroke-width="1.5"/><line x1="32" y1="32" x2="17" y2="57.98" stroke="#94a3b8" stroke-width="1.5"/><line x1="32" y1="32" x2="2" y2="32" stroke="#94a3b8" stroke-width="1.5"/><line x1="32" y1="32" x2="17" y2="6.02" stroke="#94a3b8" stroke-width="1.5"/><line x1="32" y1="32" x2="47" y2="6.02" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 3.5"/><circle cx="32" cy="32" r="2" fill="#64748b"/></svg>
+  <h1>elyria</h1>
+  <p>Cle d'acces requise</p>
+  <input id="key" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" maxlength="36" autocomplete="off" />
+  <button id="btn">Acceder</button>
+  <div id="err" class="err"></div>
+</div>
+<script>
+const inp = document.getElementById('key');
+const btn = document.getElementById('btn');
+const err = document.getElementById('err');
+const gate = document.querySelector('.gate');
+
+inp.addEventListener('keydown', e => { if (e.key === 'Enter') btn.click(); });
+inp.addEventListener('input', () => { inp.value = inp.value.replace(/[^0-9a-fA-F-]/g, '').toLowerCase(); err.textContent = ''; });
+
+btn.addEventListener('click', async () => {
+  const key = inp.value.trim();
+  if (!key) { err.textContent = 'Cle requise.'; return; }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(key)) { err.textContent = 'Format UUID invalide.'; gate.classList.add('shake'); setTimeout(() => gate.classList.remove('shake'), 400); return; }
+  btn.disabled = true; btn.textContent = 'Verification...';
+  try {
+    const r = await fetch('/gate', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({key}) });
+    if (r.ok) { window.location.href = '/app'; return; }
+    err.textContent = 'Cle invalide.';
+    gate.classList.add('shake'); setTimeout(() => gate.classList.remove('shake'), 400);
+  } catch { err.textContent = 'Erreur reseau.'; }
+  btn.disabled = false; btn.textContent = 'Acceder';
+});
+inp.focus();
+</script>
+</body>
+</html>

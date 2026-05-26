@@ -12,55 +12,12 @@ from database import ai_mgmt
 _log = get_logger("ai_api")
 
 
-def _get_fallback_api_key():
-    from database.app_config import get_api_key
-    return get_api_key("openai_api_key")
-
-
 def _init_provider_from_db():
     from database.ai_config_mgmt import get_default_config
     cfg = get_default_config("pro")
-    if cfg:
-        url = cfg["base_url"] or "https://api.openai.com/v1"
-        api_key = cfg.get("api_key", "")
-        if cfg["provider_type"] == "lmstudio":
-            url = url.rstrip("/").replace("/api/v1", "/v1")
-            if not url.endswith("/v1"):
-                url = url.rstrip("/") + "/v1"
-            if not api_key:
-                api_key = "not-needed"
-        if not api_key:
-            api_key = _get_fallback_api_key()
-        return AIWrapper(
-            provider_type=cfg["provider_type"],
-            url=url,
-            api_key=api_key,
-            model=cfg["model"] or "gpt-4o-mini",
-        )
-    api_key = _get_fallback_api_key()
-    return AIWrapper(
-        provider_type='openai',
-        url='https://api.openai.com/v1',
-        api_key=api_key,
-        model='gpt-4o-mini',
-    )
-
-
-app = APIRouter(prefix="/api/chat")
-
-try:
-    AI_PROVIDER = _init_provider_from_db()
-except Exception as e:
-    _log.warning(f"AI provider init failed — chat will be unavailable: {e}")
-    AI_PROVIDER = None
-
-def _get_provider_for_slot(slot: str):
-    """Lazy-init the right provider for pro/flash slot."""
-    from database.ai_config_mgmt import get_default_config
-    cfg = get_default_config(slot)
     if not cfg:
-        return AI_PROVIDER  # fallback to default pro
-    url = cfg["base_url"] or "https://api.openai.com/v1"
+        return None
+    url = cfg["base_url"] or ""
     api_key = cfg.get("api_key", "")
     if cfg["provider_type"] == "lmstudio":
         url = url.rstrip("/").replace("/api/v1", "/v1")
@@ -69,12 +26,42 @@ def _get_provider_for_slot(slot: str):
         if not api_key:
             api_key = "not-needed"
     if not api_key:
-        api_key = _get_fallback_api_key()
+        return None
     return AIWrapper(
         provider_type=cfg["provider_type"],
         url=url,
         api_key=api_key,
-        model=cfg["model"] or ("gpt-4o-mini" if slot == "flash" else "gpt-4o"),
+        model=cfg["model"] or "",
+    )
+
+
+app = APIRouter(prefix="/api/chat")
+
+AI_PROVIDER = _init_provider_from_db()
+if AI_PROVIDER is None:
+    _log.info("No AI provider configured — chat will be unavailable until a provider is set up in Hub > AI Agent.")
+
+def _get_provider_for_slot(slot: str):
+    """Lazy-init the right provider for pro/flash slot."""
+    from database.ai_config_mgmt import get_default_config
+    cfg = get_default_config(slot)
+    if not cfg:
+        return AI_PROVIDER  # fallback to default pro (may be None)
+    url = cfg["base_url"] or ""
+    api_key = cfg.get("api_key", "")
+    if cfg["provider_type"] == "lmstudio":
+        url = url.rstrip("/").replace("/api/v1", "/v1")
+        if not url.endswith("/v1"):
+            url = url.rstrip("/") + "/v1"
+        if not api_key:
+            api_key = "not-needed"
+    if not api_key:
+        return None
+    return AIWrapper(
+        provider_type=cfg["provider_type"],
+        url=url,
+        api_key=api_key,
+        model=cfg["model"] or "",
     )
 
 
@@ -161,11 +148,16 @@ async def init_provider(request: Request, init_request: InitProviderRequest):
 @app.get("/current_provider")
 def get_provider_config(request: Request):
     get_user(request)
+    if AI_PROVIDER is None:
+        raise HTTPException(status_code=503, detail="No AI provider configured. Set up a provider in Hub > AI Agent.")
     return JSONResponse(content=AI_PROVIDER.get_config())
 
 @app.post("")
 async def chat_endpoint(request: Request, chat_request: ChatRequest):
     get_user(request)
+    provider = _get_provider_for_slot(chat_request.slot) if chat_request.slot else AI_PROVIDER
+    if provider is None:
+        raise HTTPException(status_code=503, detail="No AI provider configured. Set up a provider in Hub > AI Agent.")
     user_id = request.state.token
     try:
         from ai_core.chat_tools import is_slash_command, get_slash_prompt
@@ -173,14 +165,11 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
         message = chat_request.message
         conversation_id = chat_request.conversation_id
 
-        # Slash command → inject system message forcing the tool
-        forced_tool = is_slash_command(message)
-        if forced_tool:
+        if forced_tool := is_slash_command(message):
             import ai_mgmt
             system_prompt = get_slash_prompt(forced_tool, message)
             ai_mgmt.add_message({"role": "system", "content": system_prompt}, user_id, conversation_id)
 
-        provider = _get_provider_for_slot(chat_request.slot) if chat_request.slot else AI_PROVIDER
         response = provider.chat(
             message=message,
             user_id=user_id,

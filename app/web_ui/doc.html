@@ -6,20 +6,9 @@
   <title>Elyria — Documentation</title>
   <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg" />
   <link rel="alternate icon" type="image/x-icon" href="/static/icons/favicon.ico" />
+  <script src="static/elyria-ui.js"></script>
+  <script>window.tailwind = { config: ElyriaUI.tailwindConfig() };</script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            base: { 900:'#0a0f1c', 800:'#0f1629', 700:'#141c35', 600:'#1a2340', 500:'#212b4a' },
-            primary: { DEFAULT:'#7c3aed', light:'#8b5cf6', dark:'#6d28d9', 50:'rgba(124,58,237,0.08)', 100:'rgba(124,58,237,0.15)' },
-            accent:  { DEFAULT:'#06b6d4', light:'#22d3ee', dark:'#0891b2', 50:'rgba(6,182,212,0.08)', 100:'rgba(6,182,212,0.15)' },
-          },
-        },
-      },
-    };
-  </script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -102,6 +91,29 @@
 
     .md-content img { max-width: 100%; border-radius: 0.5rem; margin: 1rem 0; }
 
+    /* ── Light theme: dark text on light background ── */
+    [data-theme="light"] .md-content h1 { color: #111827; border-bottom-color: rgba(0,0,0,0.08); }
+    [data-theme="light"] .md-content h2 { color: #1f2937; }
+    [data-theme="light"] .md-content h3 { color: #374151; }
+    [data-theme="light"] .md-content h4 { color: #4b5563; }
+    [data-theme="light"] .md-content p  { color: #374151; }
+    [data-theme="light"] .md-content a  { color: #6d28d9; }
+    [data-theme="light"] .md-content a:hover { color: #5b21b6; }
+    [data-theme="light"] .md-content strong { color: #1f2937; }
+    [data-theme="light"] .md-content em { color: #7c3aed; }
+    [data-theme="light"] .md-content li { color: #374151; }
+    [data-theme="light"] .md-content code { color: #6d28d9; background: rgba(0,0,0,0.06); }
+    [data-theme="light"] .md-content pre { background: #f1f5f9; border-color: rgba(0,0,0,0.1); }
+    [data-theme="light"] .md-content pre code { color: #374151; }
+    [data-theme="light"] .md-content blockquote { color: #4b5563; border-left-color: #7c3aed; background: rgba(124,58,237,0.04); }
+    [data-theme="light"] .md-content table { border-color: rgba(0,0,0,0.1); }
+    [data-theme="light"] .md-content th { background: #f1f5f9; color: #1f2937; }
+    [data-theme="light"] .md-content td { color: #374151; border-color: rgba(0,0,0,0.06); }
+    [data-theme="light"] .md-content hr { border-top-color: rgba(0,0,0,0.08); }
+    [data-theme="light"] .toc-link { color: #6b7280; }
+    [data-theme="light"] .toc-link:hover { color: #1f2937; background: rgba(0,0,0,0.03); }
+    [data-theme="light"] .toc-link.active { color: #6d28d9; background: rgba(124,58,237,0.06); }
+
     /* ── Sidebar TOC ── */
     .toc-link {
       display: block; padding: 0.25rem 0.625rem; border-radius: 0.25rem; font-size: 0.75rem;
@@ -114,63 +126,20 @@
 </head>
 <body class="h-full bg-base-900 text-gray-200 font-['Inter',sans-serif] overflow-hidden">
 
-  <!-- ===== TOP BAR ===== -->
-  <header class="h-12 bg-base-800 border-b border-white/5 flex items-center justify-between px-5 shrink-0 z-50 relative">
-    <!-- LEFT: Logo + Feature nav -->
-    <div class="flex items-center gap-2">
-      <a href="/app" class="flex items-center gap-2 no-underline flex-shrink-0">
-        <img src="/static/icons/icon.svg" class="w-7 h-7" alt="" />
-        <span class="text-sm font-medium tracking-widest text-slate-400">elyria</span>
-      </a>
-      <div class="w-px h-5 bg-white/10"></div>
-      <nav class="flex items-center gap-1">
-        <button onclick="navigateTo('/app')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-cyan-400 hover:bg-cyan-500/5 transition-all">Client API</button>
-        <button onclick="navigateTo('/workflow')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-green-400 hover:bg-green-500/5 transition-all">Workflows</button>
-        <button onclick="navigateTo('/pentest')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-red-400 hover:bg-red-500/5 transition-all">Red Team</button>
-        <button onclick="navigateTo('/blueteam')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-blue-400 hover:bg-blue-500/5 transition-all">Blue Team</button>
-      </nav>
-    </div>
-    <!-- CENTER: Page context -->
-    <div class="flex items-center gap-2">
-      <svg class="w-4 h-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
-      <span class="text-xs font-semibold text-accent-light">Documentation</span>
-      <div class="w-px h-5 bg-white/10"></div>
-      <div id="lang-switcher" class="flex items-center bg-base-900/60 rounded-md p-0.5 gap-0.5">
-        <button data-lang="fr" class="lang-btn h-6 px-2 rounded text-[10px] font-semibold transition-all">FR</button>
-        <button data-lang="en" class="lang-btn h-6 px-2 rounded text-[10px] font-semibold transition-all">EN</button>
-      </div>
-    </div>
-    <!-- RIGHT: User -->
-    <div class="flex items-center gap-2">
-      <button onclick="navigateTo('/hub')" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-primary/15 border border-white/5 hover:border-primary/30 text-xs font-medium text-gray-400 hover:text-primary-light transition-all" title="Hub">Hub</button>
-      <span id="header-username" class="text-[10px] text-gray-500 font-medium hidden"></span>
-      <button id="btn-logout" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-red-500/10 border border-white/5 hover:border-red-500/30 text-gray-500 hover:text-red-400 text-xs font-medium transition-all" title="Deconnexion">
-        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/></svg>
-      </button>
-    </div>
-  </header>
-
-  <!-- ===== MAIN LAYOUT ===== -->
-  <div class="flex h-[calc(100vh-3rem)]">
-
-    <!-- ===== LEFT — TABLE OF CONTENTS ===== -->
-    <aside class="w-56 min-w-[220px] bg-base-800 border-r border-white/5 flex flex-col shrink-0 overflow-hidden">
-      <div class="p-3 border-b border-white/5">
-        <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Sommaire</span>
-      </div>
-      <nav id="toc" class="flex-1 overflow-y-auto p-2 space-y-0.5 scrollbar-thin">
-        <!-- Populated by JS -->
-      </nav>
-    </aside>
-
-    <!-- ===== CENTER — DOC CONTENT ===== -->
-    <main class="flex-1 overflow-y-auto scrollbar-thin">
-      <div id="md-content" class="md-content max-w-3xl mx-auto px-8 py-8">
-        <!-- Populated by JS after fetching and parsing MD -->
-      </div>
-    </main>
-
-  </div>
+  <script>
+    document.body.insertAdjacentHTML('afterbegin', ElyriaUI.buildPage({
+      active: 'doc',
+      sidebar: {
+        width: 'w-56 min-w-[220px]',
+        html: '<div class="p-3 border-b border-white/5"><span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Sommaire</span></div>'
+          + '<nav id="toc" class="flex-1 overflow-y-auto p-2 space-y-0.5 scrollbar-thin"></nav>'
+      },
+      panels: [],
+      main: {
+        html: '<div id="md-content" class="md-content max-w-3xl mx-auto px-8 py-8"></div>'
+      }
+    }));
+  </script>
 
   <script src="static/auth.js"></script>
   <script>

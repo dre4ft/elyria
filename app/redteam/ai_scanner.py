@@ -31,7 +31,7 @@ def _get_tools():
             "type": "function",
             "function": {
                 "name": "pentest_make_requests",
-                "description": "Make MULTIPLE HTTP requests to the target API in one call. Pass an array of requests — they run in parallel.",
+                "description": "Make 5-15 HTTP requests in parallel. ALWAYS batch — never make a single request. Use for: API probing, auth testing, BOLA, injection, fuzzing.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -48,7 +48,7 @@ def _get_tools():
                                 },
                                 "required": ["method", "path", "reasoning"],
                             },
-                            "minItems": 1,
+                            "minItems": 5,
                             "maxItems": 15,
                         },
                     },
@@ -61,26 +61,86 @@ def _get_tools():
             "function": {
                 "name": "bash",
                 "description": (
-                    "Execute a command in the pentest sandbox. "
-                    "Available tools: nmap, sqlmap, nuclei, ffuf, amass, subfinder, httpx, curl, "
-                    "python3, jq, yq, go. "
-                    "The sandbox has network access to the target. "
-                    "Use this for reconnaissance, exploitation, fuzzing, and data extraction. "
-                    "Chain multiple bash calls: enumerate → analyze → exploit → confirm."
+                    "Execute 2-5 shell commands in batch in the pentest sandbox. Each command runs and all results return at once. "
+                    "Available tools: nmap, curl, python3, jq, sqlmap, ffuf, subfinder. "
+                    "USE THIS: dig, curl, python3 JWT, jq parsing, custom scripting. "
+                    "FOR NUCLEI: use pentest_quick_nuclei tool instead (optimized)."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "Shell command to execute in the sandbox. Examples: 'nmap -sV TARGET', 'sqlmap -u http://TARGET/api/users?id=1 --batch', 'nuclei -u http://TARGET -severity critical,high'",
+                        "commands": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "minItems": 2,
+                            "maxItems": 5,
+                            "description": "2-5 shell commands to run sequentially. Batch related work. Example: ['dig TARGET A', 'curl -s -I https://TARGET', 'curl -s https://TARGET/robots.txt']",
                         },
                         "timeout_ms": {
                             "type": "integer",
-                            "description": "Max execution time in milliseconds (default: 30000)",
+                            "description": "Max execution time per command in ms (default: 30000, max: 60000)",
                         },
                     },
-                    "required": ["command"],
+                    "required": ["commands"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "pentest_quick_nuclei",
+                "description": "Run nuclei vulnerability scan against a URL with optimized template selection. Faster than raw nuclei because it uses pre-filtered template sets.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "Target URL (e.g., https://api.example.com)"},
+                        "severity": {"type": "string", "enum": ["critical,high", "critical,high,medium", "critical", "all"], "description": "Severity filter (default: critical,high)"},
+                    },
+                    "required": ["url"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "pentest_quick_nmap",
+                "description": "Port scan top web ports only (80,443,8080,8443,3000,5000,8000,9000) — fast, open ports only.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target": {"type": "string", "description": "Target hostname or IP"},
+                    },
+                    "required": ["target"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "pentest_quick_sqli",
+                "description": "Quick SQL injection scan against a single URL with sqlmap — limited to 1 risk/level, 10s timeout per test.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "Full URL with query params (e.g., https://api.example.com/users?id=1)"},
+                        "method": {"type": "string", "enum": ["GET", "POST"], "description": "HTTP method (default: GET)"},
+                        "data": {"type": "string", "description": "POST data if method is POST"},
+                    },
+                    "required": ["url"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "pentest_quick_ffuf",
+                "description": "Fast web fuzzing against API paths — uses api-endpoints wordlist, checks for 200/401/403 responses.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "Base URL with FUZZ placeholder (e.g., https://TARGET/api/FUZZ)"},
+                    },
+                    "required": ["url"],
                 },
             },
         },
@@ -150,6 +210,11 @@ class AIScanner:
     def _cleanup_sandbox(self):
         try:
             self.bash_tool.destroy()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, 'session'):
+                self.session.close()
         except Exception:
             pass
 
@@ -428,40 +493,99 @@ class AIScanner:
             return True
 
         def _extract_tool_calls_from_text(text):
+            """Extract tool calls from text in multiple formats.
+
+            Handles:
+              - Anthropic XML: <tool_call>{"name": "...", "arguments": {...}}</tool_call>
+              - DeepSeek raw JSON: {"name": "...", "arguments": {...}}
+            """
             if not text:
                 return []
             calls = []
+            seen_ids = set()
+
+            def _add_call(name, args):
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except Exception:
+                        pass
+                key = (name, json.dumps(args, sort_keys=True) if isinstance(args, dict) else str(args))
+                if key in seen_ids:
+                    return
+                seen_ids.add(key)
+                cid = f"call_{len(calls)}"
+                calls.append({"id": cid, "type": "function", "function": {"name": name, "arguments": json.dumps(args) if not isinstance(args, str) else args}})
+
+            # ── Path A: <tool_call> XML tags (Anthropic / Qwen / LM Studio format) ──
             for m in re.finditer(r'<tool_call>\s*(.*?)\s*</tool_call>', text, re.DOTALL):
                 try:
                     raw = m.group(1).strip()
                     data = json.loads(raw)
                     name = data.get("name", "")
                     args = data.get("arguments", {})
-                    if isinstance(args, str):
-                        try: args = json.loads(args)
-                        except: pass
-                    cid = f"call_{len(calls)}"
-                    calls.append({"id": cid, "type": "function", "function": {"name": name, "arguments": json.dumps(args) if not isinstance(args, str) else args}})
-                except (json.JSONDecodeError, ValueError) as e:
+                    _add_call(name, args)
+                except (json.JSONDecodeError, ValueError):
                     # Try repairing: truncate to last valid JSON position
                     try:
-                        # Simple repair — find last complete object
                         last_comma = raw.rfind('"}')
                         if last_comma > 100:
                             repaired = raw[:last_comma+2]
                             if not repaired.endswith(']}'):
                                 repaired += ']}'
                             data = json.loads(repaired)
-                            name = data.get("name", "")
-                            args = data.get("arguments", {})
-                            if isinstance(args, str):
-                                try: args = json.loads(args)
-                                except: pass
-                            cid = f"call_{len(calls)}"
-                            calls.append({"id": cid, "type": "function", "function": {"name": name, "arguments": json.dumps(args) if not isinstance(args, str) else args}})
+                            _add_call(data.get("name", ""), data.get("arguments", {}))
                     except (json.JSONDecodeError, ValueError):
                         pass
                     continue
+
+            # ── Path B: {"name": "...", "arguments": {...}} — DeepSeek JSON format ──
+            for m in re.finditer(r'"name"\s*:\s*"([^"]+)"', text):
+                fn_name = m.group(1)
+                pos = m.start()
+                depth = 0
+                obj_start = -1
+                for i in range(pos, max(pos - 2000, -1), -1):
+                    c = text[i]
+                    if c == '}':
+                        depth += 1
+                    elif c == '{':
+                        if depth == 0:
+                            obj_start = i
+                            break
+                        depth -= 1
+                if obj_start < 0:
+                    continue
+                depth = 0
+                obj_end = -1
+                in_str = False
+                escaped = False
+                for i in range(obj_start, min(len(text), obj_start + 8000)):
+                    c = text[i]
+                    if escaped:
+                        escaped = False
+                    elif c == '\\':
+                        escaped = True
+                    elif c == '"':
+                        in_str = not in_str
+                    elif not in_str:
+                        if c == '{':
+                            depth += 1
+                        elif c == '}':
+                            depth -= 1
+                            if depth == 0:
+                                obj_end = i + 1
+                                break
+                if obj_end < 0:
+                    continue
+                try:
+                    candidate = text[obj_start:obj_end]
+                    obj = json.loads(candidate)
+                    if isinstance(obj, dict) and "arguments" in obj:
+                        _add_call(obj.get("name", fn_name), obj.get("arguments", {}))
+                except (json.JSONDecodeError, ValueError):
+                    continue
+
             return calls
 
         # ══════════════════════════════════════════════════════════
@@ -475,59 +599,83 @@ TARGET: {self.target}
 AUTH: {'Bearer token configured — make authenticated requests' if self.auth.get('bearer_token') else 'No auth configured'}
 {context}
 
-CRITICAL: You have TWO tools: bash (real pentest binaries) and pentest_make_requests (HTTP probing).
+CRITICAL: You have SIX tools. MAXIMIZE every response — call MULTIPLE tools or batch commands.
 
-AVAILABLE IN THE SANDBOX:
-  nmap      — port scanning, service detection, script engine
-  sqlmap    — automated SQL injection detection & exploitation
-  nuclei    — 5000+ template-based vulnerability scanner
-  ffuf      — fast web fuzzer (directory brute force, param discovery)
-  subfinder — subdomain enumeration
-  curl      — HTTP requests, header inspection, file fetching
-  jq        — JSON parsing, filtering, transformation
-  python3   — scripting, base64 decoding, JWT manipulation, custom exploits
+TOOLS:
+  pentest_make_requests — 5-15 parallel HTTP requests in one call. Your PRIMARY tool for API probing.
+  pentest_quick_nuclei  — Fast vulnerability scan (optimized template set, 45s timeout)
+  pentest_quick_nmap    — Top 9 web ports scan (80,443,8080,...,9090), open ports only
+  pentest_quick_sqli    — Quick SQL injection scan (single URL, low intensity)
+  pentest_quick_ffuf    — Fast API path fuzzing (api-endpoints wordlist)
+  bash                  — 2-5 shell commands in batch. Use for: curl, python3 JWT, jq, dig, custom scripts
+  pentest_add_findings  — Report confirmed vulnerabilities
 
-STRATEGY:
-1. FIRST: call bash with nmap -sV TARGET. If nmap fails or returns empty, SKIP IT and use pentest_make_requests instead.
-2. SECOND: call bash with curl to fingerprint headers. If curl fails, use pentest_make_requests.
-3. THIRD: call bash with nuclei. If unavailable, use pentest_make_requests.
-4. AFTER reconnaissance: use pentest_make_requests for ALL subsequent HTTP probing.
-5. Combine: use bash python3 for JWT decoding/forging, bash sqlmap for injection, bash curl for SSRF/redirect testing.
-6. Report confirmed findings with pentest_add_findings.
+50/50 RULE:
+- After every batch of HTTP requests (pentest_make_requests), call bash OR a quick_* tool.
+- After every bash/quick_* tool, call pentest_make_requests with 5-15 requests.
+- NEVER call the same tool twice in a row without alternating.
 
-ABSOLUTE RULES — YOU WILL BE TERMINATED IF YOU BREAK THEM:
-- EVERY response MUST include at least ONE tool call. Never respond with text only.
-- If a bash command returns empty, error, or "connection refused", IMMEDIATELY fall back to pentest_make_requests. Do NOT retry bash.
-- Make AT LEAST 5 HTTP requests via pentest_make_requests in every exploration round.
-- Use the pentest binaries: nmap, nuclei, sqlmap, ffuf, curl, python3. NOT echo, ls, cat, pwd, whoami.
-- NEVER describe what you would do — CALL THE TOOL.
-- Add findings ONLY when you have confirmed evidence from tool output.
-- If you have been thinking for more than 2 sentences, STOP and call a tool."""}
+BATCH RULES:
+- bash ALWAYS runs 2-5 commands per call. Never use bash for a single command.
+- pentest_make_requests ALWAYS makes 5-15 requests per call.
+- pentest_add_findings ALWAYS reports 2-10 findings per call.
+
+ABSOLUTE RULES:
+- EVERY response MUST call at least ONE tool. Never text-only.
+- If a tool returns empty/error/timeout, IMMEDIATELY fall back to pentest_make_requests. Do NOT retry the same tool.
+- NEVER describe — CALL THE TOOL.
+- ONLY report findings you have confirmed evidence for."""}
 
         msgs = [system]
         self.conversation = msgs[:]
 
-        # ── Rounds: bash recon → HTTP mapping → exploit → business logic → report ──
-        exploration_prompts = [
-            "Round 1: RECON. Call bash with: nmap -sV -p 1-10000 TARGET. If nmap fails or returns empty, call pentest_make_requests with 5 GET requests to TARGET root, /api, /admin, /docs, /.well-known. You MUST make tool calls NOW.",
-            "Round 2: FINGERPRINT. Call bash with: curl -s -I TARGET. Then curl TARGET/.env, TARGET/actuator, TARGET/.well-known/jwks.json. If curl returns empty/error, call pentest_make_requests to the same paths. Then make 5 more pentest_make_requests to discover endpoints.",
-            "Round 3: VULN SCAN. Call bash with: nuclei -u TARGET -severity critical,high -silent -timeout 30. If nuclei fails, call pentest_make_requests with SQLi/XSS payloads on all known endpoints. Make at least 8 requests.",
-            "Round 4: FUZZ. Call bash with: ffuf -u TARGET/api/FUZZ -w /usr/share/seclists/Discovery/Web-Content/common.txt -mc 200 -s -timeout 10. Then call pentest_make_requests with 10 requests to discovered paths.",
-            "Round 5: HTTP MAP. Call pentest_make_requests with 10-15 requests to map EVERY collection endpoint. Test GET, POST, PUT, DELETE. Probe /api/admin, /graphql, /api/v1, /api/v2.",
-            "Round 6: AUTH BYPASS. Call pentest_make_requests with 10 requests: test WITHOUT auth headers on all endpoints. Test with invalid tokens. Test with expired tokens. Test with tampered JWT (alg:none).",
-            "Round 7: BOLA/IDOR. Call pentest_make_requests with 12 requests: substitute IDs from the ID list into resource paths. Test /api/users/X, /api/orders/X, /api/wallet/X with different user IDs.",
-            "Round 8: BUSINESS LOGIC. Call pentest_make_requests with 10 requests: negative prices, zero quantities, large values, coupon reuse, workflow skip. Test every numeric field with -1, 0, 999999.",
-            "Round 9: INJECTION. Call pentest_make_requests with 10 requests: SQLi, XSS, path traversal, SSTI on query params and body. Look for error leaks. Call bash python3 to craft payloads.",
-            "Round 10: MASS ASSIGNMENT. Call pentest_make_requests with 8 requests: PUT/PATCH user/profile endpoints adding role=admin, isAdmin=true, permissions=[]. Test partial updates.",
-            "Round 11: JWT DEEP DIVE. Call bash python3 to decode JWT, check claims. Call pentest_make_requests with forged tokens. Test key confusion. Call bash curl to fetch JWKS. Make 10 HTTP requests.",
-            "Round 12: SENSITIVE DATA. Call pentest_make_requests with 8 requests: check every response for API keys, tokens, passwords, PII, stack traces, version headers. Probe /.env, /debug, /console.",
-            "Round 13: SSRF + PARSER. Call pentest_make_requests with 8 requests: test URL params, webhook callbacks, redirect params. Try http://169.254.169.254, http://metadata.internal, file:///etc/passwd.",
-            "Round 14: RACE CONDITIONS. Call pentest_make_requests with 5 CONCURRENT identical requests to state-changing endpoints. Check for duplicate operations. Call bash curl for rapid-fire testing.",
-            "Round 15: FINAL SWEEP. Call pentest_make_requests with 15 targeted requests on the most promising leads. Chain exploits end-to-end. Call pentest_add_findings for EVERY confirmed vulnerability. Leave nothing untested.",
+        # ── Round templates: 3 categories rotated for 50/50 bash↔HTTP regardless of N ──
+        BASH_ROUNDS = [
+            "BASH RECON: Call bash with commands: ['nmap -sV -p 80,443,8080,8443,3000,5000,8000,9000 --open TARGET', 'curl -s -I https://TARGET', 'curl -s https://TARGET/robots.txt', 'curl -s https://TARGET/.well-known/security.txt', 'dig TARGET A +short']. Then call pentest_make_requests with 8 GET requests to /api, /admin, /docs, /graphql, /swagger, /.well-known/jwks.json, /api/v1, /api/health.",
+            "BASH JWT + INJECTION: Call bash with commands: ['curl -s https://TARGET/.well-known/jwks.json | jq .', 'python3 -c \"import jwt,base64,sys; parts=sys.stdin.read().strip().split(\\\".\\\"); print(base64.urlsafe_b64decode(parts[1]+\\\"==\\\").decode())\" <<< YOUR_JWT', 'curl -s \"https://TARGET/api/users?id=1 OR 1=1--\"', 'curl -s \"https://TARGET/api/users?id=1'\\'' UNION SELECT 1,2,3--\"']. Then call pentest_make_requests with 8 SQLi/XSS payload requests.",
+            "BASH DEEP RECON: Call bash with commands: ['curl -s https://crt.sh/?q=%25.TARGET_DOMAIN&output=json | python3 -c \"import sys,json; [print(c[\\'name_value\\']) for c in json.load(sys.stdin)[:30]]\"', 'dig TARGET_DOMAIN MX TXT NS +short', 'curl -s https://TARGET/sitemap.xml | head -30', 'ffuf -u TARGET/FUZZ -w /usr/share/seclists/Discovery/Web-Content/common.txt -mc 200 -timeout 5 -s | head -15']. Then call pentest_make_requests with 8 requests to newly discovered paths.",
+        ]
+        QUICK_ROUNDS = [
+            "SCAN + HTTP: Call pentest_quick_nuclei for TARGET. Then call pentest_make_requests with 10 requests probing .env, /actuator, /actuator/health, /debug, /console, /swagger-ui.html, /api-docs, /graphiql, /metrics, /status with GET method.",
+            "FUZZ + SQLI: Call pentest_quick_ffuf with url TARGET/api/FUZZ. Then call pentest_quick_sqli on the 3 most promising endpoints found so far. Then call pentest_make_requests with 8 requests to ffuf-discovered paths.",
+            "NMAP + HTTP: Call pentest_quick_nmap. Then call pentest_make_requests with 10 requests to any new ports discovered. Also retest all known endpoints with PUT, DELETE, PATCH methods.",
+        ]
+        HTTP_ROUNDS = [
+            "HTTP MAP: Call pentest_make_requests with 15 requests: GET /api/users, POST /api/login, GET /api/me, GET /api/products, GET /api/orders, POST /api/orders, GET /api/admin/stats, GET /api/wallet, GET /api/health, GET /api/config, PUT /api/users/1, DELETE /api/orders/1, PATCH /api/users/1, POST /api/register, GET /api/teams.",
+            "AUTH BYPASS: Call pentest_make_requests with 12 requests: test ALL known endpoints WITHOUT Authorization header. Add requests with Authorization: Bearer invalid, Bearer null, Bearer ' OR '1'='1. Test JWT alg:none bypass.",
+            "BOLA/IDOR: Call pentest_make_requests with 15 requests: iterate user IDs 1-20 on /api/users/X, /api/orders/X, /api/wallet/X, /api/profile/X. Also test /api/teams/X with different team IDs. Use GET, PUT, DELETE for each.",
+            "BUSINESS LOGIC: Call pentest_make_requests with 15 requests: POST /api/orders with quantity=-1, 0, 99999, price=0, price=-100. POST /api/wallet/transfer with amount=-1, 999999. POST /api/coupons with reuse. PUT /api/users/1 with role=admin, isAdmin=true.",
+            "MASS ASSIGNMENT + LEAKS: Call pentest_make_requests with 15 requests: PATCH/PUT /api/users/X and /api/profile with role=admin, isAdmin=true, permissions=['admin'], verified=true, balance=99999. Check every response for API keys, tokens, passwords, PII, stack traces in headers and body.",
+            "INJECTION SWEEP: Call pentest_make_requests with 15 requests: SQLi on all query params (' UNION SELECT, 1 OR 1=1, admin'--), XSS (<script>, <img onerror>, javascript:), path traversal (../../etc/passwd, ..%2f..%2f), SSTI ({{7*7}}, ${7*7}) on body and headers.",
+            "SSRF + RACE: Call pentest_make_requests with 12 requests: test URL/webhook/callback params with http://169.254.169.254, http://metadata.google.internal, file:///etc/passwd, http://127.0.0.1:8000. Then 5 concurrent requests to state-changing endpoints (wallet transfer, order create, coupon redeem).",
+            "EXPLOIT CHAIN + FINAL: Call bash with commands: ['curl -s -X POST https://TARGET/api/auth/login -H \"Content-Type: application/json\" -d \"{\\\"username\\\":\\\"admin\\\",\\\"password\\\":\\\"admin\\\"}\"', 'curl -s https://TARGET/api/admin -H \"Authorization: Bearer FORGED_TOKEN\"', 'python3 -c \"import jwt,datetime; print(jwt.encode({\\\"sub\\\":\\\"1\\\",\\\"role\\\":\\\"admin\\\",\\\"exp\\\":datetime.datetime.utcnow()+datetime.timedelta(days=1)}, key=\\\"secret\\\", algorithm=\\\"HS256\\\"))\"']. Then call pentest_make_requests with 10 requests chaining discovered exploits. Then call pentest_add_findings with 5-10 confirmed findings.",
         ]
 
-        # Use configured rounds (capped in __init__)
-        exploration_prompts = exploration_prompts[:self.explore_rounds]
+        # Distribution pattern: alternates bash↔HTTP, produces ~40/20/40% (bash/quick/http)
+        # regardless of how many rounds are configured
+        DISTRIBUTION = [
+            "BASH", "HTTP", "QUICK", "HTTP", "BASH", "HTTP", "BASH", "HTTP",
+            "QUICK", "HTTP", "BASH", "HTTP", "HTTP", "QUICK", "HTTP",
+            "BASH", "HTTP", "QUICK", "HTTP", "BASH", "HTTP", "BASH", "HTTP",
+            "QUICK", "HTTP", "BASH", "HTTP", "HTTP", "QUICK", "HTTP",
+        ]
+
+        # Build rounds dynamically from the distribution pattern
+        bash_idx = quick_idx = http_idx = 0
+        exploration_prompts = []
+        for i in range(self.explore_rounds):
+            category = DISTRIBUTION[i % len(DISTRIBUTION)]
+            if category == "BASH":
+                prompt = BASH_ROUNDS[bash_idx % len(BASH_ROUNDS)]
+                bash_idx += 1
+            elif category == "QUICK":
+                prompt = QUICK_ROUNDS[quick_idx % len(QUICK_ROUNDS)]
+                quick_idx += 1
+            else:
+                prompt = HTTP_ROUNDS[http_idx % len(HTTP_ROUNDS)]
+                http_idx += 1
+            exploration_prompts.append(f"Round {i+1}: {prompt}")
+
         total_explore = len(exploration_prompts)
         total_analyze = self.analysis_rounds
 
@@ -563,15 +711,15 @@ ABSOLUTE RULES — YOU WILL BE TERMINATED IF YOU BREAK THEM:
                     self.conversation = msgs[:]
                 else:
                     # Force the model to call tools by providing an explicit example
-                    msgs.append({"role": "user", "content": """You MUST call a tool NOW. Do not explain, do not describe — CALL THE TOOL.
+                    msgs.append({"role": "user", "content": """You MUST call a tool NOW. Not text — a TOOL CALL.
 
-Example of pentest_make_requests:
-{"requests": [{"method": "GET", "path": "/api/users", "reasoning": "Enumerate users"}]}
+pentest_make_requests example:
+{"requests": [{"method": "GET", "path": "/api/users", "reasoning": "Enumerate users"}, {"method": "POST", "path": "/api/login", "reasoning": "Test default credentials", "body": "{\\"username\\":\\"admin\\",\\"password\\":\\"admin\\"}"}]}
 
-Example of bash:
-{"command": "curl -s http://TARGET/api/health"}
+bash example (2-5 commands):
+{"commands": ["curl -s https://TARGET/api/health", "curl -s -I https://TARGET", "dig TARGET MX +short"]}
 
-Make at least 5 requests NOW."""})
+Make at least 5 HTTP requests or 3 bash commands NOW."""})
                     if _beat(): break
                     try:
                         resp = self.flash.chat(msgs, tools=tools)
@@ -696,7 +844,39 @@ For every question above where the answer is NO or UNCERTAIN: call pentest_make_
         "pentest_make_requests": "_handle_make_requests",
         "pentest_add_findings": "_handle_add_findings",
         "bash": "_handle_bash",
+        "pentest_quick_nuclei": "_handle_quick_nuclei",
+        "pentest_quick_nmap": "_handle_quick_nmap",
+        "pentest_quick_sqli": "_handle_quick_sqli",
+        "pentest_quick_ffuf": "_handle_quick_ffuf",
     }
+
+    def _handle_quick_nuclei(self, args):
+        url = args.get("url", self.target)
+        sev = args.get("severity", "critical,high")
+        cmd = f"nuclei -u {url} -t exposures/ -t misconfiguration/ -t vulnerabilities/ -severity {sev} -silent -timeout 8 -retries 1 2>&1 | head -30"
+        return self._handle_bash({"commands": [cmd], "timeout_ms": 45000})
+
+    def _handle_quick_nmap(self, args):
+        target = args.get("target", self.target)
+        cmd = f"nmap -sV -p 80,443,8080,8443,3000,5000,8000,9000,9090 --open {target} 2>&1"
+        return self._handle_bash({"commands": [cmd], "timeout_ms": 30000})
+
+    def _handle_quick_sqli(self, args):
+        url = args.get("url", self.target)
+        method = args.get("method", "GET")
+        data = args.get("data", "")
+        data_flag = f"--data='{data}'" if data and method == "POST" else ""
+        cmd = f"sqlmap -u {url} --batch --level=1 --risk=1 --timeout=10 --answers='follow=N' {data_flag} 2>&1"
+        return self._handle_bash({"commands": [cmd], "timeout_ms": 45000})
+
+    def _handle_quick_ffuf(self, args):
+        url = args.get("url", "")
+        if not url:
+            url = f"{self.target}/api/FUZZ"
+        if "TARGET" in url:
+            url = url.replace("TARGET", self.target)
+        cmd = f"ffuf -u {url} -w /usr/share/seclists/Discovery/Web-Content/api-endpoints.txt -mc 200,401,403 -timeout 5 -s 2>&1 | head -20"
+        return self._handle_bash({"commands": [cmd], "timeout_ms": 30000})
 
     async def _execute_tool(self, name, args):
         m = self.TOOL_MAP.get(name)

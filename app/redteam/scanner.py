@@ -29,11 +29,19 @@ from datetime import datetime
 def _make_session(timeout=10):
     s = requests.Session()
     retry = Retry(total=0, read=0, connect=0)
-    adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=2, pool_maxsize=4, pool_block=True)
     s.mount("http://", adapter)
     s.mount("https://", adapter)
     s.timeout = timeout
     return s
+
+
+def _close_session(s):
+    """Properly close a requests session to free connection pool slots."""
+    try:
+        s.close()
+    except Exception:
+        pass
 
 
 def _load_wordlist():

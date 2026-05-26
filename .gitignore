@@ -43,9 +43,10 @@ data/
 *.log*
 enterprise/
 CLAUDE.md
-
+elyria.cfg
 # wrangler files
 .wrangler
 .dev.vars*
 !.dev.vars.example
 !.env.example
+.gate_key

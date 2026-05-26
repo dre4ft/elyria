@@ -38,7 +38,7 @@ class Sandbox:
         if not self.container_id:
             return {"exit_code": -1, "stdout": "", "stderr": "Sandbox destroyed", "elapsed_ms": 0}
 
-        timeout_s = max(1, timeout_ms // 1000)
+        timeout_s = max(1, min(timeout_ms, 60_000) // 1000)  # cap at 60s
         start = time.monotonic()
 
         import base64

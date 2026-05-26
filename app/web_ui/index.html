@@ -6,49 +6,33 @@
   <title>Elyria — API Client</title>
   <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg" />
   <link rel="alternate icon" type="image/x-icon" href="/static/icons/favicon.ico" />
+  <script src="static/elyria-ui.js"></script>
+  <script>window.tailwind = { config: ElyriaUI.tailwindConfig() };</script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            base: {
-              900: '#0a0f1c',
-              800: '#0f1629',
-              700: '#141c35',
-              600: '#1a2340',
-              500: '#212b4a',
-            },
-            primary: {
-              DEFAULT: '#7c3aed',
-              light: '#8b5cf6',
-              dark: '#6d28d9',
-              50: 'rgba(124,58,237,0.08)',
-              100: 'rgba(124,58,237,0.15)',
-            },
-            accent: {
-              DEFAULT: '#06b6d4',
-              light: '#22d3ee',
-              dark: '#0891b2',
-              50: 'rgba(6,182,212,0.08)',
-              100: 'rgba(6,182,212,0.15)',
-            },
-          },
-        },
-      },
-    };
-  </script>
   <link rel="stylesheet" href="static/styles.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-<script>
-  if(/Mobi|Android|iPhone/i.test(navigator.userAgent)&&window.innerWidth<768&&!location.pathname.endsWith('/m')){
-    location.replace('/m');
-  }
-</script>
 </head>
 <body class="h-full bg-base-900 text-gray-200 font-['Inter',sans-serif] overflow-hidden">
+<div id="mobile-banner" class="hidden bg-accent/10 border-b border-accent/20 px-4 py-2 flex items-center justify-between text-xs">
+  <span class="text-accent-light">Version mobile disponible — optimisee pour le telephone.</span>
+  <div class="flex items-center gap-2">
+    <a href="/m" class="px-3 py-1 rounded-lg bg-accent/15 text-accent-light font-medium hover:bg-accent/25 transition-colors">Ouvrir</a>
+    <button onclick="dismissMobileBanner()" class="text-gray-500 hover:text-gray-300">&times;</button>
+  </div>
+</div>
+<script>
+  if(/Mobi|Android|iPhone/i.test(navigator.userAgent)&&window.innerWidth<768){
+    if(!sessionStorage.getItem('elyria_mb_dismiss')){
+      document.getElementById('mobile-banner').classList.remove('hidden');
+    }
+  }
+  function dismissMobileBanner(){
+    document.getElementById('mobile-banner').remove();
+    sessionStorage.setItem('elyria_mb_dismiss','1');
+  }
+</script>
 
   <!-- ===== MOBILE NAV OVERLAY ===== -->
   <div id="mobile-nav-overlay" class="hidden fixed inset-0 z-50 bg-base-900/90 backdrop-blur-sm" onclick="toggleMobileNav()"></div>
@@ -62,106 +46,72 @@
     <button onclick="navigateTo('/hub');toggleMobileNav()" class="mobile-nav-link h-11 flex items-center gap-3 px-3 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-all">Hub</button>
   </div>
 
-  <!-- ===== TOP BAR ===== -->
-  <header class="h-12 bg-base-800 border-b border-white/5 flex items-center justify-between px-3 md:px-5 shrink-0 z-40 relative">
-    <!-- LEFT: Logo + Feature nav -->
-    <div class="flex items-center gap-2">
-      <a href="/app" class="flex items-center gap-2 no-underline flex-shrink-0">
-        <img src="/static/icons/icon.svg" class="w-7 h-7" alt="" />
-        <span class="text-sm font-medium tracking-widest text-slate-400 hidden md:inline">elyria</span>
-      </a>
-      <div class="w-px h-5 bg-white/10 hidden md:block"></div>
-      <nav class="hidden md:flex items-center gap-1">
-        <button onclick="navigateTo('/workflow')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-green-400 hover:bg-green-500/5 transition-all">Workflows</button>
-        <button onclick="navigateTo('/pentest')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-red-400 hover:bg-red-500/5 transition-all">Red Team</button>
-        <button onclick="navigateTo('/blueteam')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-blue-400 hover:bg-blue-500/5 transition-all">Blue Team</button>
-        <button onclick="navigateTo('/doc')" class="h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-purple-400 hover:bg-purple-500/5 transition-all">Docs</button>
-      </nav>
-      <!-- Mobile hamburger -->
-      <button onclick="toggleMobileNav()" class="md:hidden h-8 w-8 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-400 flex items-center justify-center flex-shrink-0">
-        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
-      </button>
-    </div>
-    <!-- CENTER: Feature actions -->
-    <div class="flex items-center gap-2">
-      <button id="btn-toggle-sidebar" class="h-8 w-8 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-500 hover:text-gray-300 transition-all flex items-center justify-center flex-shrink-0" title="Afficher/Masquer la sidebar">
-        <svg class="w-4 h-4 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
-      </button>
-      <button id="btn-toggle-history" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-amber-500/15 border border-white/5 hover:border-amber-500/30 text-xs font-medium text-gray-400 hover:text-amber-400 transition-all inline-flex items-center gap-1.5" title="Historique des requetes">
-        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        Historique
-      </button>
-      <button id="btn-toggle-jwt" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-fuchsia-500/15 border border-white/5 hover:border-fuchsia-500/30 text-xs font-medium text-gray-400 hover:text-fuchsia-400 transition-all inline-flex items-center gap-1.5" title="JWT Decoder">
-        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
-        JWT
-      </button>
-      <button id="btn-toggle-chat" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-primary/20 border border-white/5 hover:border-primary/40 text-xs font-medium text-gray-400 hover:text-primary-light transition-all flex items-center gap-2" title="Assitant IA (Ctrl+I)">
-        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
-        Assistant IA
-        <kbd class="px-1.5 py-0.5 rounded bg-base-900/60 text-[10px] text-gray-500 font-mono">Ctrl+I</kbd>
-      </button>
-    </div>
-    <!-- RIGHT: User -->
-    <div class="flex items-center gap-2">
-      <button onclick="navigateTo('/hub')" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-primary/15 border border-white/5 hover:border-primary/30 text-xs font-medium text-gray-400 hover:text-primary-light transition-all" title="Hub">Hub</button>
-      <span id="header-username" class="text-[10px] text-gray-500 font-medium hidden"></span>
-      <button id="btn-logout" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-red-500/10 border border-white/5 hover:border-red-500/30 text-gray-500 hover:text-red-400 text-xs font-medium transition-all" title="Deconnexion">
-        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/></svg>
-      </button>
-    </div>
-  </header>
+  <!-- ===== HEADER (via elyria-ui buildPage) ===== -->
+  <header id="elyria-header"></header>
+  <script>
+    (function() {
+      var ph = document.getElementById('elyria-header');
+      if (ph) ph.outerHTML = ElyriaUI.renderHeader({
+        active: 'app',
+        centerHTML: '<button onclick="toggleMobileNav()" class="md:hidden h-8 w-8 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-400 flex items-center justify-center flex-shrink-0">'
+          + '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>'
+          + '</button>'
+          + '<button id="btn-toggle-sidebar" class="h-8 w-8 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-500 hover:text-gray-300 transition-all flex items-center justify-center flex-shrink-0 hidden md:flex" title="Afficher/Masquer la sidebar">'
+          + '<svg class="w-4 h-4 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>'
+          + '</button>'
+          + '<button id="btn-toggle-history" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-amber-500/15 border border-white/5 hover:border-amber-500/30 text-xs font-medium text-gray-400 hover:text-amber-400 transition-all inline-flex items-center gap-1.5" title="Historique des requetes">'
+          + '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Historique</button>'
+          + '<button id="btn-toggle-jwt" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-fuchsia-500/15 border border-white/5 hover:border-fuchsia-500/30 text-xs font-medium text-gray-400 hover:text-fuchsia-400 transition-all inline-flex items-center gap-1.5" title="JWT Decoder">'
+          + '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>JWT</button>'
+          + '<button id="btn-toggle-chat" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-primary/20 border border-white/5 hover:border-primary/40 text-xs font-medium text-gray-400 hover:text-primary-light transition-all flex items-center gap-2" title="Assitant IA (Ctrl+I)">'
+          + '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>Assistant IA<kbd class="px-1.5 py-0.5 rounded bg-base-900/60 text-[10px] text-gray-500 font-mono hidden md:inline">Ctrl+I</kbd></button>'
+      });
+    })();
+  </script>
 
   <!-- ===== MAIN LAYOUT ===== -->
   <div class="flex h-[calc(100vh-3rem)]">
 
-    <!-- ===== SIDEBAR — COLLECTIONS + HISTORY ===== -->
+    <!-- ===== SIDEBAR — COLLECTIONS ===== -->
     <div id="sidebar-overlay" class="hidden fixed inset-0 z-30 bg-base-900/80 backdrop-blur-sm md:hidden" onclick="toggleSidebar()"></div>
-    <aside id="sidebar" class="w-72 min-w-[272px] max-w-[85vw] bg-base-800 border-r border-white/5 flex-col shrink-0 hidden md:flex md:relative fixed left-0 top-12 bottom-0 z-40">
+    <aside id="sidebar" data-collapsed="false" class="w-64 min-w-[256px] bg-base-800 border-r border-white/5 flex-col shrink-0 overflow-hidden transition-all duration-300 hidden md:flex">
 
-      <!-- Sidebar header -->
-      <div class="px-4 pt-3 pb-0 shrink-0">
-        <div class="flex items-center gap-2">
-          <svg class="w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
-          <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Collections</span>
+      <!-- Title bar -->
+      <div class="p-2 border-b border-white/5 flex items-center justify-between">
+        <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Collections</span>
+        <div class="flex items-center gap-0.5">
+          <select id="team-filter-select" class="h-5 px-1 rounded bg-base-700 border border-white/5 text-[9px] text-gray-400 focus:outline-none focus:border-primary/40 max-w-[90px]"></select>
+          <button id="btn-refresh-collections" class="w-5 h-5 rounded hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors" title="Rafraîchir">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
+          </button>
+          <button id="btn-new-folder" class="w-5 h-5 rounded hover:bg-primary/15 flex items-center justify-center text-gray-500 hover:text-primary-light transition-colors" title="Nouveau dossier">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+          </button>
+          <button id="btn-new-request" class="w-5 h-5 rounded hover:bg-primary/15 flex items-center justify-center text-gray-500 hover:text-primary-light transition-colors" title="Nouvelle requête">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+          </button>
         </div>
       </div>
 
-      <!-- ══════ Collections ══════ -->
-      <div id="sidebar-collections" class="flex-1 flex flex-col overflow-hidden">
-        <!-- Collections Header -->
-        <div class="p-4 pb-2 shrink-0">
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-1">
-              <select id="team-filter-select" class="h-6 px-1.5 rounded-md bg-base-700 border border-white/5 text-[10px] text-gray-400 focus:outline-none focus:border-primary/40 max-w-[120px]"></select>
-              <button id="btn-refresh-collections" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors" title="Rafraîchir les collections">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
-              </button>
-              <button id="btn-new-folder" class="w-6 h-6 rounded-md hover:bg-primary/15 flex items-center justify-center text-gray-500 hover:text-primary-light transition-colors" title="Nouveau dossier">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
-              </button>
-              <button id="btn-new-request" class="w-6 h-6 rounded-md hover:bg-accent/15 flex items-center justify-center text-gray-500 hover:text-accent-light transition-colors" title="Nouvelle requête">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
-              </button>
-            </div>
-          </div>
-          <div class="relative">
-            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input id="search-collections" type="text" placeholder="Rechercher…" class="w-full h-8 pl-8 pr-3 rounded-lg bg-base-900/60 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all" />
-          </div>
+      <!-- Search -->
+      <div class="px-3 py-2 border-b border-white/5">
+        <div class="relative">
+          <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input id="search-collections" type="text" placeholder="Rechercher…" class="w-full h-8 pl-8 pr-3 rounded-lg bg-base-900/60 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-primary/40 transition-all" />
         </div>
-        <!-- Collections Tree -->
-        <div id="collections-tree" class="flex-1 overflow-y-auto px-2 pb-2 scrollbar-thin">
-          <!-- Populated by JS -->
-          <div id="collections-empty" class="flex flex-col items-center justify-center h-full text-center px-6">
-            <div class="w-10 h-10 rounded-xl bg-base-700 flex items-center justify-center mb-3">
-              <svg class="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
-            </div>
-            <p class="text-xs text-gray-600 leading-relaxed mb-3">Organisez vos requêtes<br/>en collections et dossiers</p>
-            <button id="btn-create-first-collection" class="h-7 px-3 rounded-lg bg-primary/10 hover:bg-primary/20 border border-primary/20 hover:border-primary/40 text-[11px] font-medium text-primary-light transition-all flex items-center gap-1.5">
-              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
-              Créer une collection
-            </button>
+      </div>
+
+      <!-- Collections Tree -->
+      <div id="collections-tree" class="flex-1 overflow-y-auto px-2 py-1 space-y-0.5 scrollbar-thin">
+        <div id="collections-empty" class="flex flex-col items-center justify-center h-full text-center px-6">
+          <div class="w-10 h-10 rounded-xl bg-base-700 flex items-center justify-center mb-3">
+            <svg class="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
           </div>
+          <p class="text-xs text-gray-600 leading-relaxed mb-3">Organisez vos requêtes<br/>en collections et dossiers</p>
+          <button id="btn-create-first-collection" class="h-7 px-3 rounded-lg bg-primary/10 hover:bg-primary/20 border border-primary/20 hover:border-primary/40 text-[11px] font-medium text-primary-light transition-all flex items-center gap-1.5">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+            Créer une collection
+          </button>
         </div>
       </div>
 
@@ -562,20 +512,25 @@
   </div>
 
   <!-- ===== CREATE MODAL ===== -->
-  <div id="create-modal" class="fixed inset-0 bg-base-900/80 backdrop-blur-sm z-[100] hidden flex items-center justify-center">
-    <div class="bg-base-800 border border-white/5 rounded-xl p-6 w-80">
-      <h3 id="modal-title" class="text-sm font-semibold text-white mb-4">Créer un dossier</h3>
-      <input id="modal-input" type="text" class="w-full h-10 px-3 rounded-lg bg-base-700 border border-white/8 text-sm text-gray-200 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 mb-3" placeholder="Nom..." />
-      <div class="relative mb-4">
-        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
-        <select id="modal-team" class="w-full h-10 pl-9 pr-3 rounded-lg bg-base-700 border border-white/8 text-sm text-gray-300 focus:outline-none focus:border-primary/50 appearance-none">
-          <option value="">Personnel</option>
-        </select>
-        <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+  <div id="create-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div class="bg-base-800 border border-white/10 rounded-xl w-80 shadow-2xl">
+      <div class="p-4 border-b border-white/5 flex items-center justify-between">
+        <h3 id="modal-title" class="text-sm font-semibold text-gray-200">Créer un dossier</h3>
+        <button onclick="hideCreateModal()" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors">&times;</button>
       </div>
-      <div class="flex justify-end gap-2">
-        <button id="btn-modal-cancel" class="h-8 px-4 rounded-lg bg-base-700 hover:bg-base-600 text-xs font-medium text-gray-300 transition-all">Annuler</button>
-        <button id="btn-modal-ok" class="h-8 px-4 rounded-lg bg-primary hover:bg-primary-light text-xs font-medium text-white transition-all">Créer</button>
+      <div class="p-4 space-y-3">
+        <input id="modal-input" type="text" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-primary/40" placeholder="Nom..." />
+        <div class="relative">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
+          <select id="modal-team" class="w-full h-9 pl-9 pr-8 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 focus:outline-none focus:border-primary/40 appearance-none">
+            <option value="">Personnel</option>
+          </select>
+          <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+        </div>
+      </div>
+      <div class="p-3 border-t border-white/5 flex justify-end gap-2">
+        <button id="btn-modal-cancel" class="h-7 px-3 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-[11px] text-gray-400 transition-all">Annuler</button>
+        <button id="btn-modal-ok" class="h-7 px-3 rounded-lg bg-primary/80 hover:bg-primary border border-primary/30 text-[11px] text-white font-medium transition-all">Créer</button>
       </div>
     </div>
   </div>
