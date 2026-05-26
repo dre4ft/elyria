@@ -673,6 +673,22 @@ class AIOSINTRefiner:
                 return True
             return False
 
+        def _converse(msgs, provider, tools, max_turns=6):
+            """Multi-turn conversation within a round. AI can call tools, see
+            results, and continue until it gives a text-only response or max turns."""
+            for _ in range(max_turns):
+                if _beat():
+                    break
+                try:
+                    resp = provider.chat(msgs, tools=tools)
+                except Exception as e:
+                    _log.error(f"[greyteam] Chat error in _converse: {e}")
+                    break
+                _add_tokens(resp)
+                had_tools = _process_tool_calls(msgs, resp)
+                if not had_tools:
+                    break  # AI gave its final response for this round
+
         # ═══════════════════════════════════════════════════════
         # SYSTEM PROMPT
         # ═══════════════════════════════════════════════════════
@@ -739,108 +755,53 @@ FINDINGS:
 {findings_json}"""
 
             msgs.append({"role": "user", "content": round1_prompt})
-            if not _beat():
-                try:
-                    resp = self.flash.chat(msgs, tools=tools)
-                    _add_tokens(resp)
-                    if not _process_tool_calls(msgs, resp):
-                        msgs.append({"role": "user", "content": "Call osint_refine_finding for each critical/high finding NOW. Batch them."})
-                        try:
-                            resp = self.flash.chat(msgs, tools=tools)
-                            _add_tokens(resp)
-                            _process_tool_calls(msgs, resp)
-                        except Exception:
-                            pass
-                except Exception as e:
-                    _log.error(f"Round 1 failed: {e}")
+            _converse(msgs, self.flash, tools)
 
             if self.callbacks.get("on_progress"):
-                self.callbacks["on_progress"](93, "AI: refined critical/high findings")
+                self.callbacks["on_progress"](91, "AI: refined critical/high findings")
 
-        # Round 2: Refine medium findings
-        if any(f.get("severity") == "medium" for f in self.findings_ref):
-            round2_prompt = f"""ROUND 2: Refine MEDIUM severity findings.
+        # Round 2: Refine medium findings + discover new ones
+        round2_prompt = f"""ROUND 2: Research & Refine MEDIUM findings.
 
-For findings with severity "medium" that you consider interesting (reconnaissance value, attack chain potential), call osint_refine_finding. Skip purely informational medium findings.
+You have bash access to verify and enrich findings. Use this workflow:
+1. FIRST: run passive OSINT commands (dig, whois, crt.sh, curl) to gather fresh data
+2. THEN: based on results, call osint_refine_finding for impactful medium findings
+3. ALSO: call osint_create_finding for anything NEW you discover (exposed subdomains, misconfigurations, etc.)
 
-Call osint_refine_finding now for the most impactful medium findings."""
+Take your time — do research, then refine/create. This is a multi-turn conversation."""
 
-            msgs.append({"role": "user", "content": round2_prompt})
-            if not _beat():
-                try:
-                    resp = self.flash.chat(msgs, tools=tools)
-                    _add_tokens(resp)
-                    if not _process_tool_calls(msgs, resp):
-                        msgs.append({"role": "user", "content": "Call osint_refine_finding for medium findings that matter."})
-                        try:
-                            resp = self.flash.chat(msgs, tools=tools)
-                            _add_tokens(resp)
-                            _process_tool_calls(msgs, resp)
-                        except Exception:
-                            pass
-                except Exception as e:
-                    _log.error(f"Round 2 failed: {e}")
+        msgs.append({"role": "user", "content": round2_prompt})
+        _converse(msgs, self.flash, tools)
 
-            if self.callbacks.get("on_progress"):
-                self.callbacks["on_progress"](95, "AI: refined medium findings")
+        if self.callbacks.get("on_progress"):
+            self.callbacks["on_progress"](95, "AI: researched and refined findings")
 
         # Round 3: Correlate into attack chains (Pro model)
         round3_prompt = f"""ROUND 3: CORRELATE findings into attack chains.
 
-Review ALL findings (critical through low). Identify at least 2-3 groups of findings that chain together into realistic attack scenarios for {self.domain}.
+Review ALL findings (including any you just created). Identify at least 2-3 groups that chain together into realistic attack scenarios for {self.domain}.
 
-Examples of chains:
-- Expired SSL + Missing HSTS → SSL stripping attack
-- Exposed subdomains + Outdated JS library with CVE → Client-side compromise
-- Email found + Weak SPF → Spear-phishing with domain spoofing
-- robots.txt paths + Server version disclosure → Targeted exploit research
-
-For each chain, call osint_correlate_findings with:
-- The finding_ids (index numbers)
-- A descriptive chain_name
-- A step-by-step chain_description (how the attacker exploits A → B → C)
-- The overall_severity of the combined attack
+For each chain, call osint_correlate_findings with finding_ids, chain_name, chain_description, and overall_severity.
 
 Findings for reference:
 {findings_json[:3000]}"""
 
         msgs.append({"role": "user", "content": round3_prompt})
-        if not _beat():
-            try:
-                resp = self.pro.chat(msgs, tools=tools)
-                _add_tokens(resp)
-                if not _process_tool_calls(msgs, resp):
-                    msgs.append({"role": "user", "content": "Call osint_correlate_findings to build attack chains NOW. At least 2 chains."})
-                    try:
-                        resp = self.pro.chat(msgs, tools=tools)
-                        _add_tokens(resp)
-                        _process_tool_calls(msgs, resp)
-                    except Exception:
-                        pass
-            except Exception as e:
-                _log.error(f"Round 3 failed: {e}")
+        _converse(msgs, self.pro, tools)
 
         if self.callbacks.get("on_progress"):
             self.callbacks["on_progress"](97, "AI: correlated attack chains")
 
-        # Round 4: Final sweep — any missed findings
+        # Round 4: Final sweep
         round4_prompt = """ROUND 4: FINAL SWEEP.
 
-Review the current state. Are there any findings that should have been refined but weren't? Any additional attack chains?
-
-If yes, call osint_refine_finding or osint_correlate_findings now. If everything is covered, respond with: "Refinement complete." """
+Review the current state. Any findings still unrefined? Any additional chains or new discoveries? Use tools now. If everything is covered, respond with: "Refinement complete." """
 
         msgs.append({"role": "user", "content": round4_prompt})
-        if not _beat():
-            try:
-                resp = self.pro.chat(msgs, tools=tools)
-                _add_tokens(resp)
-                _process_tool_calls(msgs, resp)
-            except Exception:
-                pass
+        _converse(msgs, self.pro, tools)
 
-            if self.callbacks.get("on_progress"):
-                self.callbacks["on_progress"](99, "AI: final sweep")
+        if self.callbacks.get("on_progress"):
+            self.callbacks["on_progress"](99, "AI: final sweep")
 
         # Round 5: Executive summary (Pro model, no tools)
         summary_prompt = f"""ROUND 5: EXECUTIVE SUMMARY.

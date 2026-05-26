@@ -10,9 +10,9 @@
   <!-- Shared UI lib + theme -->
   <script src="static/elyria-ui.js"></script>
   <script>
-    tailwind.config = ElyriaUI.tailwindConfig({
+    window.tailwind = { config: ElyriaUI.tailwindConfig({
       primary: { DEFAULT:'#6b7280', light:'#9ca3af', dark:'#4b5563', 50:'rgba(107,114,128,0.08)', 100:'rgba(107,114,128,0.15)' }
-    });
+    }) };
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
 

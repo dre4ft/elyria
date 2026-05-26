@@ -24,11 +24,6 @@ from auth_users.oidc_api import app as oidc_router
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-try:
-    from enterprise.enterprise import app as enterprise_router, public_endpoints
-except ImportError:
-    enterprise_router = None
-
 import jwt
 from database.user_mgmt import get_key
 
@@ -96,8 +91,6 @@ async def check_authorization(request: Request, call_next):
         "/api/user/reset-password", "/api/user/reset-password/confirm",
         "/api/user/oidc/login", "/api/user/oidc/callback", "/api/user/oidc/config",
     }
-    if enterprise_router:
-        PUBLIC_ROUTES.update(public_endpoints)
     BLACKLISTED_PATHS = {"/docs", "/openapi.json", "/static/bundle.min.js", "/static/workflow-bundle.min.js",
                          "/static/pentest-bundle.min.js", "/static/blueteam-bundle.min.js"}
     if request.url.path in BLACKLISTED_PATHS:
@@ -147,14 +140,6 @@ async def check_authorization(request: Request, call_next):
         return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
 
     return await call_next(request)
-
-'''# ── Gatekeeper (registered LAST = runs FIRST, outermost wall) ──
-try:
-    from enterprise.gatekeeper import gatekeeper_middleware as _gate_mw, gate_app as _gate_app
-    app.middleware("http")(_gate_mw)
-    app.include_router(_gate_app)
-except ImportError:
-    pass  # Gatekeeper not installed — skip the wall'''
 
 @app.get("/")
 async def serve_root():
@@ -264,8 +249,12 @@ app.include_router(teams_router)
 app.include_router(ai_config_router)
 app.include_router(oidc_router)
 
-if enterprise_router:
-    app.include_router(enterprise_router)
+# ── Gatekeeper (registered LAST = runs FIRST, outermost wall) ──
+from database.app_config import get as _cfg
+if _cfg("gatekeeper.enabled", "0") == "1":
+    from gatekeeper import gatekeeper_middleware as _gate_mw, gate_app as _gate_app
+    app.middleware("http")(_gate_mw)
+    app.include_router(_gate_app)
 
 
 if __name__ == "__main__":

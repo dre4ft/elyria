@@ -303,6 +303,7 @@ async def api_create_report(request: Request):
                         )
                         conn.commit()
                         conn.close()
+                        _log.info(f"[greyteam] AI refine SAVED: finding_id={fid}, title={finding.get('title','')[:60]}, desc_len={len(ai_desc)}")
                         _publish(rid, "refine", finding)
                     except Exception as e:
                         _log.error(f"Failed to save AI refinement: {e}")

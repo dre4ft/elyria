@@ -109,6 +109,10 @@
       + '[data-theme="light"] .text-accent-light{color:#0891b2;}'
       + '[data-theme="light"] .hover\\:text-accent-light:hover{color:#0891b2;}'
 
+      // ── Force dark form elements (override browser defaults) ──
+      + '[data-theme="dark"] input:not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]),'
+      + '[data-theme="dark"] select,[data-theme="dark"] textarea{background-color:#141c35;color:#d1d5db;}'
+
       // ── Theme toggle switch styles ──
       + '.elyria-theme-toggle{position:relative;display:inline-flex;align-items:center;cursor:pointer;}'
       + '.elyria-theme-toggle *{pointer-events:none;}'
@@ -150,11 +154,11 @@
     setTheme(saved || 'dark');
   }
 
-  // Bind theme toggle via event delegation (fallback if inline onclick fails)
+  // Bind theme toggle via event delegation on document
   document.addEventListener('click', function(e) {
     var btn = e.target.closest('.elyria-theme-toggle');
     if (btn) {
-      e.preventDefault();
+      e.stopPropagation();
       toggleTheme();
     }
   });
@@ -300,7 +304,7 @@
 
     // ── Header: RIGHT (theme + hub + user + logout) ──
 
-    var rightHTML = '<button onclick="ElyriaUI.toggleTheme()" class="elyria-theme-toggle h-8 w-12 rounded-full hover:bg-white/5 border border-transparent hover:border-white/5 flex items-center justify-center transition-all flex-shrink-0" title="Basculer le theme clair/sombre">'
+    var rightHTML = '<button class="elyria-theme-toggle h-8 w-12 rounded-full hover:bg-white/5 border border-transparent hover:border-white/5 flex items-center justify-center transition-all flex-shrink-0" title="Basculer le theme clair/sombre">'
       + '<span class="elyria-theme-toggle-track"><span class="elyria-theme-toggle-thumb"></span></span>'
       + '</button>';
 

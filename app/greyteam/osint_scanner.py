@@ -544,45 +544,17 @@ def _collect_ssl(domain: str) -> list[dict]:
 
 
 # ═══════════════════════════════════════════════════════════════
-# MODULE 4 — Certificate Transparency (crt.sh)
+# MODULE 4 — Certificate Transparency (crt.sh + fallbacks)
 # ═══════════════════════════════════════════════════════════════
 
-def _collect_crtsh(domain: str) -> list[dict]:
-    findings = []
-    ftype = "ct"
+def _try_crtsh(domain: str) -> tuple[set, set, int, str]:
+    """Try crt.sh primary source. Returns (all_names, issuers, cert_count, source_name)."""
     url = f"https://crt.sh/?q=%25.{domain}&output=json"
-
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=20, context=_UNVERIFIED_CTX) as resp:
-            data = json.loads(resp.read())
-    except Exception as e:
-        findings.append({
-            "title": "crt.sh lookup failed",
-            "severity": "info", "category": "Certificate Transparency",
-            "finding_type": ftype,
-            "description": f"Could not query crt.sh: {e}",
-            "file_path": "N/A", "line_number": 0,
-            "evidence": str(e)[:300],
-            "remediation": "Check crt.sh manually: https://crt.sh/?q=%25.{domain}",
-            "cwe_id": "", "source": "deterministic",
-        })
-        return findings
-
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=20, context=_UNVERIFIED_CTX) as resp:
+        data = json.loads(resp.read())
     if not isinstance(data, list) or len(data) == 0:
-        findings.append({
-            "title": "No certificate transparency entries found",
-            "severity": "info", "category": "Certificate Transparency",
-            "finding_type": ftype,
-            "description": f"No certificates found in crt.sh logs for {domain}.",
-            "file_path": "N/A", "line_number": 0,
-            "evidence": "Empty response",
-            "remediation": "This is unusual for an active domain. Verify the domain is correct.",
-            "cwe_id": "", "source": "deterministic",
-        })
-        return findings
-
-    # Extract all name_values
+        return set(), set(), 0, "crt.sh (empty)"
     all_names = set()
     issuers = set()
     for entry in data:
@@ -595,22 +567,98 @@ def _collect_crtsh(domain: str) -> list[dict]:
                     all_names.add(n)
         if issuer:
             issuers.add(issuer)
+    return all_names, issuers, len(data), "crt.sh"
+
+
+def _try_certspotter(domain: str) -> tuple[set, set, int, str]:
+    """Try Cert Spotter as fallback #1."""
+    url = f"https://api.certspotter.com/v1/issuances?domain={domain}&include_subdomains=true&expand=dns_names"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15, context=_UNVERIFIED_CTX) as resp:
+        data = json.loads(resp.read())
+    if not isinstance(data, list):
+        return set(), set(), 0, "certspotter (invalid)"
+    all_names = set()
+    for entry in data:
+        dns_names = entry.get("dns_names") or []
+        for n in dns_names:
+            n = n.strip().lower()
+            if n and not n.startswith("*."):
+                all_names.add(n)
+    return all_names, set(), len(data), "certspotter"
+
+
+def _try_alienvault_otx(domain: str) -> tuple[set, set, int, str]:
+    """Try AlienVault OTX passive DNS as fallback #2."""
+    url = f"https://otx.alienvault.com/api/v1/indicators/domain/{domain}/passive_dns"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15, context=_UNVERIFIED_CTX) as resp:
+        data = json.loads(resp.read())
+    if not isinstance(data, dict) or "passive_dns" not in data:
+        return set(), set(), 0, "alienvault (invalid)"
+    all_names = set()
+    for entry in data["passive_dns"]:
+        hostname = (entry.get("hostname") or "").strip().lower()
+        if hostname and not hostname.startswith("*."):
+            all_names.add(hostname)
+    return all_names, set(), len(data.get("passive_dns", [])), "alienvault OTX"
+
+
+def _collect_crtsh(domain: str) -> list[dict]:
+    findings = []
+    ftype = "ct"
+    all_names = set()
+    issuers = set()
+    cert_count = 0
+    sources_used = []
+    errors = []
+
+    for try_fn in [_try_crtsh, _try_certspotter, _try_alienvault_otx]:
+        try:
+            names, iss, count, src = try_fn(domain)
+            if names:
+                all_names.update(names)
+                issuers.update(iss)
+                cert_count += count
+                sources_used.append(src)
+                if len(all_names) >= 30:  # enough data, stop
+                    break
+            else:
+                errors.append(f"{src}: no results")
+        except Exception as e:
+            errors.append(f"{try_fn.__name__}: {e}")
+
+    if not all_names and not sources_used:
+        findings.append({
+            "title": "All certificate transparency sources failed",
+            "severity": "info", "category": "Certificate Transparency",
+            "finding_type": ftype,
+            "description": f"No subdomain data from any source. Errors: {'; '.join(errors)}",
+            "file_path": "N/A", "line_number": 0,
+            "evidence": "; ".join(errors)[:500],
+            "remediation": "Check crt.sh, certspotter.com, or otx.alienvault.com manually.",
+            "cwe_id": "", "source": "deterministic",
+        })
+        return findings
 
     subdomains = sorted(n for n in all_names if n.endswith("." + domain) and n != domain)
     other_domains = sorted(n for n in all_names if not n.endswith("." + domain) and n != domain)
 
+    source_label = " + ".join(sources_used)
     findings.append({
         "title": f"Certificate Transparency: {len(all_names)} names, {len(subdomains)} subdomains",
         "severity": "info", "category": "Certificate Transparency",
         "finding_type": ftype,
-        "description": f"crt.sh returned {len(data)} certificate entries. {len(subdomains)} unique subdomains discovered via CT logs.",
+        "description": f"Found {len(all_names)} unique names from {source_label} ({cert_count} entries). {len(subdomains)} subdomains discovered.",
         "file_path": "N/A", "line_number": 0,
         "evidence": json.dumps({
-            "total_certs": len(data),
+            "sources": sources_used,
+            "total_entries": cert_count,
             "unique_names": len(all_names),
             "subdomains": subdomains[:50],
             "other_domains": other_domains[:20],
             "issuers": sorted(issuers)[:10],
+            "errors": errors[:5] if errors else [],
         }, indent=2),
         "remediation": "Review subdomains. Unknown subdomains may indicate shadow IT or forgotten infrastructure.",
         "cwe_id": "CWE-200", "source": "deterministic",
