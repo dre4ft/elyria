@@ -559,17 +559,53 @@ Le module Red Team (accessible via le header ou `/pentest`) permet de scanner vo
 
 ### 12.3. Sandbox (Bash Tool)
 
-Lors d'un scan, Elyria spawn automatiquement un **conteneur Docker** jetable (`strike-sandbox`) équipé d'outils de pentest réels :
-- **nmap** — scan de ports, détection de services
-- **sqlmap** — détection et exploitation d'injection SQL
-- **nuclei** — 5000+ templates de vulnérabilités
-- **ffuf** — fuzzer web (bruteforce de chemins)
-- **subfinder** — énumération de sous-domaines
-- **curl, jq, python3** — outils de scripting
+Lors de la **Phase 2** (AI Deep Scan), Elyria spawn automatiquement un **conteneur Docker jetable** (`strike-sandbox`) — un environnement Linux isolé équipé d'outils de pentest réels que l'IA peut appeler.
 
-L'IA appelle ces outils via un **tool `bash` unique** — elle décide quelle commande exécuter. Chaque commande est logguée dans les scan logs avec stdout/stderr.
+#### Outils disponibles dans le conteneur
 
-Le conteneur est automatiquement détruit en fin de scan (ou si le scan est stoppé).
+| Outil | Usage |
+|-------|-------|
+| **nmap** | Scan de ports, détection de services et OS |
+| **sqlmap** | Détection et exploitation d'injection SQL |
+| **nuclei** | 5000+ templates de vulnérabilités (CVE, misconfig, exposures) |
+| **ffuf** | Fuzzer web (bruteforce de chemins, paramètres, sous-domaines) |
+| **subfinder** | Énumération de sous-domaines via sources passives |
+| **curl, jq, python3** | Scripting HTTP, parsing JSON, scripting python (requests, httpx, pyjwt) |
+
+#### Comment l'IA interagit avec le sandbox
+
+L'agent IA dispose d'un **tool unique appelé `bash`** exposé via le protocole OpenAI function calling. L'IA décide elle-même quelle commande exécuter en fonction de ce qu'elle découvre. Le tool accepte :
+
+- **Mode simple** : une commande unique (`"command": "nmap -sV TARGET"`)
+- **Mode batch** : jusqu'à 10 commandes exécutées séquentiellement (`"commands": ["cmd1", "cmd2"]`)
+- **Timeout** : configurable par commande (défaut 30s, max 60s)
+
+Le mot-clé `TARGET` dans les commandes est automatiquement remplacé par la cible réelle du scan.
+
+#### Cycle de vie du conteneur
+
+1. **Spawn** — `SandboxManager.spawn()` crée un conteneur Docker nommé `strike-{id_unique}` avec `--rm` (suppression automatique à l'arrêt), limité à 1 CPU et 512 Mo RAM
+2. **Idle** — L'entrypoint attend les commandes (`tail -f /dev/null`) tout en surveillant un **TTL de 30 minutes** (configurable) : si le TTL expire, le conteneur s'arrête tout seul
+3. **Exécution** — Chaque commande est injectée via `docker exec` : la commande est encodée en **base64** pour éviter les problèmes d'échappement shell, décodée dans le conteneur, puis exécutée dans un shell bash. Stdout (50k chars max) et stderr (10k max) sont capturés
+4. **Destroy** — À la fin du scan (ou si le scan est stoppé), `docker rm -f --volumes` détruit le conteneur et ses volumes. `purge_expired()` nettoie les conteneurs orphelins
+
+#### Résolution de localhost
+
+Les adresses `127.0.0.1` et `localhost` dans les commandes ou la target sont automatiquement converties en **`host.docker.internal`** pour que le conteneur puisse atteindre l'hôte (le conteneur est sur un réseau Docker isolé, donc `localhost` pointerait vers lui-même).
+
+#### Sanitization
+
+- **Target** : seuls les caractères `[a-zA-Z0-9.\-:/_@?=&%#]` sont conservés, limité à 2000 caractères
+- **Commandes** : blocage explicite des patterns destructeurs (`rm -rf /`, fork bomb, `/etc/shadow`, etc.)
+- **Isolation** : conteneur Alpine `--rm`, ressources limitées, pas de persistance disque
+
+#### Mode passif (Grey Team)
+
+Pour les scans Grey Team (OSINT), le sandbox est **optionnel** et restreint aux outils **passifs uniquement** : `nmap`, `sqlmap`, `ffuf`, `nuclei` et autres outils actifs sont bloqués. Seuls `dig`, `whois`, `curl` vers des APIs publiques (crt.sh, archive.org), `python3` et `jq` sont autorisés.
+
+#### Logging
+
+Chaque commande bash exécutée par l'IA est logguée dans la base de données (`pentest_scan_logs`, `log_type='bash'`) avec stdout, stderr, exit code et temps d'exécution — visibles dans l'onglet **Logs** de la campagne.
 
 ### 12.4. Findings et Logs
 

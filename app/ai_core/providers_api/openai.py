@@ -22,10 +22,13 @@ class OpenAIProvider:
             "messages": messages,
             "stream": False,
         }
-        # DeepSeek-specific: enable reasoning
+        # DeepSeek-specific: enable reasoning only when NOT using tools.
+        # Thinking mode can suppress native tool_calls — the model "thinks"
+        # about the call in reasoning_content but never emits it.
         if self.url and "deepseek" in self.url:
-            params["reasoning_effort"] = "high"
-            params["extra_body"] = {"thinking": {"type": "enabled"}}
+            if not tools:
+                params["reasoning_effort"] = "high"
+                params["extra_body"] = {"thinking": {"type": "enabled"}}
         if tools:
             params["tools"] = tools
 

@@ -428,40 +428,99 @@ class AIScanner:
             return True
 
         def _extract_tool_calls_from_text(text):
+            """Extract tool calls from text in multiple formats.
+
+            Handles:
+              - Anthropic XML: <tool_call>{"name": "...", "arguments": {...}}</tool_call>
+              - DeepSeek raw JSON: {"name": "...", "arguments": {...}}
+            """
             if not text:
                 return []
             calls = []
+            seen_ids = set()
+
+            def _add_call(name, args):
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except Exception:
+                        pass
+                key = (name, json.dumps(args, sort_keys=True) if isinstance(args, dict) else str(args))
+                if key in seen_ids:
+                    return
+                seen_ids.add(key)
+                cid = f"call_{len(calls)}"
+                calls.append({"id": cid, "type": "function", "function": {"name": name, "arguments": json.dumps(args) if not isinstance(args, str) else args}})
+
+            # ── Path A: <tool_call> XML tags (Anthropic / Qwen / LM Studio format) ──
             for m in re.finditer(r'<tool_call>\s*(.*?)\s*</tool_call>', text, re.DOTALL):
                 try:
                     raw = m.group(1).strip()
                     data = json.loads(raw)
                     name = data.get("name", "")
                     args = data.get("arguments", {})
-                    if isinstance(args, str):
-                        try: args = json.loads(args)
-                        except: pass
-                    cid = f"call_{len(calls)}"
-                    calls.append({"id": cid, "type": "function", "function": {"name": name, "arguments": json.dumps(args) if not isinstance(args, str) else args}})
-                except (json.JSONDecodeError, ValueError) as e:
+                    _add_call(name, args)
+                except (json.JSONDecodeError, ValueError):
                     # Try repairing: truncate to last valid JSON position
                     try:
-                        # Simple repair — find last complete object
                         last_comma = raw.rfind('"}')
                         if last_comma > 100:
                             repaired = raw[:last_comma+2]
                             if not repaired.endswith(']}'):
                                 repaired += ']}'
                             data = json.loads(repaired)
-                            name = data.get("name", "")
-                            args = data.get("arguments", {})
-                            if isinstance(args, str):
-                                try: args = json.loads(args)
-                                except: pass
-                            cid = f"call_{len(calls)}"
-                            calls.append({"id": cid, "type": "function", "function": {"name": name, "arguments": json.dumps(args) if not isinstance(args, str) else args}})
+                            _add_call(data.get("name", ""), data.get("arguments", {}))
                     except (json.JSONDecodeError, ValueError):
                         pass
                     continue
+
+            # ── Path B: {"name": "...", "arguments": {...}} — DeepSeek JSON format ──
+            for m in re.finditer(r'"name"\s*:\s*"([^"]+)"', text):
+                fn_name = m.group(1)
+                pos = m.start()
+                depth = 0
+                obj_start = -1
+                for i in range(pos, max(pos - 2000, -1), -1):
+                    c = text[i]
+                    if c == '}':
+                        depth += 1
+                    elif c == '{':
+                        if depth == 0:
+                            obj_start = i
+                            break
+                        depth -= 1
+                if obj_start < 0:
+                    continue
+                depth = 0
+                obj_end = -1
+                in_str = False
+                escaped = False
+                for i in range(obj_start, min(len(text), obj_start + 8000)):
+                    c = text[i]
+                    if escaped:
+                        escaped = False
+                    elif c == '\\':
+                        escaped = True
+                    elif c == '"':
+                        in_str = not in_str
+                    elif not in_str:
+                        if c == '{':
+                            depth += 1
+                        elif c == '}':
+                            depth -= 1
+                            if depth == 0:
+                                obj_end = i + 1
+                                break
+                if obj_end < 0:
+                    continue
+                try:
+                    candidate = text[obj_start:obj_end]
+                    obj = json.loads(candidate)
+                    if isinstance(obj, dict) and "arguments" in obj:
+                        _add_call(obj.get("name", fn_name), obj.get("arguments", {}))
+                except (json.JSONDecodeError, ValueError):
+                    continue
+
             return calls
 
         # ══════════════════════════════════════════════════════════

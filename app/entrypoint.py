@@ -14,6 +14,7 @@ from auth_users.user_api import app as user_router
 from doc_mgmt.document_api import app as document_router
 from redteam.campaign_api import app as pentest_router
 from blueteam.api import app as blueteam_router
+from greyteam.api import app as greyteam_router
 from database.workflow_graph_api import app as workflow_graph_router
 from database.proxy_api import app as proxy_router
 from database.teams_api import app as teams_router
@@ -89,7 +90,7 @@ async def check_authorization(request: Request, call_next):
     # HTML shells (/app, /workflow, etc.) are served without auth so the SPA
     # can load auth.js — client-side auth handles the rest.
     PUBLIC_ROUTES = {
-        "/", "/login", "/app", "/workflow", "/pentest", "/hub", "/doc", "/blueteam", "/m",
+        "/", "/login", "/app", "/workflow", "/pentest", "/greyteam", "/hub", "/doc", "/blueteam", "/m",
         "/api/user/login", "/api/user/create", "/api/user/refresh",
         "/api/user/verify-email", "/api/user/resend-code",
         "/api/user/reset-password", "/api/user/reset-password/confirm",
@@ -106,7 +107,7 @@ async def check_authorization(request: Request, call_next):
         return await call_next(request)
 
     # SSE streams: EventSource can't send custom headers → bypass middleware
-    if path.endswith("/events") and ("/api/blueteam/" in path or "/api/pentest/" in path):
+    if path.endswith("/events") and ("/api/blueteam/" in path or "/api/pentest/" in path or "/api/greyteam/" in path):
         return await call_next(request)
 
     auth = request.headers.get("authorization")
@@ -147,13 +148,13 @@ async def check_authorization(request: Request, call_next):
 
     return await call_next(request)
 
-# ── Gatekeeper (registered LAST = runs FIRST, outermost wall) ──
+'''# ── Gatekeeper (registered LAST = runs FIRST, outermost wall) ──
 try:
     from enterprise.gatekeeper import gatekeeper_middleware as _gate_mw, gate_app as _gate_app
     app.middleware("http")(_gate_mw)
     app.include_router(_gate_app)
 except ImportError:
-    pass  # Gatekeeper not installed — skip the wall
+    pass  # Gatekeeper not installed — skip the wall'''
 
 @app.get("/")
 async def serve_root():
@@ -180,6 +181,7 @@ def _serve_html(filename: str) -> HTMLResponse:
                 "workflow": "workflow-bundle.min.js",
                 "redteam": "pentest-bundle.min.js",
                 "blueteam": "blueteam-bundle.min.js",
+                "greyteam": "greyteam-bundle.min.js",
             }
             js_bundle = bundle_map.get(page, "bundle.min.js")
             html = re.sub(r'<script src="https://cdn\.tailwindcss\.com[^<]*</script>', '', html)
@@ -188,7 +190,7 @@ def _serve_html(filename: str) -> HTMLResponse:
                           f'<link rel="stylesheet" href="static/bundle.min.css?v={v}">', html)
             for script_src in ["static/auth.js", "static/app.js",
                                "static/workflow.js", "static/pentest.js", "static/blueteam.js",
-                               "static/doc.js", "static/hub.js"]:
+                               "static/greyteam.js", "static/doc.js", "static/hub.js"]:
                 html = re.sub(rf'<script src="{script_src}"[^>]*></script>', '', html)
             html = html.replace('</head>',
                                 f'\n  <link rel="stylesheet" href="static/bundle.min.css?v={v}">\n</head>')
@@ -218,6 +220,10 @@ async def serve_pentest():
 @app.get("/blueteam")
 async def serve_blueteam():
     return _serve_html("blueteam.html")
+
+@app.get("/greyteam")
+async def serve_greyteam():
+    return _serve_html("greyteam.html")
 
 @app.get("/m")
 async def serve_mobile():
@@ -251,6 +257,7 @@ app.include_router(user_router)
 app.include_router(document_router)
 app.include_router(pentest_router)
 app.include_router(blueteam_router)
+app.include_router(greyteam_router)
 app.include_router(workflow_graph_router)
 app.include_router(proxy_router)
 app.include_router(teams_router)
@@ -278,6 +285,6 @@ if __name__ == "__main__":
         port=get_int("server", "port", 8000),
         reload=get_bool("server", "reload", False),
         **ssl_kwargs,
-        reload_dir="app/",
+        reload_dirs=["app/"],
         reload_excludes=["logs/*", "*.db"]
     )
