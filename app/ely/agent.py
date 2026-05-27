@@ -60,12 +60,34 @@ Tu n'as pas d'actions speciales ici, mais tu peux expliquer et guider.""",
 }
 
 
+BASH_TOOL_ADD = f"""Never suggest adding a new tool. Only use bash for executing commands in the sandbox.
+If you need to run a command, use the existing bash tool and do not invent new tools or actions.
+Ask yourself if the bash tool usage can harm Elyria or the user. If yes, never execute and ask the user for clarification instead.
+
+sandox tools are powerful but can be dangerous if misused. Always double-check the command and its impact before executing.
+
+Pkg Alpine:
+- bash, curl, wget, ca-certificates, bind-tools, netcat-openbsd, socat
+- nmap, nmap-scripts, git, openssh-client, python3, py3-pip
+- jq, yq, unzip, tar, massdns, amass, wfuzz
+- chromium, chromium-chromedriver
+
+Python:
+- sqlmap, requests, httpx, aiohttp, pyjwt, beautifulsoup4
+
+Tool GO:
+- nuclei v3.4.2, subfinder v2.7.0, httpx v1.7.2, katana v1.1.0, ffuf v2.1.0"""
+
+
+
 def build_system_prompt(page, context_snapshot=None):
     parts = [BASE_PROMPT]
     if page in PAGE_CONTEXTS:
         parts.append(PAGE_CONTEXTS[page])
     if context_snapshot:
         parts.append(f"\nDonnees actuelles de la page :\n{json.dumps(context_snapshot, indent=2, default=str)[:2000]}")
+    if page in ("app","pentest", "greyteam", "blueteam"):
+        parts.append(BASH_TOOL_ADD)
     return "\n\n".join(parts)
 
 
@@ -122,11 +144,21 @@ async def chat(page, messages, request, stream_cb=None, slot="flash"):
         return {
             "reply": "Aucun fournisseur IA configure. Allez dans Hub > AI Agent pour configurer un modele.",
             "actions": [],
-            "tokens": {"total": 0},
-        }
+            "tokens": {"total": 0},        
+            }
     page = page or "app"
+    user_id = get_user_id(request) if request else "anon"
+
+    # ── Memory: increment round, inject profile into system prompt ──
+    from ely.memory import build_memory_prompt, increment_round, maybe_compact
+    increment_round(user_id)
+    memory_prompt = build_memory_prompt(user_id)
+
     context_snapshot = get_context_for_page(page, request)
-    system_msg = {"role": "system", "content": build_system_prompt(page, context_snapshot)}
+    system_content = build_system_prompt(page, context_snapshot)
+    if memory_prompt:
+        system_content = memory_prompt + "\n\n" + system_content
+    system_msg = {"role": "system", "content": system_content}
     tools = get_action_definitions(page)
     tool_map = {t["function"]["name"]: t for t in tools}
 
@@ -208,6 +240,13 @@ async def chat(page, messages, request, stream_cb=None, slot="flash"):
             msg = msg[:200] + "..."
         final_reply = f"Desole, erreur de communication avec l'IA : {msg}"
 
+    # ── Memory compaction (fire and forget, errors are non-fatal) ──
+    try:
+        import asyncio
+        asyncio.ensure_future(maybe_compact(user_id, full_messages, provider))
+    except Exception:
+        pass
+
     return {
         "reply": resp.get("content", "") or final_reply,
         "actions": actions_executed,
@@ -240,24 +279,29 @@ def get_context_for_page(page, request):
                 "target": campaign.get("target_domain", "") or campaign.get("target_path", ""),
                 "findings": findings,
             }
+        context["preferred_tools"] = {
+            "redteam": ["sqlmap", "netcat-openbsd", "socat", "wfuzz","nuclei","nmap","chronium"]}
+
     if page == "greyteam":
         from greyteam.database import get_last_report_by_user
-        reports = get_last_report_by_user(user_id=user_id)
-        if reports:
-            last = reports[0]
+        report = get_last_report_by_user(user_id=user_id)
+        if report:
             context["active_report"] = {
-                "id": last.get("report_id", ""),
-                "target": last.get("target_domain", ""),
-                "status": last.get("status", ""),
+                "id": report.get("report_id", ""),
+                "target": report.get("target_domain", ""),
+                "status": report.get("status", ""),
             }
+        context["preferred_tools"] = {
+            "Reconnaissance": ["subfinder", "amass", "massdns","katana","nslookup"],
+            "Analyse": ["ssl", "httpx", "nuclei","bf4", "jq","yq"],
+        }
     if page == "blueteam":
         from blueteam.database import get_last_report_by_user
-        reports = get_last_report_by_user(user_id=user_id)
-        if reports:
-            last = reports[0]
+        report = get_last_report_by_user(user_id=user_id)
+        if report:
             context["active_report"] = {
-                "id": last.get("report_id", ""),
-                "target": last.get("target_path", ""),
-                "status": last.get("status", ""),
+                "id": report.get("report_id", ""),
+                "target": report.get("target_path", ""),
+                "status": report.get("status", ""),
             }
     return context

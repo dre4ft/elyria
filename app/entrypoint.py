@@ -260,8 +260,35 @@ app.include_router(ely_router)
 
 if __name__ == "__main__":
     import os
+    import signal
+    import subprocess
     import uvicorn
     from core.config import get, get_int, get_bool
+
+    def _cleanup_sandboxes():
+        """Kill all strike-* Docker containers before shutdown."""
+        try:
+            r = subprocess.run(
+                ["docker", "ps", "-q", "--filter", "name=strike-"],
+                capture_output=True, text=True, timeout=10,
+            )
+            ids = [l.strip() for l in r.stdout.strip().split("\n") if l.strip()]
+            if ids:
+                subprocess.run(
+                    ["docker", "rm", "-f"] + ids,
+                    capture_output=True, timeout=30,
+                )
+                print(f"\n[elyria] Cleared {len(ids)} sandbox container(s)")
+        except Exception:
+            pass
+
+    def _shutdown(signum, frame):
+        print("\n[elyria] Ctrl+C received — cleaning up sandboxes...")
+        _cleanup_sandboxes()
+        print("[elyria] Shutting down.")
+        os._exit(0)
+
+    signal.signal(signal.SIGINT, _shutdown)
 
     cert = get("ssl", "cert_path")
     key = get("ssl", "key_path")

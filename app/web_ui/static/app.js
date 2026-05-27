@@ -169,7 +169,6 @@ function init() {
   setupRespTabs();
   setupParams();
   setupHeaders();
-  setupChat();
   setupSend();
   fetchProxyState();
   setupHistory();

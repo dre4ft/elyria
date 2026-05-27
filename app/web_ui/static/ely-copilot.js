@@ -34,7 +34,7 @@
   function _esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
   var PANEL_HTML = ''
-    + '<aside id="ely-copilot-panel" class="w-[480px] min-w-[380px] bg-base-800 border-l border-white/5 flex flex-col shrink-0 hidden" style="position:fixed;right:0;top:3rem;bottom:0;z-index:9998;">'
+    + '<aside id="ely-copilot-panel" class="w-[480px] min-w-[380px] bg-base-800 border-l border-white/5 flex flex-col shrink-0 hidden">'
     // Header
     + '<div class="h-12 px-4 border-b border-white/5 flex items-center justify-between shrink-0">'
     + '<div class="flex items-center gap-3">'
@@ -133,7 +133,15 @@
       // Slash menu (outside the aside for z-index)
       + '<div id="ely-copilot-slash" class="hidden fixed z-[10000] w-80 max-h-48 overflow-y-auto rounded-xl bg-base-700 border border-white/10 shadow-2xl py-1"></div>';
     while (container.firstChild) {
-      document.body.appendChild(container.firstChild);
+      var child = container.firstChild;
+      if (child.id === 'ely-copilot-panel') {
+        // Insert into the main flex layout so it pushes content instead of overlaying
+        var layout = document.querySelector('[class*="flex h-\\[calc"]');
+        if (layout) { layout.appendChild(child); }
+        else { document.body.appendChild(child); }
+      } else {
+        document.body.appendChild(child);
+      }
     }
 
     _bindEvents();

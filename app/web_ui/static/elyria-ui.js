@@ -181,7 +181,6 @@
     { id: 'pentest',  label: 'Red Team',   path: '/pentest',  color: 'red' },
     { id: 'greyteam', label: 'Grey Team',  path: '/greyteam', color: 'gray' },
     { id: 'blueteam', label: 'Blue Team',  path: '/blueteam', color: 'blue' },
-    { id: 'doc',      label: 'Docs',       path: '/doc',      color: 'purple' },
   ];
 
   // ── DOM helpers ──
@@ -311,6 +310,7 @@
     if (hubBtn) {
       rightHTML += '<button onclick="navigateTo(\'/hub\')" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-primary/15 border border-white/5 hover:border-primary/30 text-xs font-medium text-gray-400 hover:text-primary-light transition-all">Hub</button>';
     }
+    rightHTML += '<button onclick="navigateTo(\'/doc\')" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-purple-500/10 border border-white/5 hover:border-purple-500/30 text-xs font-medium text-gray-400 hover:text-purple-400 transition-all">Docs</button>';
     rightHTML += '<button id="btn-toggle-copilot" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-primary/20 border border-white/5 hover:border-primary/40 text-xs font-medium text-gray-400 hover:text-primary-light transition-all flex items-center gap-1.5" title="Ely Copilot">'
       + '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>'
       + 'ELY</button>';
