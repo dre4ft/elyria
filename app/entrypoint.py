@@ -29,6 +29,13 @@ from database.user_mgmt import get_key
 
 app = FastAPI()
 
+"""# ── Gatekeeper (registered FIRST = outermost wall, runs before everything) ──
+from database.app_config import get as _cfg
+if _cfg("gatekeeper.enabled", "0") == "1":"""
+from gatekeeper import gatekeeper_middleware as _gate_mw, gate_app as _gate_app
+app.middleware("http")(_gate_mw)
+app.include_router(_gate_app)
+
 # ── CORS ──
 if os.getenv("ELYRIA_PRODUCTION", "") == "1":
     _cors_origins = ["https://*.elyria.pro"]
@@ -85,7 +92,7 @@ async def check_authorization(request: Request, call_next):
     # HTML shells (/app, /workflow, etc.) are served without auth so the SPA
     # can load auth.js — client-side auth handles the rest.
     PUBLIC_ROUTES = {
-        "/", "/login", "/app", "/workflow", "/pentest", "/greyteam", "/hub", "/doc", "/blueteam", "/m",
+        "/", "/login", "/app", "/workflow", "/pentest", "/greyteam", "/hub", "/doc", "/blueteam", "/m","/gate",
         "/api/user/login", "/api/user/create", "/api/user/refresh",
         "/api/user/verify-email", "/api/user/resend-code",
         "/api/user/reset-password", "/api/user/reset-password/confirm",
@@ -248,14 +255,6 @@ app.include_router(proxy_router)
 app.include_router(teams_router)
 app.include_router(ai_config_router)
 app.include_router(oidc_router)
-
-# ── Gatekeeper (registered LAST = runs FIRST, outermost wall) ──
-from database.app_config import get as _cfg
-if _cfg("gatekeeper.enabled", "0") == "1":
-    from gatekeeper import gatekeeper_middleware as _gate_mw, gate_app as _gate_app
-    app.middleware("http")(_gate_mw)
-    app.include_router(_gate_app)
-
 
 if __name__ == "__main__":
     import os

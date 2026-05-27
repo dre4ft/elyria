@@ -4,25 +4,6 @@
 
 ---
 
-## Table des matières
-
-1. [Présentation](#1--présentation)
-2. [Démarrage rapide](#2--démarrage-rapide)
-3. [L'interface principale](#3--linterface-principale)
-4. [Les Collections](#4--les-collections)
-5. [L'Historique](#5--lhistorique)
-6. [Le Catcher (proxy intercepteur)](#6--le-catcher-proxy-intercepteur)
-7. [L'Assistant IA](#7--lassistant-ia)
-8. [Import de documents (OpenAPI / Arazzo)](#8--import-de-documents-openapi--arazzo)
-9. [Requêtes Raw HTTP](#9--requêtes-raw-http)
-10. [Le Workflow Builder](#10--le-workflow-builder)
-11. [Le Hub](#11--le-hub)
-12. [Red Team / Pentest](#12--red-team--pentest)
-13. [Blue Team / SSDLC](#13--blue-team--ssdlc)
-14. [Raccourcis clavier](#14--raccourcis-clavier)
-
----
-
 ## 1. Présentation
 
 Elyria est un client API complet qui combine :
@@ -35,6 +16,7 @@ Elyria est un client API complet qui combine :
 - **Assistant IA intégré** — créez des collections, exécutez des tests et analysez les résultats par chat
 - **Red Team / Pentest** — scannez vos APIs avec le moteur OWASP API Top 10 + AI deep scan
 - **Blue Team / SSDLC** — analyse security-by-design de vos specs pour produire des rapports d'exigences de sécurité
+- **Grey Team / OSINT** — reconnaissance passive de domaine (DNS, WHOIS, SSL, sous-domaines, technologies, emails, GitHub, Google)
 - **Import OpenAPI / Arazzo** — importez vos specs pour générer automatiquement des collections
 
 ---
@@ -670,7 +652,48 @@ Vous pouvez importer une campagne Red Team pour générer un plan de remédiatio
 
 ---
 
-## 14. Raccourcis clavier
+## 14. Grey Team / OSINT
+
+Le module Grey Team (accessible via le header ou `/greyteam`) effectue de la **reconnaissance passive** (OSINT) sur un domaine cible. Contrairement au Red Team qui attaque activement, le Grey Team collecte des informations publiques sans interagir directement avec les serveurs cibles.
+
+### 14.1. Profils OSINT
+
+- **Créer un profil** : bouton "+" dans la sidebar "Domains"
+- **Configurer** : nom, domaine cible, description, modules OSINT à activer, nombre de rounds d'analyse IA
+- **Filtre par équipe** : dropdown dans la sidebar
+- **Modifier** : bouton Edit dans le header
+- **Supprimer** : bouton Delete dans le header
+
+### 14.2. Dashboard
+
+- **Risk Score** : jauge 0-100 basée sur le nombre et la sévérité des findings
+- **Compteurs** : Critical, High, Total Findings
+- **6 cartes d'indicateurs** : DNS Health, SSL/TLS, HTTP Security, Subdomains, Email Exposure, Tech Stack
+- **Scan progress** : barre de progression avec polling adaptatif
+
+### 14.3. Modules OSINT (Phase 1)
+
+13 modules de collecte passive en parallèle : DNS Records, WHOIS, SSL/TLS, Cert Transparency (crt.sh + Cert Spotter + AlienVault OTX), HTTP Headers, Web Paths, Tech Fingerprint (30+ patterns : CMS, frameworks, CDN/WAF), Email Enumeration, Trivial Pages (80+ chemins : .env, .git, wp-admin, backups, configs), Wayback Machine, GitHub Dorks, Google Dorks, Frontend Code (secrets, endpoints API, CVE, déobfuscation IA).
+
+### 14.4. Phase 2 — AI Refinement
+
+L'agent IA (modèles Flash + Pro) enrichit les findings :
+
+- **osint_refine_finding** : score d'exploitabilité (1-10), vecteur MITRE ATT&CK, priorité de remédiation
+- **osint_create_finding** : crée de nouveaux findings découverts pendant l'analyse
+- **osint_correlate_findings** : chaîne les findings en scénarios d'attaque
+- **bash** : commandes OSINT passives en sandbox (dig, whois, curl crt.sh/archive.org/GitHub API)
+
+### 14.5. Findings et filtres
+
+- Tableau trié par sévérité avec titre, catégorie, description
+- **Filtres** : sévérité, type de module, source (Deterministic / AI Refined)
+- **Panneau de détail** : description, évidence, remédiation, analyse IA
+- **Rafraîchissement** automatique pendant le scan
+
+---
+
+## 15. Raccourcis clavier
 
 | Raccourci | Action |
 |-----------|--------|

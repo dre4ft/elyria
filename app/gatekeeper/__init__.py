@@ -41,7 +41,7 @@ def _load_gate_key() -> str:
         return env_key
 
     # Try file in app/gatekeeper/
-    key_path = os.path.join(os.path.dirname(__file__), ".gate_key")
+    key_path =  "gatekeeper/.gate_key"
     if os.path.isfile(key_path):
         with open(key_path, "r", encoding="utf-8-sig") as f:
             key = f.read().strip().lstrip("﻿")
@@ -52,6 +52,12 @@ def _load_gate_key() -> str:
 
 
 GATE_KEY = _load_gate_key()
+
+if not GATE_KEY:
+    import logging
+    _log = logging.getLogger("elyria.gatekeeper")
+    _log.warning("Gatekeeper enabled but no key configured — ALL requests will be blocked (404)."
+                 " Create app/gatekeeper/.gate_key or set ELYRIA_GATE_KEY env var.")
 
 
 def _sign_gate_token(gate_key: str) -> str:
@@ -115,17 +121,17 @@ GATE_ROUTES = {"/gate"}
 async def gatekeeper_middleware(request: Request, call_next):
     """
     Gatekeeper middleware — runs BEFORE all other middleware.
-    If gate key is not configured, skip entirely.
+    Deny-by-default: if enabled but no key configured, block everything.
     If valid gate cookie → continue.
     Otherwise → 404 (API) or gate page (HTML).
     """
-    if not GATE_KEY:
-        return await call_next(request)
-
     path = request.url.path
 
     if path in GATE_ROUTES or path.startswith("/static/"):
         return await call_next(request)
+
+    if not GATE_KEY:
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
     token = request.cookies.get(GATE_COOKIE, "")
     if token and _verify_gate_token(token, GATE_KEY):

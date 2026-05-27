@@ -155,6 +155,17 @@ def _seed_defaults():
         c.execute("INSERT OR IGNORE INTO app_api_keys (key_name,key_value) VALUES(?,'')", (kn,))
     c.commit()
     c.close()
+
+# Sync elyria.cfg → DB before seeding defaults (cfg overrides defaults)
+def _sync_cfg_to_db():
+    if not _CFG_VALUES:
+        return
+    c = _connect()
+    for k, v in _CFG_VALUES.items():
+        c.execute("INSERT OR IGNORE INTO app_config (key,value) VALUES(?,?)", (k, v))
+    c.commit()
+    c.close()
+_sync_cfg_to_db()
 _seed_defaults()
 
 
@@ -204,7 +215,7 @@ def get(key: str, default: str = "") -> str:
     if row:
         d = dict(row) if not isinstance(row, dict) else row
         val = _decrypt_config(d) if key in _SECRET_KEYS else d.get("value", "")
-        if val:  # DB value exists and is non-empty
+        if val != "":  # DB value set explicitly (may be "0" which is falsy in bool context)
             cache.set(ck, val, ttl=30)
             return val
 
