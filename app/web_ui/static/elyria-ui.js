@@ -528,3 +528,12 @@
     ICONS: ICONS,
   };
 })();
+
+// ── Ely HUD loader ──
+(function () {
+  if (window.__elyHudLoaded) return;
+  window.__elyHudLoaded = true;
+  var s = document.createElement('script');
+  s.src = 'static/ely-hud.js';
+  document.head.appendChild(s);
+})();

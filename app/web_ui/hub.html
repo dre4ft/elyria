@@ -37,6 +37,10 @@
       <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
       AI Agent
     </button>
+    <button onclick="switchHubTab('ely')" id="hubtab-ely" class="hub-tab">
+      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M8 9.5h8M8 13h5.5"/></svg>
+      Ely
+    </button>
     <div class="flex-1"></div>
     <div id="proxy-status" class="p-2 rounded-md bg-base-700/40 border border-white/5 text-[10px] text-gray-500 flex items-center gap-1.5">
       <svg class="w-3 h-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/></svg>
@@ -105,8 +109,65 @@
               <svg class="w-3.5 h-3.5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
             </div>
             <div><span class="text-sm font-semibold text-purple-400">Pro Model</span><p class="text-[10px] text-gray-500">Analyse profonde</p></div>
-          <div id="pro-configs" class="space-y-1"></div>
+          </div>
+            <div id="pro-configs" class="space-y-1"></div>
           <button onclick="addAIConfig('pro')" class="btn btn-ghost text-purple-400 mt-2 text-[10px]"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>Ajouter un provider Pro</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ely Section -->
+    <div id="hub-section-ely" class="hub-section hidden">
+      <div class="section-card mb-5">
+        <div class="section-card-header">
+          <div><h2 class="text-sm font-semibold text-white">Ely — Suivi d'activite</h2><p class="text-[10px] text-gray-500 mt-0.5">Historique des actions et preferences</p></div>
+        </div>
+        <!-- Stats -->
+        <div id="ely-stats" class="p-4 grid grid-cols-4 gap-3 border-b border-white/5">
+          <div class="text-center"><div id="ely-stat-total" class="text-xl font-bold text-accent-light font-mono">--</div><div class="text-[9px] text-gray-500 mt-0.5">Actions</div></div>
+          <div class="text-center"><div id="ely-stat-rate" class="text-xl font-bold text-low font-mono">--</div><div class="text-[9px] text-gray-500 mt-0.5">Succes</div></div>
+          <div class="text-center"><div id="ely-stat-tokens" class="text-xl font-bold text-primary-light font-mono">--</div><div class="text-[9px] text-gray-500 mt-0.5">Tokens</div></div>
+          <div class="text-center"><div id="ely-stat-month" class="text-xl font-bold text-medium-light font-mono">--</div><div class="text-[9px] text-gray-500 mt-0.5">Ce mois</div></div>
+        </div>
+        <!-- Audit log -->
+        <div class="p-4 border-b border-white/5">
+          <div class="flex items-center gap-2 mb-3">
+            <select id="ely-filter-page" class="h-6 px-1.5 rounded-md bg-base-700 border border-white/5 text-[10px] text-gray-400 focus:outline-none" onchange="loadElyAudit()">
+              <option value="">Toutes les pages</option>
+              <option value="app">Client API</option><option value="workflow">Workflows</option>
+              <option value="pentest">Red Team</option><option value="greyteam">Grey Team</option>
+              <option value="blueteam">Blue Team</option><option value="hub">Hub</option><option value="doc">Docs</option>
+            </select>
+            <div class="flex-1"></div>
+            <button onclick="loadElyAudit()" class="h-6 px-2 rounded-md bg-base-700 hover:bg-white/5 border border-white/5 text-[10px] text-gray-400 transition-all">Rafraichir</button>
+          </div>
+          <div id="ely-audit-list" class="space-y-1 max-h-60 overflow-y-auto scrollbar-thin">
+            <div class="text-[10px] text-gray-600 text-center py-4">Chargement...</div>
+          </div>
+        </div>
+        <!-- Preferences -->
+        <div class="p-4">
+          <h3 class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-3">Preferences</h3>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-[10px] text-gray-500 block mb-1">Ton</label>
+              <select id="ely-pref-tone" class="w-full h-7 px-2 rounded-md bg-base-700 border border-white/5 text-[11px] text-gray-300 focus:outline-none">
+                <option value="professional">Professionnel</option><option value="casual">Decontracte</option><option value="technical">Technique</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-500 block mb-1">Verbosite</label>
+              <select id="ely-pref-verbosity" class="w-full h-7 px-2 rounded-md bg-base-700 border border-white/5 text-[11px] text-gray-300 focus:outline-none">
+                <option value="concise">Concis</option><option value="detailed">Detaille</option>
+              </select>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 mt-3">
+            <label class="flex items-center gap-1.5 text-[11px] text-gray-400 cursor-pointer">
+              <input type="checkbox" id="ely-pref-enabled" checked class="w-3.5 h-3.5 rounded bg-base-700 border-white/10" /> Ely active
+            </label>
+          </div>
+          <button onclick="saveElyPreferences()" class="mt-3 h-7 px-4 rounded-lg bg-primary/80 hover:bg-primary border border-primary/30 text-[11px] text-white font-medium transition-all">Enregistrer</button>
         </div>
       </div>
     </div>
@@ -220,6 +281,7 @@ function switchHubTab(tab) {
   if(btn) btn.classList.add('active');
   const section = document.getElementById('hub-section-' + tab);
   if(section) section.classList.remove('hidden');
+  if (tab === 'ely') { loadElyStats(); loadElyAudit(); loadElyPreferences(); }
 }
 
 // ── AI Config ──
@@ -359,6 +421,66 @@ async function saveAIConfig(id, slot) {
 }
 async function delAIConfig(cid) { if(!confirm('Supprimer cette configuration ?')) return; await fetch(U.aiConfigs + '/' + cid, { method:'DELETE', headers:{...getAuthHeader()} }); loadAIConfigs(); }
 async function setDefaultConfig(cid) { const r = await fetch(U.aiConfigs + '/' + cid + '/set-default', { method:'POST', headers:{...getAuthHeader()} }); if (r.ok) loadAIConfigs(); }
+
+async function loadElyAudit() {
+  const page = $('#ely-filter-page')?.value || '';
+  const container = $('#ely-audit-list');
+  if (!container) return;
+  try {
+    const r = await fetch('/api/ely/audit?page=' + page + '&limit=50', { headers: {...getAuthHeader()} });
+    const data = await r.json();
+    if (!data.logs.length) {
+      container.innerHTML = '<div class="text-[10px] text-gray-600 text-center py-4">Aucune action enregistree</div>';
+      return;
+    }
+    container.innerHTML = data.logs.map(l => {
+      const date = (l.created_at || '').replace('T', ' ').substring(5, 16);
+      const statusIcon = l.status === 'ok' ? '<span class="text-low">✓</span>' : '<span class="text-critical">✗</span>';
+      return '<div class="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-white/5 text-[10px]">'
+        + '<span class="text-gray-600 font-mono w-[60px] flex-shrink-0">' + esc(date) + '</span>'
+        + '<span class="text-gray-500 w-[65px] flex-shrink-0 truncate">' + esc(l.page || '-') + '</span>'
+        + '<span class="text-gray-400 flex-1 truncate font-mono">' + esc(l.action_name || '') + '</span>'
+        + statusIcon
+        + (l.tokens_used ? '<span class="text-gray-600 ml-1">' + l.tokens_used + 't</span>' : '')
+        + '</div>';
+    }).join('');
+  } catch (e) { container.innerHTML = '<div class="text-[10px] text-red-400 py-2">Erreur de chargement</div>'; }
+}
+
+async function loadElyStats() {
+  try {
+    const r = await fetch('/api/ely/stats', { headers: {...getAuthHeader()} });
+    const s = await r.json();
+    $('#ely-stat-total').textContent = s.total || 0;
+    $('#ely-stat-rate').textContent = (s.rate || 0) + '%';
+    $('#ely-stat-tokens').textContent = s.tokens > 1000 ? Math.round(s.tokens/1000) + 'K' : (s.tokens || 0);
+    $('#ely-stat-month').textContent = '--';
+  } catch (e) {}
+}
+
+async function loadElyPreferences() {
+  try {
+    const r = await fetch('/api/ely/preferences', { headers: {...getAuthHeader()} });
+    const p = await r.json();
+    const tone = $('#ely-pref-tone'); if (tone) tone.value = p.tone || 'professional';
+    const verb = $('#ely-pref-verbosity'); if (verb) verb.value = p.verbosity || 'concise';
+    const ena = $('#ely-pref-enabled'); if (ena) ena.checked = p.enabled !== false;
+  } catch (e) {}
+}
+
+async function saveElyPreferences() {
+  const tone = $('#ely-pref-tone')?.value || 'professional';
+  const verbosity = $('#ely-pref-verbosity')?.value || 'concise';
+  const enabled = $('#ely-pref-enabled')?.checked !== false;
+  try {
+    await fetch('/api/ely/preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ tone, verbosity, enabled }),
+    });
+    ElyriaUI.showToast ? ElyriaUI.showToast('Preferences enregistrees', 'success') : alert('OK');
+  } catch (e) { alert('Erreur'); }
+}
 
 document.addEventListener('DOMContentLoaded', ()=>{ switchHubTab('teams'); refreshHub(); loadAIConfigs(); });
 </script>
