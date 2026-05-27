@@ -116,6 +116,7 @@ class BashTool:
             return json.dumps({"error": "No command or commands provided"})
 
         command = command.replace("TARGET", resolved).replace(self.target, resolved)
+        command = _sanitize_command(command)
         result = self.sandbox.exec(command, timeout_ms=timeout_ms)
         return json.dumps(result, ensure_ascii=False)
 
@@ -126,6 +127,7 @@ class BashTool:
 
         for cmd in commands:
             cmd = cmd.replace("TARGET", target).replace(self.target, target)
+            cmd = _sanitize_command(cmd)
             r = self.sandbox.exec(cmd, timeout_ms=timeout_ms)
             results.append({
                 "command": cmd[:200],
@@ -143,16 +145,16 @@ class BashTool:
             "results": results,
         }, ensure_ascii=False)
 
-    def spawn(self, target: str) -> dict:
-        """Spawn a new sandbox for the given target."""
-        self.target = target
+    def spawn(self, target: str = "") -> dict:
+        """Spawn a new sandbox. target is optional (empty = no target scoping)."""
+        self.target = target or ""
         if not self.manager:
             self.manager = SandboxManager()
         if self.sandbox:
-            return {"status": "ok", "container_id": self.sandbox.container_id, "target": target}
+            return {"status": "ok", "container_id": self.sandbox.container_id, "target": self.target}
         try:
-            self.sandbox = self.manager.spawn(target=target)
-            return {"status": "ok", "container_id": self.sandbox.container_id, "target": target}
+            self.sandbox = self.manager.spawn(target=self.target)
+            return {"status": "ok", "container_id": self.sandbox.container_id, "target": self.target}
         except Exception as e:
             return {"status": "error", "detail": str(e)}
 

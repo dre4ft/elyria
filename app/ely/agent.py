@@ -73,68 +73,51 @@ def build_system_prompt(page, context_snapshot=None):
 # Provider resolution (same pattern as greyteam)
 # ═══════════════════════════════════════════════════════════════
 
-def _resolve_provider():
-    """Resolve the AI provider for Ely. Prefers Flash model for speed."""
+def _resolve_provider(slot="flash"):
+    """Resolve the AI provider for Ely. slot = 'flash' or 'pro'."""
     from ai_core.ai_wrapper import AIWrapper
     from database.ai_config_mgmt import get_default_config
     from database.app_config import get_api_key
 
-    def _resolve(slot, fallback_model):
-        cfg = get_default_config(slot)
+    def _resolve(s, fallback_model):
+        cfg = get_default_config(s)
         if cfg:
             url = cfg.get("base_url", "") or "https://api.openai.com/v1"
             api_key = cfg.get("api_key", "")
             provider_type = cfg.get("provider_type", "openai")
             if provider_type == "lmstudio":
                 url = url.rstrip("/").replace("/api/v1", "/v1")
-                if not url.endswith("/v1"):
-                    url = url.rstrip("/") + "/v1"
-                if not api_key:
-                    api_key = "not-needed"
-            if not api_key:
-                api_key = get_api_key("openai_api_key")
-            if not api_key:
-                return None
-            return {
-                "provider_type": provider_type, "url": url,
-                "api_key": api_key, "model": cfg.get("model", "") or fallback_model,
-            }
+                if not url.endswith("/v1"): url = url.rstrip("/") + "/v1"
+                if not api_key: api_key = "not-needed"
+            if not api_key: api_key = get_api_key("openai_api_key")
+            if not api_key: return None
+            return {"provider_type": provider_type, "url": url, "api_key": api_key, "model": cfg.get("model", "") or fallback_model}
         api_key = get_api_key("openai_api_key")
-        if api_key:
-            return {
-                "provider_type": "openai", "url": "https://api.openai.com/v1",
-                "api_key": api_key, "model": fallback_model,
-            }
+        if api_key: return {"provider_type": "openai", "url": "https://api.openai.com/v1", "api_key": api_key, "model": fallback_model}
         return None
 
-    flash_cfg = _resolve("flash", "gpt-4o-mini")
-    if not flash_cfg:
-        flash_cfg = _resolve("pro", "gpt-4o")
-    if not flash_cfg:
-        return None, None
+    cfg = _resolve(slot, "gpt-4o-mini" if slot == "flash" else "gpt-4o")
+    if not cfg: cfg = _resolve("flash" if slot == "pro" else "pro", "gpt-4o-mini")
+    if not cfg: return None, None
 
-    wrapper = AIWrapper(
-        provider_type=flash_cfg["provider_type"],
-        url=flash_cfg["url"],
-        api_key=flash_cfg["api_key"],
-        model=flash_cfg["model"],
-    )
-    return wrapper.provider, flash_cfg["model"]
+    wrapper = AIWrapper(provider_type=cfg["provider_type"], url=cfg["url"], api_key=cfg["api_key"], model=cfg["model"])
+    return wrapper.provider, cfg["model"]
 
 
 # ═══════════════════════════════════════════════════════════════
 # Chat
 # ═══════════════════════════════════════════════════════════════
 
-async def chat(page, messages, context_snapshot, request, stream_cb=None):
+async def chat(page, messages, request, stream_cb=None, slot="flash"):
     """
     Main chat entry point. Handles function calling loop.
 
     Returns: {"reply": "...", "actions": [...], "tokens": {...}}
     """
     from ely.tools import get_action_definitions, execute_action
+    from core.auth import get_user as get_user_id
 
-    provider, model = _resolve_provider()
+    provider, model = _resolve_provider(slot)
     if not provider:
         return {
             "reply": "Aucun fournisseur IA configure. Allez dans Hub > AI Agent pour configurer un modele.",
@@ -142,6 +125,7 @@ async def chat(page, messages, context_snapshot, request, stream_cb=None):
             "tokens": {"total": 0},
         }
     page = page or "app"
+    context_snapshot = get_context_for_page(page, request)
     system_msg = {"role": "system", "content": build_system_prompt(page, context_snapshot)}
     tools = get_action_definitions(page)
     tool_map = {t["function"]["name"]: t for t in tools}
@@ -151,8 +135,8 @@ async def chat(page, messages, context_snapshot, request, stream_cb=None):
     actions_executed = []
     final_reply = ""
 
-    # Up to 3 turns of function calling
-    for turn in range(3):
+    # Up to 5 turns of function calling
+    for turn in range(5):
         try:
             resp = provider.chat(full_messages, tools=tools if tools else None)
         except Exception as e:
@@ -214,9 +198,66 @@ async def chat(page, messages, context_snapshot, request, stream_cb=None):
                 "tool_call_id": tc_id,
                 "content": json.dumps(result, default=str)[:2000],
             })
+    
+    try:
+        resp = provider.chat(full_messages, tools=tools if tools else None)
+    except Exception as e:
+        _log.error(f"LLM call failed: {e}")
+        msg = str(e)
+        if len(msg) > 200:
+            msg = msg[:200] + "..."
+        final_reply = f"Desole, erreur de communication avec l'IA : {msg}"
 
     return {
-        "reply": final_reply,
+        "reply": resp.get("content", "") or final_reply,
         "actions": actions_executed,
         "tokens": {"total": tokens_used},
     }
+
+def get_context_for_page(page, request):
+    """Collect additional context for the given page."""
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+    if not user_id:
+        return {}
+
+    context = {}
+    if page == "app":
+        from database.collection_api import _get_followed_team_ids
+        from database.request_mgmt import get_last_n_requests_by_user as list_recent_requests
+
+        context["followed_team_ids"] = _get_followed_team_ids(user_id)
+        context["recent_requests"] = list_recent_requests(user_id)
+    if page == "pentest":
+        from redteam.database import get_last_campaign_by_user,get_campaign_findings
+        campaign = get_last_campaign_by_user(user_id)
+        if campaign:
+            findings = get_campaign_findings(campaign.get("campaign_id", ""))
+            context["active_campaign"] = {
+                "id": campaign.get("campaign_id"),
+                "name": campaign.get("name", ""),
+                "status": campaign.get("status", ""),
+                "target": campaign.get("target_domain", "") or campaign.get("target_path", ""),
+                "findings": findings,
+            }
+    if page == "greyteam":
+        from greyteam.database import get_last_report_by_user
+        reports = get_last_report_by_user(user_id=user_id)
+        if reports:
+            last = reports[0]
+            context["active_report"] = {
+                "id": last.get("report_id", ""),
+                "target": last.get("target_domain", ""),
+                "status": last.get("status", ""),
+            }
+    if page == "blueteam":
+        from blueteam.database import get_last_report_by_user
+        reports = get_last_report_by_user(user_id=user_id)
+        if reports:
+            last = reports[0]
+            context["active_report"] = {
+                "id": last.get("report_id", ""),
+                "target": last.get("target_path", ""),
+                "status": last.get("status", ""),
+            }
+    return context

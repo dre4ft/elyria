@@ -12,7 +12,6 @@ Elyria is a complete API client combining:
 - **Raw HTTP requests** — forge HTTP requests from scratch (TCP socket)
 - **Collections** — organize your requests in hierarchical folders, shared across teams
 - **Workflow Builder** — automate multi-request scenarios with conditional logic, loops, and security tests
-- **Catcher** — Burp Suite-style proxy interceptor to inspect browser or Postman requests
 - **Built-in AI Assistant** — create collections, run tests, and analyze results via chat
 - **Red Team / Pentest** — scan your APIs with the OWASP API Top 10 engine + AI deep scan
 - **Blue Team / SSDLC** — security-by-design analysis of your specs producing security requirements reports
@@ -50,7 +49,7 @@ The screen is divided into several areas:
 |------|-------------|
 | **Left sidebar** | Collections (folders + saved requests) |
 | **Center area** | Request builder (structured or raw) + response panel |
-| **Right panels** | History, Catcher, AI Assistant, JWT Decoder — open via header buttons |
+| **Right panels** | History, ELY Copilot, JWT Decoder — open via header buttons |
 
 ### 3.1. The URL Bar and Sending Requests
 
@@ -136,64 +135,35 @@ The **History** tab (in the sidebar) keeps a list of sent requests.
 
 ---
 
-## 6. Catcher (Proxy Interceptor)
+## 7. ELY Copilot
 
-The Catcher is a Burp Suite-style HTTP forward proxy that intercepts requests from your browser or Postman for inspection.
+ELY Copilot is the context-aware AI assistant integrated into every Elyria page. It knows which page you're on and tailors its actions accordingly.
 
-### Activation
+### Slash Commands `/`
 
-1. Click the **Catcher** button (pink) in the top bar
-2. In the panel, click **Intercept OFF** to enable interception → the button becomes **Intercept ON**
-3. A `Proxy: localhost:8080` badge appears — this is the proxy address
+In the chat, type `/` to see available commands:
 
-### Browser / Postman Configuration
+| Command | Description |
+|---------|-------------|
+| `/explain` | Analyze an HTTP response (status, headers, errors) |
+| `/scan` | Launch a Red Team security scan |
+| `/osint` | Launch an OSINT scan (Grey Team) |
+| `/analyze` | Analyze a specification (Blue Team) |
+| `/create` | Create a request, collection, or workflow |
+| `/help` | Help about Elyria |
 
-- **Browser**: network settings → HTTP proxy → `localhost:8080`
-- **Postman**: Settings → Proxy → `localhost:8080`
-- **Command line**: `curl -x http://localhost:8080 https://api.example.com`
+Keyboard navigation (↑↓ Enter) or mouse click in the menu. When a command is used, the AI is guided toward the corresponding action.
 
-### Pending Queue
+### Opening ELY Copilot
 
-When **Intercept ON** is active, requests are queued instead of being sent directly. The first request appears in expanded mode:
-
-- **Method**: editable dropdown
-- **URL**: editable field
-- **Headers**: editable textarea
-- **Body**: editable textarea
-
-Fields are live-editable — changes are saved automatically.
-
-### Actions
-
-| Action | Description |
-|--------|-------------|
-| **Forward** | Executes the request to the target and returns the response to the client |
-| **Drop** | Dismisses the request, client receives 410 Gone |
-| **Load** | Loads the request into the Elyria API builder |
-
-### History
-
-All forwarded and dropped requests are persisted in the history. Each entry shows:
-- Method, HTTP status code, URL
-- **Load** button to load into the API builder
-- Click a row to expand the response body detail
-
-History is scoped per user.
-
-### Proxy Port
-
-Configurable via the `CATCHER_PORT` environment variable (default: 8080).
-
----
-
-## 7. AI Assistant
-
-The AI assistant can create collections, send requests, and analyze results.
-
-### Opening the Assistant
-
-- **AI Assistant** button in the top bar, or
+- **ELY Copilot** button in the top bar, or
 - `Ctrl+I` shortcut
+
+### Flash / Pro Model Toggle
+
+The **Flash** / **Pro** toggle in the panel header lets you choose the AI model:
+- **Flash**: fast responses for simple tasks
+- **Pro**: deep analysis with reasoning
 
 ### Usage
 
@@ -204,23 +174,26 @@ Example prompts:
 - *"Create a collection to test the Stripe payment API"*
 - *"Send a GET request to https://api.example.com/users and check that the status is 200"*
 - *"Analyze the last response and tell me if the JWT token is valid"*
+- *"Run a security scan on my Red Team profile"*
 
-The assistant has access to your collections, can create folders, requests, execute them, and read history.
+ELY Copilot has access to your collections, requests, workflows, scan profiles, and history. It can create, execute, and analyze based on the page you're on.
 
 ---
 
-## 8. Document Import (OpenAPI / Arazzo)
+## 8. Document Import
 
-Import your API specifications to auto-generate collections.
+Import your API specifications and collections to auto-generate folders and requests.
 
 ### Supported Formats
 
 - **OpenAPI 3.x** and **Swagger 2.x** (`.json`, `.yaml`, `.yml`)
 - **Arazzo 1.0** — test workflows
+- **Postman** — Postman collections (`.json`)
+- **Bruno** — Bruno collections (`.json`, `.bru`)
 
 ### How to Import
 
-1. Click the **Documents** button in the top bar
+1. In the import bar (at the top of the builder), click the desired format: **OpenAPI**, **cURL**, **Postman**, or **Bruno**
 2. Drag and drop a file into the zone, or click to browse
 3. Click **Import**
 
@@ -234,6 +207,12 @@ Import your API specifications to auto-generate collections.
 
 - Workflows are imported as executable scenarios
 - References between steps (`$steps.x.outputs.y`) are translated to `{{ctx.xxx}}` syntax
+
+### Postman or Bruno Import Result
+
+- Postman/Bruno folders are converted to Elyria collection folders
+- Requests keep their headers, parameters, and body
+- Environment variables are imported as context variables
 
 ---
 
@@ -329,6 +308,43 @@ Each request block has a **Save response as** field that determines under which 
 
 The Assert block's config panel offers ready-to-use example snippets.
 
+#### Red Team / Security
+
+| Block | Role | Output ports |
+|-------|------|--------------|
+| **Fuzz Request** | Fuzzing loop over a wordlist | `BODY` (each iteration), `DONE` (after loop) |
+| **BOLA Test** | IDOR test — substitutes IDs into the URL | `VULN` (if 200), `SAFE` (otherwise) |
+| **JWT Analyze** | Decodes a JWT token: header/payload, expiration check | `out` |
+| **Response Diff** | Compares two HTTP responses (status, headers, body) | `out_diff` (different), `out_same` (identical) |
+| **Extract & Replay** | Extracts a value from a response and replays it in a new request | `out` |
+
+**Fuzz Request** — Fuzzing loop
+- **Wordlist** field: one value per line. At each iteration, `ctx.fuzz` contains the current value.
+- `BODY` output: connect to an HTTP request. In the request, use `{{ctx.fuzz}}` in the URL, headers, or body.
+- The request output MUST loop back to the `in` input of the Fuzz block.
+- `DONE` output: once the wordlist is exhausted. `ctx[saveTo]` contains `{ iterations: N, results: [...] }`.
+
+**BOLA Test** — IDOR (Insecure Direct Object Reference) test
+- **ID List (JSON)** field: mapping of IDs to substitute.
+- Place `{{id}}` in the upstream request URL. The block substitutes each ID and checks if the resource is accessible (HTTP 200).
+- `VULN` output if another user's resource is accessible.
+- `SAFE` output if all requests return 403/404.
+
+**JWT Analyze** — JWT decoder
+- Decodes the header and payload of a JWT token in `ctx.jwt` or `ctx.response.body`.
+- Checks expiration (`exp`) and issued-at (`iat`).
+- Stores results in `ctx.jwt_analysis`: `{ header, payload, expired, issued_at, expires_at }`.
+
+**Response Diff** — Response comparison
+- Compares the last two responses stored in `ctx`. Detects differences in status, headers, and body.
+- Useful for comparing before/after a change (e.g., admin vs normal user request).
+- `out_diff` if responses differ, `out_same` if identical.
+
+**Extract & Replay** — Extract and re-execute
+- Extracts a value from a response using a regular expression and reinjects it into a new request.
+- Useful for extracting a CSRF token, resource ID, or JWT token and reusing it.
+- Stores the extracted value in `ctx.extracted_value`.
+
 ### 10.2. Context (ctx)
 
 All blocks share a `ctx` object that flows through the workflow.
@@ -343,6 +359,16 @@ All blocks share a `ctx` object that flows through the workflow.
 | `{{ctx.response.url}}` | Response URL |
 | `{{ctx.datasetName.field}}` | Field of a named dataset (Set Data with name) |
 | `{{ctx.myVariable}}` | Root variable defined by Set Data |
+
+**Variables injected by Red Team blocks:**
+
+| Variable | Injected by | Description |
+|----------|-------------|-------------|
+| `{{ctx.fuzz}}` | Fuzz Request | Current wordlist value (one per iteration) |
+| `{{ctx.fuzzResults}}` | Fuzz Request | Full results after loop: `{ iterations, results }` |
+| `{{ctx.id_list}}` | BOLA Test | One ID from the list per iteration |
+| `{{ctx.jwt_analysis}}` | JWT Analyze | Decode result: `{ header, payload, expired }` |
+| `{{ctx.extracted_value}}` | Extract & Replay | Value extracted by the regex |
 
 **Ctx snippets**: in the config panel of HTTP Request, Raw Request, Set Data, and If/Else blocks, a *ctx — Workflow context* section shows clickable snippets that insert at the cursor position in the active field.
 
@@ -387,7 +413,59 @@ The Hub (accessible via the user icon in the header) centralizes your account an
 - **Follow/Unfollow**: followed teams appear in your collection, workflow and pentest filters.
 - **Copy ID**: click the copy icon next to the Team ID.
 
-### 11.2. Proxy
+### 11.2. Server Configuration (`elyria.cfg`)
+
+Elyria is configured via the **`elyria.cfg`** file at the project root. It's a standard INI file with no `.env` dependency.
+
+**Available sections:**
+
+```ini
+[server]
+host = 127.0.0.1     # Listen address
+port = 8000          # Port
+reload = 1           # Hot reload (0 in production)
+
+[ssl]
+cert_path = cert.pem # TLS certificate path
+key_path = key.pem   # Private key path
+verify = 0           # Outbound SSL verification (1 in production)
+
+[database]
+backend = sqlite     # sqlite or postgres
+sqlite_path = database.db
+pg_host = localhost  # PostgreSQL (if backend=postgres)
+pg_port = 5432
+pg_database = elyria
+pg_user = elyria
+pg_password = elyria
+
+[logging]
+level = INFO         # DEBUG, INFO, WARNING, ERROR
+dir = logs
+
+[oidc]
+enabled = 0          # 1 to enable SSO
+provider_name =      # Provider name
+issuer =             # OIDC discovery URL
+client_id =          # Client ID
+client_secret =      # Client Secret
+
+[security]
+server_wrap_key =    # Encryption key (64 hex chars). Generated if absent.
+blocked_hosts = metadata.google.internal,169.254.169.254,host.docker.internal
+```
+
+**Priority order:**
+1. Environment variables `ELYRIA_*` (e.g., `ELYRIA_SERVER_PORT=9000`)
+2. Database `app_config` (modifiable via admin API)
+3. `elyria.cfg` file
+4. Hard-coded defaults
+
+**Env var override** format: `ELYRIA_SECTION_KEY`. Examples:
+- `ELYRIA_SERVER_PORT=9000` → `[server].port`
+- `ELYRIA_DATABASE_PG_PASSWORD=secret` → `[database].pg_password`
+
+### 11.3. Proxy
 
 Configure HTTP proxies for request forwarding.
 
@@ -395,7 +473,7 @@ Configure HTTP proxies for request forwarding.
 - **Set as favorite**: the favorite proxy is injected into your requests when active.
 - **Delete**: X icon on each proxy.
 
-### 11.3. AI Agent
+### 11.4. AI Agent
 
 Manage your LLM providers for AI chat and pentest AI scanning.
 
@@ -417,6 +495,7 @@ The Red Team module (accessible via header or `/pentest`) scans your APIs with t
 - **Create a profile**: "+" button in the "Scan Profiles" sidebar
 - **Configure**: target URL, authentication (Bearer, headers), OpenAPI spec, ID list (for BOLA), existing collection, team
 - **AI tab**: set the number of exploration rounds (1-50, default 15) and analysis rounds (1-25, default 5)
+    - **Expert Mode**: enable the Expert option for an in-depth scan (30 exploration rounds, 15 analysis rounds, detailed documentation-driven report)
 - **Edit**: pencil icon on the profile
 - **Delete**: X icon on the profile
 
@@ -428,7 +507,57 @@ The Red Team module (accessible via header or `/pentest`) scans your APIs with t
 - **Delete**: X icon on each campaign (full purge: findings, logs, campaign)
 - **Refresh**: Refresh button in the header or automatic every 60s
 
-### 12.3. Findings and Logs
+### 12.3. Sandbox (Bash Tool)
+
+During **Phase 2** (AI Deep Scan), Elyria automatically spawns a **disposable Docker container** (`strike-sandbox`) — an isolated Linux environment with real pentest tools that the AI can invoke.
+
+#### Tools available in the container
+
+| Tool | Usage |
+|------|-------|
+| **nmap** | Port scanning, service and OS detection |
+| **sqlmap** | SQL injection detection and exploitation |
+| **nuclei** | 5000+ vulnerability templates (CVEs, misconfigs, exposures) |
+| **ffuf** | Web fuzzer (path, parameter, subdomain brute force) |
+| **subfinder** | Subdomain enumeration via passive sources |
+| **curl, jq, python3** | HTTP scripting, JSON parsing, Python scripting (requests, httpx, pyjwt) |
+
+#### How the AI interacts with the sandbox
+
+The AI agent uses a single **`bash` tool** exposed via the OpenAI function calling protocol. The AI autonomously decides which commands to execute based on what it discovers. The tool accepts:
+
+- **Single mode**: one command (`"command": "nmap -sV TARGET"`)
+- **Batch mode**: up to 10 commands executed sequentially (`"commands": ["cmd1", "cmd2"]`)
+- **Timeout**: configurable per command (default 30s, max 60s)
+
+The `TARGET` keyword in commands is automatically replaced with the actual scan target.
+
+#### Container lifecycle
+
+1. **Spawn** — `SandboxManager.spawn()` creates a Docker container named `strike-{unique_id}` with `--rm`, limited to 1 CPU and 512 MB RAM
+2. **Idle** — The entrypoint waits for commands (`tail -f /dev/null`) while monitoring a **30-minute TTL** (configurable)
+3. **Execution** — Each command is injected via `docker exec`: base64-encoded to avoid shell escaping issues, decoded inside the container, then executed in bash. Stdout (50k chars max) and stderr (10k max) are captured
+4. **Destroy** — At scan end (or if stopped), `docker rm -f --volumes` destroys the container and its volumes
+
+#### Localhost resolution
+
+`127.0.0.1` and `localhost` in commands or targets are automatically converted to **`host.docker.internal`** so the container can reach the host.
+
+#### Sanitization
+
+- **Target**: only `[a-zA-Z0-9.\-:/_@?=&%#]` characters kept, limited to 2000 characters
+- **Commands**: destructive patterns explicitly blocked (`rm -rf /`, fork bombs, `/etc/shadow`, etc.)
+- **Isolation**: Alpine `--rm` container, resource-limited, no disk persistence
+
+#### Passive mode (Grey Team)
+
+For Grey Team (OSINT) scans, the sandbox is **optional** and restricted to **passive-only** tools: `nmap`, `sqlmap`, `ffuf`, `nuclei` and other active tools are blocked. Only `dig`, `whois`, `curl` to public APIs (crt.sh, archive.org), `python3`, and `jq` are allowed.
+
+#### Logging
+
+Every bash command executed by the AI is logged in the database (`pentest_scan_logs`, `log_type='bash'`) with stdout, stderr, exit code, and execution time — visible in the **Logs** tab of the campaign.
+
+### 12.4. Findings and Logs
 
 - **Dashboard**: severity counters (Critical, High, Medium, Low, Info)
 - **Findings**: each vulnerability shows title, severity, description, remediation, CWE/CVSS
@@ -438,7 +567,7 @@ The Red Team module (accessible via header or `/pentest`) scans your APIs with t
 - **Severity filter**: dropdown in the Findings tab
 - **Refresh**: Refresh buttons in each tab
 
-### 12.4. Report
+### 12.5. Report
 
 - **Markdown Report**: available in the Report tab
 - **Quick navigation**: sticky table of contents with main sections
@@ -512,7 +641,7 @@ The Grey Team module (accessible via the header or `/greyteam`) performs **passi
 
 ### 14.3. OSINT Modules (Phase 1)
 
-13 passive collection modules running in parallel: DNS Records, WHOIS, SSL/TLS, Cert Transparency (crt.sh + Cert Spotter + AlienVault OTX), HTTP Headers, Web Paths, Tech Fingerprint (30+ patterns: CMS, frameworks, CDN/WAF), Email Enumeration, Trivial Pages (80+ paths: .env, .git, wp-admin, backups, configs), Wayback Machine, GitHub Dorks, Google Dorks, Frontend Code (secrets, API endpoints, CVEs, AI deobfuscation).
+13 passive collection modules running in parallel: DNS Records, WHOIS, SSL/TLS, Cert Transparency (crt.sh + Cert Spotter + AlienVault OTX), HTTP Headers, Web Paths, Tech Fingerprint (30+ patterns: CMS, frameworks, CDN/WAF), Email Enumeration, Trivial Pages (190+ paths: .env, .git, wp-admin, backups, configs), Wayback Machine, GitHub Dorks, Google Dorks, Frontend Code (secrets, API endpoints, CVEs, AI deobfuscation).
 
 ### 14.4. Phase 2 — AI Refinement
 

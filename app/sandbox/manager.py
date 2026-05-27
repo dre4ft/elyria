@@ -91,35 +91,35 @@ class SandboxManager:
 
     def spawn(
         self,
-        target: str,
+        target: str = "",
         ttl: int = DEFAULT_TTL,
         cpu: str = DEFAULT_CPU,
         mem: str = DEFAULT_MEM,
     ) -> Sandbox:
-        """Spawn a new sandbox container for the given target."""
+        """Spawn a new sandbox container. target is optional (empty = no target)."""
         cid = f"strike-{uuid.uuid4().hex[:10]}"
 
         # Resolve localhost to host.docker.internal so container can reach host
         resolved_target = target
-        if "127.0.0.1" in target or "localhost" in target:
+        if target and ("127.0.0.1" in target or "localhost" in target):
             resolved_target = target.replace("127.0.0.1", "host.docker.internal").replace("localhost", "host.docker.internal")
 
-        subprocess.run(
-            [
-                "docker", "run", "-d", "--rm",
-                "--name", cid,
-                "--cpus", cpu,
-                "--memory", mem,
-                "--add-host", "host.docker.internal:host-gateway",
-                "--dns", "8.8.8.8",
-                "-e", f"SANDBOX_TTL={ttl}",
-                "-e", f"SANDBOX_TARGET={resolved_target}",
-                self.image,
-            ],
-            capture_output=True, check=True,
-        )
+        docker_args = [
+            "docker", "run", "-d", "--rm",
+            "--name", cid,
+            "--cpus", cpu,
+            "--memory", mem,
+            "--add-host", "host.docker.internal:host-gateway",
+            "--dns", "8.8.8.8",
+            "-e", f"SANDBOX_TTL={ttl}",
+        ]
+        if target:
+            docker_args += ["-e", f"SANDBOX_TARGET={resolved_target}"]
+        docker_args.append(self.image)
 
-        sandbox = Sandbox(container_id=cid, target=target)
+        subprocess.run(docker_args, capture_output=True, check=True)
+
+        sandbox = Sandbox(container_id=cid, target=target or "")
         self._sandboxes[cid] = sandbox
 
         # Wait for container to be ready

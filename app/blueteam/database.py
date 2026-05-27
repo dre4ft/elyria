@@ -82,7 +82,9 @@ def create_profile(name, target_url, user_id="", team_ids="", description="",
     return pid
 
 
-def list_profiles(user_id=None, team_ids=None, team_filter=None):
+def list_profiles(user_id, team_ids=None, team_filter=None):
+    if not user_id :
+        return []
     conn = get_connection()
     q = "SELECT * FROM blueteam_profiles WHERE 1=1"
     args = []
@@ -163,5 +165,15 @@ def get_reports(profile_id):
 def get_report(report_id):
     conn = get_connection()
     row = conn.execute("SELECT * FROM blueteam_reports WHERE report_id=?", (report_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_last_report_by_user(user_id):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT r.* FROM blueteam_reports r JOIN blueteam_profiles p ON r.profile_id = p.profile_id WHERE p.user_id=? ORDER BY r.created_at DESC LIMIT 1",
+        (user_id,)
+    ).fetchone()
     conn.close()
     return dict(row) if row else None

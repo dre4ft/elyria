@@ -30,7 +30,6 @@ app = APIRouter(prefix="/api/ely", tags=["ely"])
 class ChatMessage(BaseModel):
     page: str = "app"
     message: str = ""
-    context: dict = {}
     history: list = []
 
 
@@ -46,7 +45,6 @@ async def ely_chat(request: ChatMessage,_request: Request):
 
     page = request.page
     message = request.message
-    context_snapshot = request.context
     history = request.history
 
     if not message:
@@ -61,7 +59,7 @@ async def ely_chat(request: ChatMessage,_request: Request):
         messages = messages[-20:]
 
     from ely.agent import chat as ely_chat_fn
-    result = await ely_chat_fn(page, messages, context_snapshot,_request)
+    result = await ely_chat_fn(page, messages, _request, slot=getattr(request, 'slot', 'flash'))
     return JSONResponse(content=result)
 
 

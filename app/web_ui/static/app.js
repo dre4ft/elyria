@@ -11,7 +11,6 @@ const API = {
   raw:           'api/request/raw',               // POST { url, request }
   getRequest:    'api/requests/byId',        // GET  /:id
   userHistory:   'api/requests/byUserId',    // GET  /:userId?limit=&page=
-  chat:          'api/chat',                  // POST { message, conversationId }
   collections:   'api/collections',           // GET  → list all collections/folders/requests
   createFolder:  'api/collections/folder',    // POST { name, parentId? }
   createRequest: 'api/collections/request',   // POST { name, method, url, folderId?, ... }
@@ -28,12 +27,9 @@ const API = {
 // STATE
 // ─────────────────────────────────────────────
 const state = {
-  conversation_id : null,
   currentRequestId: null,
   history: [],
   statusFilter: '',
-  chatOpen: false,
-  chatSlot: 'pro',             // 'pro' | 'flash'
   collections: [],
   activeCollectionId: null,
   proxyEnabled: false,
@@ -131,17 +127,6 @@ const dom = {
   btnCreateFirst:   $('#btn-create-first-collection'),
 
   // Chat
-  chatPanel:     $('#chat-panel'),
-  chatMessages:  $('#chat-messages'),
-  chatInput:     $('#chat-input'),
-  btnSendChat:   $('#btn-send-chat'),
-  btnToggleChat: $('#btn-toggle-chat'),
-  btnCloseChat:  $('#btn-close-chat'),
-  btnChatFlash:  $('#chat-model-flash'),
-  btnChatPro:    $('#chat-model-pro'),
-  btnClearChat:  $('#btn-clear-chat'),
-  chatContext:   $('#chat-context'),
-  chatContextId: $('#chat-context-id'),
 
   // Modal
   createModal:    $('#create-modal'),
@@ -1642,175 +1627,11 @@ async function loadHistoryEntry(entry) {
 }
 
 // ─────────────────────────────────────────────
-// CHAT IA
-// ─────────────────────────────────────────────
-// ── Slash command registry ──────────────────────────────────────────────
-const SLASH_COMMANDS = [
-  { cmd: '/explain', desc: 'Analyser une réponse HTTP (status, headers, erreurs)' },
-  { cmd: '/scan',    desc: 'Quick OWASP scan sur un endpoint (SQLi, XSS, traversal)' },
-  { cmd: '/diff',    desc: 'Comparer deux réponses (confirmation BOLA/IDOR)' },
-  { cmd: '/code',    desc: 'Generer du code client HTTP (Python, JS, Go)' },
-];
-let _slashIdx = -1;
-
-function _updateSlashPill() {
-  const pill = document.getElementById('slash-pill');
-  const pillCmd = document.getElementById('slash-pill-cmd');
-  const val = dom.chatInput.value;
-  const cmdMatch = val.match(/^(\/[a-z]+)/);
-  if (cmdMatch && SLASH_COMMANDS.some(c => c.cmd === cmdMatch[1])) {
-    if (pill) pill.classList.remove('hidden');
-    if (pillCmd) pillCmd.textContent = cmdMatch[1];
-    dom.chatInput.style.borderColor = 'rgba(124,58,237,.4)';
-    dom.chatInput.style.boxShadow = '0 0 0 1px rgba(124,58,237,.15)';
-  } else {
-    if (pill) pill.classList.add('hidden');
-    dom.chatInput.style.borderColor = '';
-    dom.chatInput.style.boxShadow = '';
-  }
-}
-
-function _showSlashMenu() {
-  const menu = document.getElementById('slash-menu');
-  if (!menu) return;
-  _slashIdx = -1;
-  _renderSlashMenu();
-  menu.classList.remove('hidden');
-}
-
-function _hideSlashMenu() {
-  const menu = document.getElementById('slash-menu');
-  if (menu) menu.classList.add('hidden');
-  _slashIdx = -1;
-}
-
-function _renderSlashMenu(filter = '') {
-  const menu = document.getElementById('slash-menu');
-  if (!menu) return;
-  const q = filter.toLowerCase();
-  const filtered = SLASH_COMMANDS.filter(c => c.cmd.includes(q) || c.desc.toLowerCase().includes(q));
-  if (filtered.length === 0) { _hideSlashMenu(); return; }
-  menu.innerHTML = filtered.map((c, i) => {
-    const active = i === _slashIdx;
-    return `<button class="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2.5 transition-all ${active ? 'bg-primary/10 border-l-2 border-primary' : 'border-l-2 border-transparent'}" data-idx="${i}">
-      <span class="text-xs font-mono font-bold text-primary-light w-16 flex-shrink-0">${c.cmd}</span>
-      <span class="text-[10px] text-gray-400 truncate">${c.desc}</span>
-    </button>`;
-  }).join('');
-  menu.querySelectorAll('button').forEach(el => {
-    el.addEventListener('mousedown', (e) => { e.preventDefault(); _selectSlash(parseInt(el.dataset.idx)); });
-  });
-}
-
-function _selectSlash(idx) {
-  const tail = dom.chatInput.value.replace(/^\/\S*/, '');
-  const filtered = SLASH_COMMANDS.filter(c => {
-    const prefix = (dom.chatInput.value.match(/^\/\S*/) || [''])[0].toLowerCase();
-    return c.cmd.includes(prefix) || c.desc.toLowerCase().includes(prefix);
-  });
-  if (idx >= 0 && idx < filtered.length) {
-    dom.chatInput.value = filtered[idx].cmd + tail;
-  }
-  _hideSlashMenu();
-  _updateSlashPill();
-  dom.chatInput.focus();
-}
-
-function setupChat() {
-  dom.btnToggleChat.addEventListener('click', toggleChat);
-  dom.btnCloseChat.addEventListener('click', toggleChat);
-  dom.btnClearChat.addEventListener('click', clearChatHistory);
-  dom.btnSendChat.addEventListener('click', sendChatMessage);
-
-  // Model toggle Flash/Pro
-  if (dom.btnChatFlash && dom.btnChatPro) {
-    _updateModelToggle();
-    dom.btnChatFlash.addEventListener('click', () => {
-      if (state.chatSlot !== 'flash') _switchChatModel('flash');
-    });
-    dom.btnChatPro.addEventListener('click', () => {
-      if (state.chatSlot !== 'pro') _switchChatModel('pro');
-    });
-  }
-  dom.chatInput.addEventListener('keydown', (e) => {
-    const menu = document.getElementById('slash-menu');
-    const menuOpen = menu && !menu.classList.contains('hidden');
-
-    if (menuOpen) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); _slashIdx = (_slashIdx + 1) % SLASH_COMMANDS.length; _renderSlashMenu(dom.chatInput.value.slice(1)); return; }
-      if (e.key === 'ArrowUp')   { e.preventDefault(); _slashIdx = _slashIdx <= 0 ? SLASH_COMMANDS.length - 1 : _slashIdx - 1; _renderSlashMenu(dom.chatInput.value.slice(1)); return; }
-      if (e.key === 'Escape')    { e.preventDefault(); _hideSlashMenu(); return; }
-      if (e.key === 'Enter' && _slashIdx >= 0) { e.preventDefault(); _selectSlash(_slashIdx); return; }
-      if (e.key === 'Enter')     { e.preventDefault(); _hideSlashMenu(); sendChatMessage(); return; }
-    }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendChatMessage();
-    }
-  });
-  dom.chatInput.addEventListener('input', () => {
-    const val = dom.chatInput.value;
-    if (val === '/') { _showSlashMenu(); _updateSlashPill(); return; }
-    if (val.startsWith('/') && !val.includes(' ')) { _showSlashMenu(); _renderSlashMenu(val.slice(1)); _updateSlashPill(); return; }
-    _hideSlashMenu();
-    _updateSlashPill();
-  });
-  // Slash pill close button
-  const pillClose = document.getElementById('slash-pill-close');
-  if (pillClose) pillClose.addEventListener('click', () => {
-    dom.chatInput.value = dom.chatInput.value.replace(/^\/[a-z]+\s*/, '');
-    _updateSlashPill();
-    dom.chatInput.focus();
-  });
-}
-
-// ── Model toggle (Flash / Pro) ──
-
-function _updateModelToggle() {
-  const isFlash = state.chatSlot === 'flash';
-  const flashBtn = dom.btnChatFlash, proBtn = dom.btnChatPro;
-  if (!flashBtn || !proBtn) return;
-
-  // Flash button: amber when active, muted when inactive
-  flashBtn.className = isFlash
-    ? 'h-6 px-2.5 text-[10px] font-semibold transition-all bg-amber-500/15 text-amber-400 border-r border-white/5'
-    : 'h-6 px-2.5 text-[10px] font-semibold transition-all bg-transparent text-gray-600 hover:text-amber-400 border-r border-white/5';
-
-  // Pro button: purple when active, muted when inactive
-  proBtn.className = isFlash
-    ? 'h-6 px-2.5 text-[10px] font-semibold transition-all bg-transparent text-gray-600 hover:text-purple-400'
-    : 'h-6 px-2.5 text-[10px] font-semibold transition-all bg-purple-500/15 text-purple-400';
-}
-
-function _switchChatModel(slot) {
-  state.chatSlot = slot;
-  _updateModelToggle();
-  // Reset conversation when switching models to keep quality
-  state.conversation_id = null;
-  // Add a subtle transition message
-  addChatMessage(`_switch_Conversation basculee sur le mode **${slot === 'pro' ? 'Pro' : 'Flash'}**. Nouvelle conversation._`, 'system');
-}
-
-function toggleChat() {
-  state.chatOpen = !state.chatOpen;
-  if (state.chatOpen) {
-    dom.chatPanel.classList.remove('hidden');
-    dom.chatPanel.classList.add('flex');
-    _updateModelToggle();
-    dom.chatInput.focus();
-  } else {
-    dom.chatPanel.classList.add('hidden');
-    dom.chatPanel.classList.remove('flex');
-  }
-  updateChatContext();
-}
-
 function toggleSidebar() {
-  const sidebar = document.getElementById('sidebar');
+  var sidebar = document.getElementById('sidebar');
   if (!sidebar) return;
-  const collapsed = sidebar.dataset.collapsed === 'true';
+  var collapsed = sidebar.dataset.collapsed === 'true';
   sidebar.dataset.collapsed = collapsed ? 'false' : 'true';
-  // On mobile: show/hide with overlay
   if (window.innerWidth < 768) {
     sidebar.classList.toggle('hidden', collapsed);
     sidebar.classList.toggle('flex', !collapsed);
@@ -1819,127 +1640,14 @@ function toggleSidebar() {
 }
 
 function toggleMobileNav() {
-  const nav = document.getElementById('mobile-nav');
-  const overlay = document.getElementById('mobile-nav-overlay');
+  var nav = document.getElementById('mobile-nav');
+  var overlay = document.getElementById('mobile-nav-overlay');
   if (!nav || !overlay) return;
-  const open = !nav.classList.contains('hidden');
+  var open = !nav.classList.contains('hidden');
   nav.classList.toggle('hidden', open);
   overlay.classList.toggle('hidden', open);
 }
 
-function clearChatHistory() {
-  // Clear all messages
-  dom.chatMessages.innerHTML = '';
-
-  // Reset conversation ID
-  state.conversation_id = null;
-
-  // Add initial welcome message
-  const initialMessage = document.createElement('div');
-  initialMessage.className = 'flex gap-3';
-  initialMessage.innerHTML = `
-    <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">
-      <svg class="w-3.5 h-3.5 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
-    </div>
-    <div class="bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed max-w-[280px]">
-      Bonjour ! Je suis votre assistant API. Posez-moi des questions sur vos requêtes ou demandez-moi de l'aide pour débugger vos appels.
-    </div>
-  `;
-  dom.chatMessages.appendChild(initialMessage);
-
-  // Update context
-  updateChatContext();
-}
-
-function updateChatContext() {
-  if (state.currentRequestId) {
-    dom.chatContext.classList.remove('hidden');
-    dom.chatContextId.textContent = state.currentRequestId;
-  } else {
-    dom.chatContext.classList.add('hidden');
-  }
-}
-
-function addChatMessage(content, type = 'user') {
-  const wrapper = document.createElement('div');
-
-  if (type === 'user') {
-    wrapper.className = 'chat-msg-user';
-    wrapper.innerHTML = `<div class="chat-bubble">${escapeHtml(content)}</div>`;
-  } else if (type === 'ai') {
-    wrapper.className = 'chat-msg-ai';
-    let html;
-    if (typeof window.marked !== 'undefined' && window.marked.parse) {
-      try {
-        html = window.marked.parse(content, { breaks: true, gfm: true });
-      } catch (e) {
-        console.warn('[chat] markdown parse error:', e);
-        html = escapeHtml(content);
-      }
-    } else {
-      html = escapeHtml(content);
-    }
-    wrapper.innerHTML = `
-      <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">
-        <svg class="w-3.5 h-3.5 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
-      </div>
-      <div class="chat-bubble markdown-body">${html}</div>
-    `;
-  } else if (type === 'loading') {
-    wrapper.className = 'chat-msg-ai';
-    wrapper.id = 'chat-loading';
-    wrapper.innerHTML = `
-      <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">
-        <svg class="w-3.5 h-3.5 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
-      </div>
-      <div class="chat-bubble loading-dots"><span></span><span></span><span></span></div>
-    `;
-  }
-
-  dom.chatMessages.appendChild(wrapper);
-  dom.chatMessages.scrollTop = dom.chatMessages.scrollHeight;
-  return wrapper;
-}
-
-function removeChatLoading() {
-  const el = document.getElementById('chat-loading');
-  if (el) el.remove();
-}
-
-async function sendChatMessage() {
-  const message = dom.chatInput.value.trim();
-  if (!message) return;
-
-  dom.chatInput.value = '';
-  addChatMessage(message, 'user');
-  addChatMessage('', 'loading');
-
-  const payload = {
-    message,
-    conversationId: state.conversation_id || null,
-    slot: state.chatSlot || 'pro',
-  };
-
-  try {
-    const res = await fetch(API.chat, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    state.conversation_id = data.conversation_id;
-    removeChatLoading();
-    const content = (data.response && data.response.content) ? data.response.content : (data.content || 'Pas de reponse');
-    addChatMessage(content, 'ai');
-  } catch (err) {
-    removeChatLoading();
-    addChatMessage(`Erreur de connexion : ${err.message}`, 'ai');
-  }
-}
-
-// ─────────────────────────────────────────────
-// RESPONSE RESIZE HANDLE
-// ─────────────────────────────────────────────
 function setupResizeHandle() {
   const handle = $('#response-resize');
   let startY = 0;
@@ -2432,7 +2140,8 @@ function setupKeyboardShortcuts() {
     // Ctrl+I → toggle chat
     if (e.ctrlKey && e.key === 'i') {
       e.preventDefault();
-      toggleChat();
+      var panel = document.getElementById('ely-copilot-panel');
+      if (panel) { panel.classList.toggle('hidden'); panel.querySelector('textarea')?.focus(); }
     }
     // Ctrl+Enter → send current request
     if (e.ctrlKey && e.key === 'Enter') {

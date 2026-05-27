@@ -12,7 +12,6 @@ Elyria est un client API complet qui combine :
 - **Requêtes Raw HTTP** — forgez vos requêtes HTTP from scratch (socket TCP)
 - **Collections** — organisez vos requêtes en dossiers hiérarchiques, partagées en équipe
 - **Workflow Builder** — automatisez des scénarios multi-requêtes avec logique conditionnelle, boucles et tests de sécurité
-- **Catcher** — proxy intercepteur façon Burp Suite pour inspecter les requêtes de votre navigateur ou Postman
 - **Assistant IA intégré** — créez des collections, exécutez des tests et analysez les résultats par chat
 - **Red Team / Pentest** — scannez vos APIs avec le moteur OWASP API Top 10 + AI deep scan
 - **Blue Team / SSDLC** — analyse security-by-design de vos specs pour produire des rapports d'exigences de sécurité
@@ -50,7 +49,7 @@ L'écran est divisé en plusieurs zones :
 |------|-------------|
 | **Barre latérale gauche** | Collections (dossiers + requêtes sauvegardées) |
 | **Zone centrale** | Builder de requête (structuré ou raw) + panneau de réponse |
-| **Panneaux latéraux droits** | Historique, Catcher, Assistant IA, JWT Decoder — s'ouvrent via les boutons du header |
+| **Panneaux latéraux droits** | Historique, ELY Copilot, JWT Decoder — s'ouvrent via les boutons du header |
 
 ### 3.1. La barre d'URL et l'envoi de requêtes
 
@@ -136,74 +135,35 @@ L'onglet **Historique** (dans la barre latérale) conserve la liste des requête
 
 ---
 
-## 6. Le Catcher (proxy intercepteur)
+## 7. ELY Copilot
 
-Le Catcher est un proxy HTTP forward inspiré de Burp Suite qui intercepte les requêtes de votre navigateur ou de Postman pour inspection.
-
-### Activation
-
-1. Cliquez sur le bouton **Catcher** (rose) dans la barre du haut
-2. Dans le panneau, cliquez sur **Intercept OFF** pour activer l'interception → le bouton devient **Intercept ON**
-3. Un badge `Proxy: localhost:8080` apparaît — c'est l'adresse du proxy
-
-### Configuration navigateur / Postman
-
-- **Navigateur** : paramètres réseau → proxy HTTP → `localhost:8080`
-- **Postman** : Settings → Proxy → `localhost:8080`
-- **Ligne de commande** : `curl -x http://localhost:8080 https://api.example.com`
-
-### File d'attente
-
-Quand **Intercept ON** est actif, les requêtes sont mises en file d'attente au lieu d'être envoyées directement. La première requête s'affiche en mode expanded :
-
-- **Méthode** : modifiable via le dropdown
-- **URL** : champ éditable
-- **Headers** : textarea éditable
-- **Body** : textarea éditable
-
-Les champs sont éditables en direct — les modifications sont sauvegardées automatiquement.
-
-### Actions
-
-| Action | Description |
-|--------|-------------|
-| **Forward** | Exécute la requête vers la cible et renvoie la réponse au client |
-| **Drop** | Rejette la requête, le client reçoit une erreur 410 Gone |
-| **Load** | Charge la requête dans le builder API Elyria |
-
-### Historique
-
-Toutes les requêtes forwardées et droppées sont enregistrées dans l'historique (persisté en base). Chaque entrée affiche :
-- Méthode, code statut HTTP, URL
-- Bouton **Load** pour charger dans le builder API
-- Clic sur une ligne → détail du body de réponse
-
-L'historique est cloisonné par utilisateur.
-
-### Port du proxy
-
-Configurable dans **Hub > Admin Config** (clé `catcher.port`, défaut : `6767`).
-
----
-
-## 7. L'Assistant IA
-
-L'assistant IA peut créer des collections, envoyer des requêtes et analyser les résultats.
+ELY Copilot est l'assistant IA contextuel intégré à chaque page d'Elyria. Il connaît la page sur laquelle vous êtes et adapte ses actions en conséquence.
 
 ### Commandes slash `/`
 
 Dans le chat, tapez `/` pour voir les commandes disponibles :
-- `/explain` — analyser une réponse HTTP (status, headers, erreurs)
-- `/scan` — quick OWASP scan sur un endpoint
-- `/diff` — comparer deux réponses (confirmation BOLA/IDOR)
-- `/code` — générer du code client HTTP (Python, JS, Go)
 
-Quand une commande est utilisée, l'IA est **forcée** d'utiliser le tool correspondant. Navigation au clavier (↑↓ Enter) ou clic souris dans le menu.
+| Commande | Description |
+|----------|-------------|
+| `/explain` | Analyser une réponse HTTP (status, headers, erreurs) |
+| `/scan` | Lancer un scan de sécurité Red Team |
+| `/osint` | Lancer un scan OSINT (Grey Team) |
+| `/analyze` | Analyser une spécification (Blue Team) |
+| `/create` | Créer une requête, collection ou workflow |
+| `/help` | Aide sur Elyria |
 
-### Ouvrir l'assistant
+Navigation au clavier (↑↓ Enter) ou clic souris dans le menu. Quand une commande est utilisée, l'IA est guidée vers l'action correspondante.
 
-- Bouton **Assistant IA** dans la barre du haut, ou
+### Ouvrir ELY Copilot
+
+- Bouton **ELY Copilot** dans la barre du haut, ou
 - Raccourci `Ctrl+I`
+
+### Modèle Flash / Pro
+
+Le toggle **Flash** / **Pro** dans le header du panneau permet de choisir le modèle IA :
+- **Flash** : réponses rapides pour les tâches simples
+- **Pro** : analyse approfondie avec reasoning
 
 ### Utilisation
 
@@ -214,23 +174,26 @@ Exemples de prompts :
 - *"Crée une collection pour tester l'API de paiement Stripe"*
 - *"Envoie une requête GET à https://api.example.com/users et vérifie que le statut est 200"*
 - *"Analyse la dernière réponse et dis-moi si le token JWT est valide"*
+- *"Lance un scan de sécu sur mon profil Red Team"*
 
-L'assistant a accès à vos collections, peut créer des dossiers, des requêtes, les exécuter et lire l'historique.
+ELY Copilot a accès à vos collections, requêtes, workflows, profils de scan et historiques. Il peut créer, exécuter et analyser selon la page où vous vous trouvez.
 
 ---
 
-## 8. Import de documents (OpenAPI / Arazzo)
+## 8. Import de documents
 
-Importez vos spécifications d'API pour générer automatiquement des collections.
+Importez vos spécifications d'API et collections pour générer automatiquement des dossiers et requêtes.
 
 ### Formats supportés
 
 - **OpenAPI 3.x** et **Swagger 2.x** (`.json`, `.yaml`, `.yml`)
 - **Arazzo 1.0** — workflows de test
+- **Postman** — collections Postman (`.json`)
+- **Bruno** — collections Bruno (`.json`, `.bru`)
 
 ### Comment importer
 
-1. Cliquez sur le bouton **Documents** dans la barre du haut
+1. Dans la barre d'import (en haut du builder), cliquez sur le format souhaité : **OpenAPI**, **cURL**, **Postman** ou **Bruno**
 2. Glissez-déposez un fichier dans la zone, ou cliquez pour parcourir
 3. Cliquez sur **Importer**
 
@@ -244,6 +207,12 @@ Importez vos spécifications d'API pour générer automatiquement des collection
 
 - Les workflows sont importés comme scénarios exécutables
 - Les références entre étapes (`$steps.x.outputs.y`) sont traduites en syntaxe `{{ctx.xxx}}`
+
+### Résultat d'un import Postman ou Bruno
+
+- Les dossiers Postman/Bruno sont convertis en dossiers de collection Elyria
+- Les requêtes conservent leurs headers, paramètres et body
+- Les variables d'environnement sont importées comme variables de contexte
 
 ---
 
@@ -528,6 +497,7 @@ Le module Red Team (accessible via le header ou `/pentest`) permet de scanner vo
 - **Créer un profil** : bouton "+" dans la sidebar "Scan Profiles"
 - **Configurer** : URL cible, authentification (Bearer, headers), OpenAPI spec, ID list (pour BOLA), collection existante, équipe
 - **Onglet IA** : réglez le nombre de rounds d'exploration (1-50, défaut 15) et d'analyse (1-25, défaut 5)
+    - **Mode Expert** : activez l'option Expert pour un scan approfondi (30 rounds d'exploration, 15 d'analyse, rapport détaillé avec documentation)
 - **Modifier** : icône crayon sur le profil
 - **Supprimer** : icône X sur le profil
 
@@ -673,7 +643,7 @@ Le module Grey Team (accessible via le header ou `/greyteam`) effectue de la **r
 
 ### 14.3. Modules OSINT (Phase 1)
 
-13 modules de collecte passive en parallèle : DNS Records, WHOIS, SSL/TLS, Cert Transparency (crt.sh + Cert Spotter + AlienVault OTX), HTTP Headers, Web Paths, Tech Fingerprint (30+ patterns : CMS, frameworks, CDN/WAF), Email Enumeration, Trivial Pages (80+ chemins : .env, .git, wp-admin, backups, configs), Wayback Machine, GitHub Dorks, Google Dorks, Frontend Code (secrets, endpoints API, CVE, déobfuscation IA).
+13 modules de collecte passive en parallèle : DNS Records, WHOIS, SSL/TLS, Cert Transparency (crt.sh + Cert Spotter + AlienVault OTX), HTTP Headers, Web Paths, Tech Fingerprint (30+ patterns : CMS, frameworks, CDN/WAF), Email Enumeration, Trivial Pages (190+ chemins : .env, .git, wp-admin, backups, configs), Wayback Machine, GitHub Dorks, Google Dorks, Frontend Code (secrets, endpoints API, CVE, déobfuscation IA).
 
 ### 14.4. Phase 2 — AI Refinement
 

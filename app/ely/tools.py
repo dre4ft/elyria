@@ -229,17 +229,23 @@ async def create_workflow(args, user_id, request):
 @_action("ely_get_findings", "Get findings from a report",
          {"id": {"type": "string"},
           "team": {"type": "string", "enum": ["redteam", "greyteam", "blueteam"]}})
-async def get_findings(args, user_id, request):
+async def get_findings(args, request):
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
     team = args["team"]
     if team == "redteam":
-        from redteam.campaign_api import api_get_findings as _get
-        findings = _get(args["id"], request)
+        from redteam.database import get_finding_detail_log , get_last_campaign_by_user
+        last = get_last_campaign_by_user(user_id)
+        if not last:
+            return {"error": "No campaign found for user"}
+        findings = get_finding_detail_log(last.get("campaign_id", ""),finding_id=args["id"])
+    #TODO PAs que le last var sur l"id avec ownership
     elif team == "greyteam":
-        from greyteam.api import api_get_findings as _get
-        findings = _get(args["id"], request)
+        from greyteam.database import get_last_report_by_user
+        findings = get_last_report_by_user(user_id)
     elif team == "blueteam":
-        from blueteam.api import api_get_report as _get
-        findings = _get(args["id"], request)
+        from blueteam.database import get_last_report_by_user 
+        findings = get_last_report_by_user(user_id)
     else:
         return {"error": "Invalid team specified"}
     return {"status": 200, "data": {"findings": findings, "total": len(findings)}}
@@ -316,6 +322,25 @@ async def list_doc_pages(args, request):
     except Exception as e:
         return {"error": str(e)[:200]}
 
+
+
+@_action("ely_bash", "Execute a bash command in an isolated sandbox environment",
+            {"command": {"type": "string"}})
+async def bash_tool(args, request):
+    from ely.sandbox_spawn import get_bash_tool
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+    bash = get_bash_tool(user_id)
+    if not bash:
+        return {"error": "Failed to initialize sandbox"}
+    try:
+        output = bash.handle(params={"command": args["command"], "timeout_ms": 60_000})
+        return {"status": 200, "data": {"output": output}}
+    except Exception as e:
+        return {"error": str(e)[:200]}
+
+
+
 # ═══════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════
@@ -325,11 +350,11 @@ def get_action_definitions(page=None):
     if not page:
         return all_defs
     page_actions = {
-        "app":      ["ely_create_request", "ely_create_collection", "ely_get_request_result", "ely_send_raw_request", "ely_send_request", "ely_list_resources"],
-        "workflow": ["ely_create_workflow", "ely_list_resources"],
-        "pentest":  ["ely_run_scan", "ely_get_findings", "ely_list_resources"],
-        "greyteam": ["ely_osint_scan", "ely_get_findings", "ely_list_resources"],
-        "blueteam": ["ely_blueteam_analyze", "ely_get_findings", "ely_list_resources"],
+        "app":      ["ely_create_request", "ely_create_collection", "ely_get_request_result", "ely_send_raw_request", "ely_send_request", "ely_list_resources", "ely_bash"],
+        "workflow": ["ely_create_workflow", "ely_list_resources","ely_bash"],
+        "pentest":  ["ely_run_scan", "ely_get_findings", "ely_list_resources", "ely_bash"],
+        "greyteam": ["ely_osint_scan", "ely_get_findings", "ely_list_resources", "ely_bash"],
+        "blueteam": ["ely_blueteam_analyze", "ely_get_findings", "ely_list_resources", "ely_bash"],
         "hub":      ["ely_list_resources", "ely_create_collection"],
         "doc":      ["ely_get_doc", "ely_list_doc_pages"],
     }
