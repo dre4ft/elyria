@@ -27,7 +27,9 @@ Regles :
 - Utilise les actions quand c'est pertinent, pas juste pour repondre.
 - Tu vois la meme chose que l'utilisateur (memes permissions).
 - Si tu n'es pas sur, demande a l'utilisateur de clarifier.
-- Reponds en francais sauf si l'utilisateur parle anglais."""
+- Reponds en francais sauf si l'utilisateur parle anglais.
+- Utilise les prompts specialises pour chaque page (pentest, greyteam, blueteam, etc.) pour guider ton comportement et tes suggestions d'actions.
+"""
 
 PAGE_CONTEXTS = {
     "app": """Contexte : L'utilisateur est dans le Client API.
@@ -137,6 +139,7 @@ async def chat(page, messages, request, stream_cb=None, slot="flash"):
     Returns: {"reply": "...", "actions": [...], "tokens": {...}}
     """
     from ely.elys_tools import get_action_definitions, execute_action
+    from ely.prompts import get_action_definitions as get_prompt, execute_action as execute_prompt
     from core.auth import get_user as get_user_id
 
     provider, model = _resolve_provider(slot)
@@ -160,6 +163,7 @@ async def chat(page, messages, request, stream_cb=None, slot="flash"):
         system_content = memory_prompt + "\n\n" + system_content
     system_msg = {"role": "system", "content": system_content}
     tools = get_action_definitions(page)
+    tools.extend(get_prompt(page))
     tool_map = {t["function"]["name"]: t for t in tools}
 
     full_messages = [system_msg] + [m for m in messages if m.get("role") != "system"]
@@ -217,8 +221,10 @@ async def chat(page, messages, request, stream_cb=None, slot="flash"):
 
             if stream_cb:
                 await stream_cb({"type": "action_start", "action": name, "args": args})
-
-            result = await execute_action(name, args, request, page=page)
+            if "prompt" in name:
+                result = await execute_prompt(name, args, request, page=page)
+            else:
+                result = await execute_action(name, args, request, page=page)
             actions_executed.append({"name": name, "args": args, "result": result})
 
             if stream_cb:

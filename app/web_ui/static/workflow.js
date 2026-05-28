@@ -713,24 +713,8 @@ function setupArazzoImport() {
     if (e.target === dom.arazzoModal) closeArazzoModal();
   });
 
-  // Arazzo inputs: auto-pair + format button + validation
-  dom.arazzoInputsValues.addEventListener('keydown', (e) => {
-    if (handleAutoPair(dom.arazzoInputsValues, e)) return;
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
-      e.preventDefault();
-      formatJsonTextarea(dom.arazzoInputsValues, 'arazzo-inputs-values');
-    }
-  });
-  dom.arazzoInputsValues.addEventListener('input', () => {
-    validateJsonFieldById('arazzo-inputs-values');
-  });
-  // Format button
-  const arazzoFmtBtn = dom.arazzoModal.querySelector('[data-json-fmt="arazzo-inputs-values"]');
-  if (arazzoFmtBtn) {
-    arazzoFmtBtn.addEventListener('click', () => {
-      formatJsonTextarea(dom.arazzoInputsValues, 'arazzo-inputs-values');
-    });
-  }
+  // Arazzo inputs: use shared JSON editor
+  setupArazzoEditor();
 
   // Arazzo file input change
   dom.arazzoFileInput.addEventListener('change', () => {
@@ -1954,13 +1938,7 @@ function renderConfigPanel(nodeId) {
       const jsonKeys = ['headers', 'body', 'variables', 'idList', 'headersA', 'headersB'];
       const isJson = jsonKeys.includes(f.key) || f.label.toLowerCase().includes('json');
       if (isJson) {
-        html += '<div class="json-editor">';
-        html += '<div class="json-editor-toolbar">';
-        html += '<span class="json-editor-status" data-json-status="' + f.key + '"></span>';
-        html += '<button class="json-editor-fmt" data-json-fmt="' + f.key + '" title="Formatter (Ctrl+Shift+F)">{ }</button>';
-        html += '</div>';
-        html += `<textarea class="wf-config-textarea json-editor-textarea" data-field="${f.key}" placeholder="${f.placeholder || ''}" rows="${rows}" spellcheck="false">${escapeHtml(val)}</textarea>`;
-        html += '</div>';
+        html += `<textarea class="wf-config-textarea wf-json-field" data-field="${f.key}" data-json="1" placeholder="${f.placeholder || ''}" rows="${rows}" spellcheck="false">${escapeHtml(val)}</textarea>`;
       } else {
         html += `<textarea class="wf-config-textarea" data-field="${f.key}" placeholder="${f.placeholder || ''}" rows="${rows}" spellcheck="false">${escapeHtml(val)}</textarea>`;
       }
@@ -2703,111 +2681,20 @@ function evalExpression(expr, ctx) {
 // ── JSON Editor helpers ──
 
 function setupJsonEditors() {
-  // Format buttons
-  dom.configForm.querySelectorAll('.json-editor-fmt').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const key = btn.dataset.jsonFmt;
-      const textarea = dom.configForm.querySelector(`textarea[data-field="${key}"]`);
-      if (!textarea) return;
-      formatJsonTextarea(textarea, key);
+  if (typeof ElyriaUI !== 'undefined' && ElyriaUI.createJsonEditor) {
+    dom.configForm.querySelectorAll('textarea[data-json="1"]').forEach(function(textarea) {
+      if (textarea._jsonEditorWrapped) return;
+      ElyriaUI.createJsonEditor(textarea, { minHeight: 60 });
     });
-  });
-
-  // Validate on input + keyboard shortcut + auto-pairing
-  dom.configForm.querySelectorAll('.json-editor-textarea').forEach(textarea => {
-    const key = textarea.dataset.field;
-    let debounce;
-    textarea.addEventListener('input', () => {
-      clearTimeout(debounce);
-      debounce = setTimeout(() => validateJsonField(key), 400);
-    });
-    textarea.addEventListener('blur', () => validateJsonField(key));
-    textarea.addEventListener('keydown', (e) => {
-      // Auto-pair brackets, braces, quotes
-      if (handleAutoPair(textarea, e)) return;
-      // Ctrl+Shift+F → format
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
-        e.preventDefault();
-        formatJsonTextarea(textarea, key);
-      }
-    });
-    // Initial validation
-    validateJsonField(key);
-  });
+  }
 }
 
-// ── Auto-pair: insert closing bracket/quote, wrap selection ──
-
-const AUTO_PAIRS = { '{': '}', '[': ']', '(': ')', '"': '"', "'": "'" };
-
-function handleAutoPair(textarea, e) {
-  const pair = AUTO_PAIRS[e.key];
-  if (!pair) return false;
-
-  e.preventDefault();
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  const val = textarea.value;
-  const hasSelection = start !== end;
-
-  if (hasSelection) {
-    // Wrap selection: "hello" → {"hello"}
-    const wrapped = e.key + val.substring(start, end) + pair;
-    textarea.setRangeText(wrapped, start, end, 'select');
-    textarea.selectionStart = start + 1;
-    textarea.selectionEnd = start + wrapped.length - 1;
-  } else if (e.key === pair) {
-    // Same char for open/close (quotes): if next char is same quote, just move cursor
-    if (val.charAt(start) === pair) {
-      textarea.selectionStart = textarea.selectionEnd = start + 1;
-      return true;
+function setupArazzoEditor() {
+  if (typeof ElyriaUI !== 'undefined' && ElyriaUI.createJsonEditor) {
+    if (dom.arazzoInputsValues && !dom.arazzoInputsValues._jsonEditorWrapped) {
+      ElyriaUI.createJsonEditor(dom.arazzoInputsValues, { minHeight: 80 });
     }
-    // Insert pair and place cursor inside
-    textarea.setRangeText(e.key + pair, start, start, 'end');
-    textarea.selectionStart = textarea.selectionEnd = start + 1;
-  } else {
-    // Brackets/braces: always insert pair and place cursor inside
-    textarea.setRangeText(e.key + pair, start, start, 'end');
-    textarea.selectionStart = textarea.selectionEnd = start + 1;
   }
-  textarea.dispatchEvent(new Event('input', { bubbles: true }));
-  return true;
-}
-
-function validateJsonField(key) {
-  const textarea = dom.configForm.querySelector(`textarea[data-field="${key}"]`);
-  if (!textarea) return;
-  const val = textarea.value.trim();
-  if (!val) { updateJsonStatus(key, 'empty'); return; }
-  try { JSON.parse(val); updateJsonStatus(key, 'ok'); } catch { updateJsonStatus(key, 'err'); }
-}
-
-function updateJsonStatus(key, state) {
-  const status = document.querySelector(`[data-json-status="${key}"]`);
-  if (!status) return;
-  status.className = 'json-editor-status';
-  if (state === 'ok') { status.textContent = '✓'; status.classList.add('ok'); }
-  else if (state === 'err') { status.textContent = '✗'; status.classList.add('err'); }
-  else { status.textContent = ''; }
-}
-
-function formatJsonTextarea(textarea, statusKey) {
-  try {
-    const parsed = JSON.parse(textarea.value);
-    textarea.value = JSON.stringify(parsed, null, 2);
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    updateJsonStatus(statusKey, 'ok');
-  } catch {
-    updateJsonStatus(statusKey, 'err');
-  }
-}
-
-function validateJsonFieldById(textareaId) {
-  const textarea = document.getElementById(textareaId);
-  if (!textarea) return;
-  const val = textarea.value.trim();
-  if (!val) { updateJsonStatus(textareaId, 'empty'); return; }
-  try { JSON.parse(val); updateJsonStatus(textareaId, 'ok'); } catch { updateJsonStatus(textareaId, 'err'); }
 }
 
 function escapeHtml(s) {
