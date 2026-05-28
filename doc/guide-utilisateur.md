@@ -137,7 +137,63 @@ L'onglet **Historique** (dans la barre latérale) conserve la liste des requête
 
 ## 7. ELY Copilot
 
-ELY Copilot est l'assistant IA contextuel intégré à chaque page d'Elyria. Il connaît la page sur laquelle vous êtes et adapte ses actions en conséquence.
+ELY Copilot est l'assistant IA contextuel intégré à chaque page d'Elyria. Il apparaît dans un panneau latéral (ouvrable via le bouton **Ely** dans la barre du haut ou `Ctrl+I`).
+
+### Architecture
+
+ELY combine trois couches d'intelligence :
+
+| Couche | Rôle |
+|--------|------|
+| **Context Awareness** | Détecte la page active et collecte les données pertinentes (requête en cours, workflow ouvert, profil de scan sélectionné...) |
+| **Function Calling** | Exécute des actions réelles via les API internes d'Elyria — crée des requêtes, lance des scans, génère des workflows |
+| **Memory** | Conserve un profil utilisateur compact qui s'enrichit au fil des conversations |
+
+### Context Awareness
+
+ELY sait sur quelle page vous êtes et adapte ses capacités :
+
+| Page | Contexte collecté | Actions disponibles |
+|------|-------------------|---------------------|
+| **Client API** | Méthode, URL, headers, body en cours | Créer/modifier/envoyer des requêtes, gérer les collections |
+| **Workflows** | Workflow ouvert, blocs du canvas | Créer/modifier des workflows, ajouter des blocs |
+| **Red Team** | Profil de scan, campagne active | Lancer un scan, analyser les findings, générer un rapport |
+| **Grey Team** | Domaine cible, findings OSINT | Lancer un scan OSINT, explorer les résultats |
+| **Blue Team** | Spécification chargée, rapport en cours | Auditer une spec, générer des exigences |
+| **Hub** | Configuration courante | Gérer les teams, configurer les providers IA |
+| **Docs** | Page de documentation affichée | Expliquer des concepts, guider l'utilisateur |
+
+### Tools (Function Calling)
+
+ELY peut **agir** directement sur la plateforme via des fonctions internes :
+
+| Action | Description | Pages |
+|--------|-------------|-------|
+| `ely_create_request` | Créer et envoyer une requête HTTP | Client API, Hub |
+| `ely_create_collection` | Créer un dossier/collection | Client API, Hub |
+| `ely_run_scan` | Lancer un scan pentest Red Team | Red Team |
+| `ely_osint_scan` | Lancer un scan OSINT | Grey Team |
+| `ely_blueteam_analyze` | Lancer une analyse Blue Team | Blue Team |
+| `ely_create_workflow` | Créer un workflow no-code | Workflows |
+| `ely_get_findings` | Récupérer les findings d'un rapport | Red/Grey/Blue Team |
+| `ely_list_resources` | Lister profils, collections, workflows | Toutes |
+
+Chaque action est :
+- **Auditée** : tracée dans l'historique (Hub → onglet Ely)
+- **Limité** : mêmes permissions que l'utilisateur (token JWT partagé)
+- **Sécurisée** : pas d'élévation de privilège possible
+
+### Memory (Profil utilisateur)
+
+ELY conserve un **profil mémoire** (max 5000 caractères) par utilisateur :
+
+- Tous les 6 rounds de conversation, l'historique est **compacté** en un profil structuré
+- Le profil capture : rôle, technologies utilisées, projets en cours, préférences, niveau d'expertise, patterns récurrents
+- La mémoire est injectée en **priorité haute** dans le prompt système
+- Stockée en base de données (SQLite `ely_memory`), persistante entre les sessions
+
+**Exemple de profil mémoire :**
+> Développeur backend senior, travaille sur une API REST en Go. Utilise JWT pour l'auth. Teste régulièrement avec Elyria sur http://localhost:8080. Préfère le modèle Pro pour les analyses. Fait souvent des requêtes POST vers /api/users. Niveau expert en sécurité API.
 
 ### Commandes slash `/`
 
@@ -152,31 +208,34 @@ Dans le chat, tapez `/` pour voir les commandes disponibles :
 | `/create` | Créer une requête, collection ou workflow |
 | `/help` | Aide sur Elyria |
 
-Navigation au clavier (↑↓ Enter) ou clic souris dans le menu. Quand une commande est utilisée, l'IA est guidée vers l'action correspondante.
-
-### Ouvrir ELY Copilot
-
-- Bouton **ELY Copilot** dans la barre du haut, ou
-- Raccourci `Ctrl+I`
+Navigation au clavier (↑↓ Enter) ou clic souris dans le menu.
 
 ### Modèle Flash / Pro
 
 Le toggle **Flash** / **Pro** dans le header du panneau permet de choisir le modèle IA :
-- **Flash** : réponses rapides pour les tâches simples
-- **Pro** : analyse approfondie avec reasoning
+- **Flash** (gpt-4o-mini) : réponses rapides pour les tâches simples
+- **Pro** (gpt-4o) : analyse approfondie avec reasoning
+
+### Hub → Onglet Ely
+
+Le Hub dispose d'un onglet **Ely** pour suivre l'activité :
+
+- **Historique** : toutes les actions exécutées par Ely (page, action, statut, timestamp)
+- **Stats** : total d'actions, taux de succès, tokens consommés
+- **Préférences** : ton, verbosité, activer/désactiver Ely
 
 ### Utilisation
 
-1. Saisissez votre message dans le champ en bas du panneau
-2. Appuyez sur `Entrée` pour envoyer
+1. Cliquez sur **Ely** dans la barre du haut pour ouvrir le panneau
+2. Saisissez votre message dans le champ en bas
+3. Appuyez sur `Entrée` pour envoyer
 
 Exemples de prompts :
 - *"Crée une collection pour tester l'API de paiement Stripe"*
 - *"Envoie une requête GET à https://api.example.com/users et vérifie que le statut est 200"*
 - *"Analyse la dernière réponse et dis-moi si le token JWT est valide"*
 - *"Lance un scan de sécu sur mon profil Red Team"*
-
-ELY Copilot a accès à vos collections, requêtes, workflows, profils de scan et historiques. Il peut créer, exécuter et analyser selon la page où vous vous trouvez.
+- *"Explique-moi la différence entre OAuth 2.0 et JWT"*
 
 ---
 

@@ -156,11 +156,20 @@ async def run_scan(args,  request):
     profile = args["profile_id"]
     if not profile:
         return {"error": "Profile not found"}
+    
     try:
+        import asyncio
+        asyncio.ensure_future(api_start_scan(profile_id=profile, request=request))
+        return {"status": 200, "data": "Scan started successfully you can check the report page for live updates."}
+    except Exception as e :
+        return {"error": str(e)[:200]}
+
+
+    '''try:
         result = await api_start_scan(profile_id=profile, request=request)
         return {"status": 200, "data": result}
     except Exception as e:
-        return {"error": str(e)[:200]}
+        return {"error": str(e)[:200]}'''
     
     
 
@@ -172,15 +181,27 @@ async def osint_scan(args,request):
     profile = args["profile_id"]
     if not profile:
         return {"error": "Profile not found"}
+    
     try:
+        import asyncio
+        asyncio.ensure_future(api_start_scan(profile_id=profile, request=request))
+        return {"status": 200, "data": "Scan started successfully you can check the report page for live updates."}
+    except Exception as e :
+        return {"error": str(e)[:200]}
+    
+    """ try:
         exit = api_start_scan(profile_id=profile, request=request)
+        
+
+
+
         if exit.status_code == 200:
             data = json.loads(exit.content.decode())
             return {"status": 200, "data": {"report_id": data.get("report_id")}}
         else:
             return {"error": f"Failed to start OSINT scan: {exit.content.decode()[:200]}"}
     except Exception as e:
-        return {"error": str(e)[:200]}
+        return {"error": str(e)[:200]}"""
 
 
 @_action("ely_blueteam_analyze", "Launch a Blue Team security analysis on an API spec",
@@ -190,6 +211,12 @@ async def blueteam_analyze(args, request):
     profile = args["profile_id"]
     if not profile:
         return {"error": "Profile not found"}
+    try:
+        import asyncio
+        asyncio.ensure_future(api_start_scan(profile_id=profile, request=request))
+        return {"status": 200, "data": "Scan started successfully you can check the report page for live updates."}
+    except Exception as e :
+        return {"error": str(e)[:200]}
     try:
         exit = api_start_analysis(profile_id=profile, request=request)
         if exit.status_code == 200:

@@ -174,7 +174,7 @@ def update_profile(profile_id, **kw):
         if k in ("name", "description", "target_path", "target_domain", "categories",
                  "user_id", "team_ids", "explore_rounds", "analysis_rounds", "status"):
             sets.append(f"{k}=?")
-            vals.append(v)
+            vals.append(json.dumps(v) if isinstance(v, list) else v)
     if sets:
         vals.append(profile_id)
         conn.execute(f"UPDATE greyteam_profiles SET {', '.join(sets)}, updated_at=? WHERE profile_id=?", (*vals, _now()))

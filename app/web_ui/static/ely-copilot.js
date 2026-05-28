@@ -17,7 +17,7 @@
     document.head.appendChild(ms);
   }
 
-  var state = { slot: 'pro', messages: [], page: _detectPage() };
+  var state = { slot: 'pro', messages: [], page: _detectPage(), _context: {} };
 
   function _detectPage() {
     var p = window.location.pathname.replace(/\/$/, '');
@@ -32,6 +32,24 @@
   }
 
   function _esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+  // ── Global bridge: called by app.js when request is sent or history loaded ──
+  window.updateChatContext = function (data) {
+    if (!data) {
+      // Auto-detect from DOM (app page)
+      var m = document.getElementById('req-method');
+      var u = document.getElementById('req-url');
+      var s = document.getElementById('resp-status');
+      var b = document.getElementById('resp-body-content');
+      data = {
+        method: m ? m.value : '',
+        url: u ? u.value : '',
+        status_code: s ? parseInt(s.textContent) || 0 : 0,
+        response_preview: b ? (b.textContent || '').substring(0, 500) : '',
+      };
+    }
+    state._context = data;
+  };
 
   var PANEL_HTML = ''
     + '<aside id="ely-copilot-panel" class="w-[480px] min-w-[380px] bg-base-800 border-l border-white/5 flex flex-col shrink-0 hidden">'
@@ -124,7 +142,11 @@
         + '.ely-msg-body table{width:100%;border-collapse:collapse;margin:.5em 0;font-size:10px;}'
         + '.ely-msg-body th,.ely-msg-body td{padding:3px 6px;border:1px solid rgba(255,255,255,.08);text-align:left;}'
         + '.ely-msg-body th{background:rgba(124,58,237,.1);color:#c4b5fd;}'
-        + '.ely-msg-body hr{border:none;border-top:1px solid rgba(255,255,255,.08);margin:.8em 0;}';
+        + '.ely-msg-body hr{border:none;border-top:1px solid rgba(255,255,255,.08);margin:.8em 0;}'
+        + '.ely-tools-used{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);}'
+        + '.ely-tool-badge{font-size:10px;padding:2px 7px;border-radius:5px;font-family:"JetBrains Mono",monospace;}'
+        + '.ely-tool-ok{background:rgba(34,197,94,.1);color:#4ade80;border:1px solid rgba(34,197,94,.15);}'
+        + '.ely-tool-err{background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.15);}';
       document.head.appendChild(style);
     }
 
@@ -257,9 +279,9 @@
 
     try {
       var token = (typeof getToken === 'function') ? getToken() : (sessionStorage.getItem('elyria_token') || '');
-      var ctx = { url: window.location.href };
+      var ctx = Object.assign({ url: window.location.href }, state._context || {});
       if (state.page === 'app') {
-        var m = document.querySelector('.method-badge'); if (m) ctx.method = m.textContent.trim();
+        var m = document.querySelector('.method-badge'); if (m) ctx.method = ctx.method || m.textContent.trim();
       }
 
       var resp = await fetch('/api/ely/chat', {
@@ -274,15 +296,23 @@
       var data = await resp.json();
       loadingEl.remove();
 
-      if (data.reply) {
-        _addMessage('ely', data.reply);
-        state.messages.push({ role: 'assistant', content: data.reply });
-      }
+      var toolsHtml = '';
       if (data.actions && data.actions.length) {
+        toolsHtml = '<div class="ely-tools-used">';
         for (var a = 0; a < data.actions.length; a++) {
           var act = data.actions[a];
-          _addMessage('ely', '<div class="text-[10px] text-primary-light">✓ ' + _esc(act.name) + '</div>');
+          var ok = act.result && !act.result.error;
+          toolsHtml += '<span class="ely-tool-badge ' + (ok ? 'ely-tool-ok' : 'ely-tool-err') + '">'
+            + (ok ? '✓' : '✗') + ' ' + _esc(act.name.replace('ely_', '').replace(/_/g, ' '))
+            + '</span>';
         }
+        toolsHtml += '</div>';
+      }
+      if (data.reply) {
+        _addMessage('ely', data.reply + toolsHtml);
+        state.messages.push({ role: 'assistant', content: data.reply });
+      } else if (toolsHtml) {
+        _addMessage('ely', toolsHtml);
       }
     } catch (e) {
       loadingEl.remove();

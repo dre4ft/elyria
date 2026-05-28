@@ -136,7 +136,7 @@ async def chat(page, messages, request, stream_cb=None, slot="flash"):
 
     Returns: {"reply": "...", "actions": [...], "tokens": {...}}
     """
-    from ely.tools import get_action_definitions, execute_action
+    from ely.elys_tools import get_action_definitions, execute_action
     from core.auth import get_user as get_user_id
 
     provider, model = _resolve_provider(slot)
@@ -151,7 +151,7 @@ async def chat(page, messages, request, stream_cb=None, slot="flash"):
 
     # ── Memory: increment round, inject profile into system prompt ──
     from ely.memory import build_memory_prompt, increment_round, maybe_compact
-    increment_round(user_id)
+    #increment_round(user_id)
     memory_prompt = build_memory_prompt(user_id)
 
     context_snapshot = get_context_for_page(page, request)
