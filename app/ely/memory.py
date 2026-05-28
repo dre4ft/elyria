@@ -131,8 +131,7 @@ def _format_history(messages: list) -> str:
 
 async def maybe_compact(user_id: str, recent_messages: list, provider):
     """Compact every N rounds. Returns the current profile."""
-    count = get_round_count(user_id)
-    if count == 0 or count % COMPACT_EVERY != 0:
+    if len(recent_messages) < 10:
         return get_memory(user_id)
 
     existing = get_memory(user_id)

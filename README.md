@@ -12,7 +12,9 @@
 
 **Blue Team** — Analyse security-by-design de specs OpenAPI. L'IA audite auth, chiffrement, input validation, logging. Rapports SSDLC multi-rounds personnalisables.
 
-**IA Copilot** — Agent IA intégré (OpenAI, Anthropic, Ollama, LM Studio, DeepSeek). Création de collections, exécution de tests, analyse de résultats. Function calling natif.
+**Grey Team** — OSINT passif sur domaine (DNS, WHOIS, SSL/TLS, certificats crt.sh, headers HTTP, empreinte technologique, énumération email, Wayback Machine, GitHub/Google dorks, analyse frontend). Score de risque agrégé.
+
+**Ely Copilot** — Agent IA contextuel omniprésent (panneau latéral sur chaque page). **Context-aware** : détecte la page active et adapte ses actions. **Function calling** : 8+ actions natives (créer requêtes, lancer scans Red/Grey/Blue Team, générer workflows). **Memory** : profil utilisateur persistant qui s'enrichit automatiquement (compaction LLM tous les 6 rounds). **Permissions miroir** : même token JWT que l'utilisateur, audit complet. Slash commands (`/scan`, `/osint`, `/analyze`, `/create`, `/help`). Multi-provider (OpenAI, Anthropic, Ollama, LM Studio, DeepSeek). Hub → onglet Ely pour l'historique et les stats.
 
 **Collections** — Arborescence dossiers/requêtes. Multi-teams avec permissions. Import OpenAPI, Postman. Export curl.
 

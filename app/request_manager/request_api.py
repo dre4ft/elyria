@@ -103,19 +103,38 @@ def _make_request(url : str,method :str ,headers:dict=None,query_params:dict =No
                                proxies=proxies,
                                verify=verify_ssl)
 
+        # Safe body serialization: try JSON parse for pretty-printing, fallback to raw text
+        raw_body = resp.text or ""
+        response_body = raw_body
+        if raw_body.startswith("{") or raw_body.startswith("["):
+            try:
+                response_body = json.dumps(resp.json())
+            except Exception:
+                response_body = raw_body
+
         return {"status_code" : resp.status_code,
                 "url":resp.url,
                 "headers":dict(resp.headers),
-                "body" : resp.text if not resp.text.startswith("{") or resp.text.startswith("[") else  json.dumps(resp.json())}
+                "body" : response_body}
 
-    except requests.exceptions.ProxyError:
-        raise HTTPException(status_code=502, detail="Proxy unreachable")
-    except requests.exceptions.SSLError:
-        raise HTTPException(status_code=502, detail="SSL error")
-    except requests.exceptions.ConnectionError:
-        raise HTTPException(status_code=502, detail="Connection failed")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Request failed")
+    except requests.exceptions.ProxyError as e:
+        _log.warning(f"Proxy unreachable for {url}: {e}")
+        return {"status_code": 502, "url": url, "headers": {},
+                "body": f"Proxy unreachable: {str(e)[:200]}"}
+    except requests.exceptions.SSLError as e:
+        _log.warning(f"SSL error for {url}: {e}")
+        return {"status_code": 502, "url": url, "headers": {},
+                "body": f"SSL error — the server may use a self-signed certificate. Disable SSL verification or use HTTP.\n\n{str(e)[:200]}"}
+    except requests.exceptions.ConnectionError as e:
+        _log.warning(f"Connection failed for {url}: {e}")
+        return {"status_code": 502, "url": url, "headers": {},
+                "body": f"Connection failed — is the target server running?\n\n{str(e)[:200]}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        _log.error(f"Request failed: {method} {url} — {e}")
+        return {"status_code": 500, "url": url, "headers": {},
+                "body": f"Request failed: {str(e)[:200]}"}
 
 
 
@@ -314,10 +333,17 @@ def handle_request(user_id : str, url : str,method :str ,headers:dict=None,query
                             allow_redirect=allow_redirect,
                             proxies=proxies,
                             verify_ssl=verify_ssl)
-        add_request(request_uuid=request_uuid,author=author,request=req,response=resp,is_done_by_ai=is_done_by_ai)
-        return request_uuid,resp
+        try:
+            add_request(request_uuid=request_uuid,author=author,request=req,response=resp,is_done_by_ai=is_done_by_ai)
+        except Exception as log_err:
+            _log.error(f"Failed to save request log: {log_err}")
+        return request_uuid, resp
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Request failed") 
+        _log.error(f"handle_request failed: {method} {url} — {e}")
+        return request_uuid, {"status_code": 500, "url": url, "headers": {},
+                              "body": f"Internal error: {str(e)[:200]}"}
 
 
 
@@ -360,7 +386,9 @@ def x_www_form_urlencoded_request(request:WWWFormRequest,_request:Request):
     
     token = _request.state.token
     
-    if not request.headers :
+    if not request.headers:
+        request.headers = {}
+    if "content-type" not in {k.lower() for k in (request.headers or {})}:
         request.headers["Content-Type"] = "application/x-www-form-urlencoded"
     proxies = _get_proxy_from_request(_request)
     req_uuid, resp =  handle_request(user_id=token,url=request.url,method=request.method,headers= request.headers,query_params=request.query_params,proxies=proxies)
