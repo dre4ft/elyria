@@ -188,6 +188,13 @@ def list_campaigns(user_id=None, team_ids=None, profile_id=None):
     return [dict(r) for r in rows]
 
 
+def get_last_campaign_by_user(user_id):
+    conn = _connect()
+    row = conn.execute("SELECT * FROM pentest_campaigns WHERE user_id=? ORDER BY created_at DESC LIMIT 1", (user_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 # ── Scan Profiles CRUD ──
 
 def create_profile(name, target_url, user_id="", team_ids="", description="", auth_config=None,

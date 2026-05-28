@@ -64,19 +64,24 @@ from database.auth_utils import get_auth_user, get_auth_user_teams
 
 from core.auth import verify_ownership as _verify_ownership, verify_team_membership as _verify_team_membership
 from core.audit import info as _audit
+from pydantic import BaseModel
 
+class WorkflowCreateRequest(BaseModel):
+    name: str
+    graph: dict
+    description: str = ""
+    team_id: str = ""
 
 @app.post("")
-async def api_save_workflow(request: Request):
-    body = await request.json()
-    name = body.get("name", "").strip()
-    graph = body.get("graph", {})
+async def api_save_workflow(_request: WorkflowCreateRequest, request: Request):
+    name = _request.name
+    graph = _request.graph
     if not name:
         raise HTTPException(400, "name is required")
     if not graph:
         raise HTTPException(400, "graph is required")
     _validate_graph_expressions(graph)
-    team_id = body.get("team_id", "")
+    team_id = _request.team_id
     user_id = get_auth_user(request)
     if team_id:
         _verify_team_membership(team_id, user_id)
@@ -84,7 +89,7 @@ async def api_save_workflow(request: Request):
         name=name,
         graph=graph,
         user_id=user_id,
-        description=body.get("description", ""),
+        description=_request.description,
         team_id=team_id,
     )
     _audit("workflow.save", user_id=user_id, resource_id=wf_id, resource_type="workflow", team_id=team_id)

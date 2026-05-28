@@ -21,6 +21,7 @@ import json
 import threading
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 
 from database.connection import get_connection as _get_db_conn
 from greyteam.database import (
@@ -38,8 +39,7 @@ init_greyteam_db()
 
 # ── Helpers ──
 
-from database.auth_utils import get_auth_user, get_auth_user_teams
-from core.auth import verify_ownership as _verify_ownership
+from core.auth import verify_ownership as _verify_ownership, get_user_teams as get_auth_user_teams, get_user as get_auth_user
 
 
 def _sanitize_profile(p):
@@ -147,10 +147,17 @@ async def api_delete_profile(profile_id: str, request: Request):
 # Reports CRUD + Scan
 # ═══════════════════════════════════════════════════════════════
 
+class CreateReportRequest(BaseModel):
+    profile_id: str
+    name: str = ""
+    description: str = ""
+    categories: list = []
+    target_path: str = ""
+    target_domain: str = ""
+
 @app.post("/reports")
-async def api_create_report(request: Request):
-    body = await request.json()
-    profile_id = body.get("profile_id", "").strip()
+async def api_create_report(_request: CreateReportRequest, request: Request):
+    profile_id = _request.profile_id
     if not profile_id:
         raise HTTPException(400, "profile_id is required")
 
@@ -163,11 +170,11 @@ async def api_create_report(request: Request):
 
     rid = create_report(
         profile_id=profile_id,
-        name=body.get("name", p.get("name", "Unnamed Report")),
-        description=body.get("description", p.get("description", "")),
-        categories=body.get("categories", p.get("categories", "[]")),
-        target_path=body.get("target_path", p.get("target_path", "")),
-        target_domain=body.get("target_domain", p.get("target_domain", "")),
+        name=_request.name or p.get("name", "Unnamed Report"),
+        description=_request.description or p.get("description", ""),
+        categories=_request.categories or p.get("categories", "[]"),
+        target_path=_request.target_path or p.get("target_path", ""),
+        target_domain=_request.target_domain or p.get("target_domain", ""),
     )
 
     # Resolve target — domain takes priority over path

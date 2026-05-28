@@ -214,6 +214,20 @@ def get_report(report_id):
     conn.close()
     return dict(r) if r else None
 
+def get_last_report_by_user(user_id):
+    conn = get_connection()
+    row = conn.execute(
+        """SELECT r.* FROM greyteam_reports r
+           JOIN greyteam_profiles p ON r.profile_id = p.profile_id
+           WHERE p.user_id=? OR p.team_ids LIKE ? OR p.team_ids=''
+           ORDER BY r.created_at DESC LIMIT 1""",
+        (user_id, f"%{user_id}%"),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+
 
 def list_reports(profile_id="", user_id="", team_ids=""):
     conn = get_connection()
@@ -268,6 +282,8 @@ def delete_reports_for_profile(profile_id):
     conn.execute("DELETE FROM greyteam_reports WHERE profile_id=?", (profile_id,))
     conn.commit()
     conn.close()
+
+
 
 
 # ── Findings CRUD ──

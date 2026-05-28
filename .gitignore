@@ -43,7 +43,7 @@ data/
 *.log*
 enterprise/
 CLAUDE.md
-elyria.cfg
+*.cfg
 # wrangler files
 .wrangler
 .dev.vars*
