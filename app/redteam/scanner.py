@@ -180,7 +180,7 @@ class Scanner:
                 })
 
         if self.progress_cb:
-            self.progress_cb(100, "Scan complete")
+            self.progress_cb(90, "Phase 1 done — starting AI deep scan")
 
         return all_findings
 

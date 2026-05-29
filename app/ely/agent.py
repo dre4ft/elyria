@@ -171,8 +171,15 @@ async def chat(page, messages, request, stream_cb=None, slot="flash"):
     actions_executed = []
     final_reply = ""
 
-    # Up to 5 turns of function calling
-    for turn in range(5):
+    # ── Read max turns preference ──
+    try:
+        from ely.database import get_preferences
+        prefs = get_preferences(user_id)
+        max_turns = prefs.get("max_turns", 5)
+    except Exception:
+        max_turns = 5
+
+    for turn in range(max_turns):
         try:
             resp = provider.chat(full_messages, tools=tools if tools else None)
         except Exception as e:

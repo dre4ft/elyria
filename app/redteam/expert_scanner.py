@@ -367,8 +367,27 @@ AUTH: {'Bearer token configured — make authenticated requests' if self.auth.ge
 {context}
 {master_instructions}
 {doc_instructions}
+
+SANDBOX — You have a bash tool giving you a full Linux environment. Use it aggressively for active recon, exploitation, and verification:
+- Port scanning: nmap -sV -sC -p- TARGET, masscan, amass enum
+- Vulnerability scanning: nuclei -u URL, nuclei -t cves/ -u URL
+- SQL injection: sqlmap -u "URL" --batch --dbs
+- Web fuzzing: ffuf -u URL/FUZZ -w wordlist, wfuzz, katana -u URL
+- Subdomain discovery: subfinder -d domain, amass enum -d domain, massdns
+- HTTP probing: httpx -l targets.txt -sc -title -tech-detect
+- Scripting: python3 with requests, httpx, aiohttp, pyjwt, beautifulsoup4
+- Parsing: jq, yq for JSON/YAML extraction, curl/wget for raw requests
+- Browser automation: chromium + chromium-chromedriver for JS-heavy targets
+- Recon: whois, dig, host, nslookup, netcat, socat
+
+Available packages:
+System: curl, wget, ca-certificates, bind-tools, netcat-openbsd, socat, nmap, nmap-scripts, git, openssh-client, python3, py3-pip, jq, yq, unzip, tar, massdns, amass, wfuzz, chromium, chromium-chromedriver
+Python: sqlmap, requests, httpx, aiohttp, pyjwt, beautifulsoup4
+Go tools: nuclei v3.4.2, subfinder v2.7.0, httpx v1.7.2, katana v1.1.0, ffuf v2.1.0
+
 RULES:
 - Call pentest_make_requests for ALL probing — batch 5-15 requests per call
+- Call the bash tool for active scanning, exploitation, CVE verification, and deep recon
 - Call pentest_add_findings ONLY for CONFIRMED vulnerabilities with clear evidence
 - In analysis rounds, call pentest_read_logs to review request/response history before reporting
 - Adapt your strategy based on results: probe anomalies deeper
@@ -430,11 +449,17 @@ TARGET: {self.target}
 {context}
 {doc_instructions}
 
+SANDBOX — You have a bash tool with full Linux environment. Use it to:
+- Verify findings: reproduce exploits, test payloads, confirm CVEs
+- Active recon: nmap, nuclei, sqlmap, ffuf, subfinder, httpx, katana
+- Extract data: jq for JSON, python3 for scripting, curl for direct requests
+- Deepen attacks: if a finding suggests SQLi, use sqlmap to dump tables; if XSS, verify with chromium
+
 In each analysis round:
 1. Call pentest_read_logs to review the latest request/response history
 2. Review ALL exploration data above — cross-reference with documentation
 3. Call pentest_add_findings for every CONFIRMED vulnerability with full evidence
-4. If you need to verify something, call pentest_make_requests with 1-5 targeted probes
+4. If you need to verify something, call pentest_make_requests with 1-5 targeted probes OR use the bash tool for active verification
 5. IMPORTANT: Propose 3-5 NEW exploration targets based on anomalies you discover
 6. After reporting findings, write a brief summary of what to explore next
 
@@ -584,11 +609,12 @@ IMPORTANT: Write the COMPLETE report. Do not abbreviate. Each section must be fu
                 pct = int(95 + (report_prompts.index(rp) + 1) * 5 / report_rounds)
                 self.callbacks["on_progress"](pct, f"Writing expert report {report_prompts.index(rp) + 1}/{report_rounds}")
 
-        # Collect report from last assistant message
-        for msg in reversed(report_msgs):
+        # Collect report — concatenate all assistant messages in order
+        report_parts = []
+        for msg in report_msgs:
             if msg.get("role") == "assistant" and msg.get("content"):
-                report = msg["content"]
-                break
+                report_parts.append(msg["content"])
+        report = "\n\n".join(report_parts) if report_parts else ""
 
         # Store report in DB
         if report:

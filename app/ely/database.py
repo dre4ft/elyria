@@ -36,8 +36,12 @@ def init_ely_db():
             enabled INTEGER DEFAULT 1,
             preferred_provider TEXT DEFAULT '',
             preferred_model TEXT DEFAULT '',
+            max_turns INTEGER DEFAULT 5,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+
+        -- Migration: add max_turns if missing
+        ALTER TABLE ely_preferences ADD COLUMN max_turns INTEGER DEFAULT 5;
     """)
     conn.commit()
     conn.close()
@@ -102,9 +106,11 @@ def get_preferences(user_id):
         d = dict(row)
         d["proactive"] = bool(d.get("proactive", 0))
         d["enabled"] = bool(d.get("enabled", 1))
+        d["max_turns"] = int(d.get("max_turns", 5))
         return d
     return {"user_id": user_id, "tone": "professional", "verbosity": "concise",
-            "proactive": False, "enabled": True, "preferred_provider": "", "preferred_model": ""}
+            "proactive": False, "enabled": True, "preferred_provider": "", "preferred_model": "",
+            "max_turns": 5}
 
 
 def save_preferences(user_id, **kw):
@@ -114,7 +120,7 @@ def save_preferences(user_id, **kw):
     if existing:
         sets = []
         vals = []
-        for k in ("tone", "verbosity", "preferred_provider", "preferred_model"):
+        for k in ("tone", "verbosity", "preferred_provider", "preferred_model", "max_turns"):
             if k in kw:
                 sets.append(f"{k}=?")
                 vals.append(kw[k])

@@ -522,7 +522,13 @@ async def api_start_scan(profile_id: str, request: Request):
             _running_scans.pop(campaign_id, None)
 
         try:
-            loop.run_until_complete(_run())
+            loop.run_until_complete(asyncio.wait_for(_run(), timeout=900))  # 15 min max for AI phase
+        except asyncio.TimeoutError:
+            update_campaign_status(campaign_id, "completed", 100)
+            publish(campaign_id, "done", {"status": "completed", "note": "AI phase timed out — deterministic results available"})
+            _running_scans.pop(campaign_id, None)
+            cleanup(campaign_id)
+            return
         except Exception as e:
             import traceback
             err = f"{type(e).__name__}: {str(e)[:300]}"

@@ -16,7 +16,7 @@ from urllib.parse import urljoin
 import requests
 
 from core.logging import get_logger
-from sandbox.tool import BashTool
+from ely.sandbox_spawn import get_bash_tool, destroy_bash_tool
 
 _log = get_logger("redteam.scanner")
 
@@ -205,11 +205,12 @@ class AIScanner:
         self.conversation = []
         self._setup_session()
         self._setup_providers()
-        self.bash_tool = BashTool(sandbox=None, manager=None, target=self.target)
+
+        self.bash_tool = get_bash_tool(user_id)
 
     def _cleanup_sandbox(self):
         try:
-            self.bash_tool.destroy()
+            destroy_bash_tool(self.user_id)
         except Exception:
             pass
         try:
@@ -370,6 +371,13 @@ class AIScanner:
         except Exception:
             pass
         return {}
+    
+    def _handle_bash(self, args):
+        try:
+            output = self.bash_tool.handle(params={"command": args["command"], "timeout_ms": 60_000})
+            return {"status": 200, "data": {"output": output}}
+        except Exception as e:
+            return {"error": str(e)[:200]}
 
     # ── Prompt builders ──
 
