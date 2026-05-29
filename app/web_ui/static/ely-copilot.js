@@ -10,14 +10,54 @@
   if (window.__elyCopilotInit) return;
   window.__elyCopilotInit = true;
 
-  // Load marked if not already present
-  if (typeof marked === 'undefined') {
+  // Load marked if not already present (block until loaded)
+  var _markedReady = typeof marked !== 'undefined';
+  if (!_markedReady) {
     var ms = document.createElement('script');
     ms.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+    ms.onload = function () { _markedReady = true; };
     document.head.appendChild(ms);
   }
 
-  var state = { slot: 'pro', messages: [], page: _detectPage(), _context: {} };
+  function _renderMarkdown(text) {
+    if (typeof marked !== 'undefined' && marked.parse) {
+      try { return marked.parse(text); } catch(e) {}
+    }
+    return _esc(text);
+  }
+
+  // ── Persistent state (sessionStorage: survives page nav, dies on tab close) ──
+  var _historyKey = 'elyria-ely-history';
+  var _openKey = 'elyria-ely-open';
+  var _pageKey = 'elyria-ely-lastpage';
+  var _slotKey = 'elyria-ely-slot';
+
+  function _loadHistory() {
+    try { return JSON.parse(sessionStorage.getItem(_historyKey) || '[]'); } catch(e) { return []; }
+  }
+  function _saveHistory(msgs) {
+    try { sessionStorage.setItem(_historyKey, JSON.stringify(msgs.slice(-30))); } catch(e) {}
+  }
+  function _isOpen() {
+    return sessionStorage.getItem(_openKey) === '1';
+  }
+  function _setOpen(v) {
+    try { sessionStorage.setItem(_openKey, v ? '1' : '0'); } catch(e) {}
+  }
+  function _lastPage() {
+    return sessionStorage.getItem(_pageKey) || '';
+  }
+  function _setLastPage(p) {
+    try { sessionStorage.setItem(_pageKey, p); } catch(e) {}
+  }
+  function _loadSlot() {
+    return sessionStorage.getItem(_slotKey) || 'pro';
+  }
+  function _saveSlot(s) {
+    try { sessionStorage.setItem(_slotKey, s); } catch(e) {}
+  }
+
+  var state = { slot: _loadSlot(), messages: _loadHistory(), page: _detectPage(), _context: {} };
 
   function _detectPage() {
     var p = window.location.pathname.replace(/\/$/, '');
@@ -52,7 +92,8 @@
   };
 
   var PANEL_HTML = ''
-    + '<aside id="ely-copilot-panel" class="w-[480px] min-w-[380px] bg-base-800 border-l border-white/5 flex flex-col shrink-0 hidden">'
+    + '<aside id="ely-copilot-panel" class="w-[480px] min-w-[380px] bg-base-800 border-l border-white/5 flex flex-col shrink-0 hidden" style="position:relative">'
+    + '<div id="ely-resize-left" class="absolute left-0 top-0 bottom-0 w-[5px] cursor-col-resize hover:bg-primary/30 transition-colors z-10" style="margin-left:-2px"></div>'
     // Header
     + '<div class="h-12 px-4 border-b border-white/5 flex items-center justify-between shrink-0">'
     + '<div class="flex items-center gap-3">'
@@ -68,7 +109,7 @@
     + '</div>'
     + '<div class="flex items-center gap-2">'
     + '<button id="ely-copilot-clear" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors" title="Nouvelle conversation">'
-    + '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>'
+    + '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>'
     + '</button>'
     + '<button id="ely-copilot-close" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors">'
     + '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>'
@@ -81,7 +122,7 @@
     + '<div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">'
     + '<svg class="w-3.5 h-3.5 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>'
     + '</div>'
-    + '<div class="bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed max-w-[350px]">Bonjour ! Je suis Ely, votre assistant IA contextuel. Je connais la page sur laquelle vous etes et je peux vous aider a utiliser Elyria. Tapez <b>/</b> pour voir les commandes disponibles.</div>'
+    + '<div class="bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed" style="max-width:90%">Bonjour ! Je suis Ely, votre assistant IA contextuel. Je connais la page sur laquelle vous etes et je peux vous aider a utiliser Elyria. Tapez <b>/</b> pour voir les commandes disponibles.</div>'
     + '</div>'
     + '</div>'
     // Input
@@ -167,6 +208,52 @@
     }
 
     _bindEvents();
+
+    // ── Auto-open if was open + restore messages + restore width ──
+    var panel = document.getElementById('ely-copilot-panel');
+    if (_isOpen() && panel) {
+      panel.classList.remove('hidden');
+      var input = document.getElementById('ely-copilot-input');
+      if (input) setTimeout(function () { input.focus(); }, 100);
+    }
+    try {
+      var savedW = sessionStorage.getItem('elyria-ely-width');
+      if (savedW && panel) panel.style.width = savedW;
+    } catch(e) {}
+    _restoreMessages();
+
+    // ── Page change detection: notify Ely ──
+    var prevPage = _lastPage();
+    var currPage = state.page;
+    if (prevPage && prevPage !== currPage && state.messages.length > 0) {
+      var note = '[System] L\'utilisateur a change de page : ' + prevPage + ' → ' + currPage + '. Adapte ton contexte.';
+      state.messages.push({ role: 'system', content: note });
+      _saveHistory(state.messages);
+    }
+    _setLastPage(currPage);
+  }
+
+  function _restoreMessages() {
+    var container = document.getElementById('ely-copilot-messages');
+    if (!container) return;
+    container.innerHTML = '';
+    var msgs = state.messages;
+    if (!msgs.length) {
+      // Show default greeting
+      container.innerHTML = '<div class="flex gap-3">'
+        + '<div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">'
+        + '<svg class="w-3.5 h-3.5 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>'
+        + '</div>'
+        + '<div class="bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed" style="max-width:90%">Bonjour ! Je suis Ely, votre assistant IA contextuel. Tapez <b>/</b> pour voir les commandes disponibles.</div>'
+        + '</div>';
+      return;
+    }
+    for (var i = 0; i < msgs.length; i++) {
+      var m = msgs[i];
+      if (m.role === 'system' || m.role === 'tool') continue;  // skip system messages in display
+      _addMessage(m.role === 'user' ? 'user' : 'ely', m.content);
+    }
+    container.scrollTop = container.scrollHeight;
   }
 
   function _bindEvents() {
@@ -185,23 +272,26 @@
     if (toggleBtn) {
       toggleBtn.addEventListener('click', function () {
         panel.classList.toggle('hidden');
-        if (!panel.classList.contains('hidden')) { input.focus(); }
+        var open = !panel.classList.contains('hidden');
+        _setOpen(open);
+        if (open) { input.focus(); }
       });
     }
 
-    close.addEventListener('click', function () { panel.classList.add('hidden'); });
+    close.addEventListener('click', function () { panel.classList.add('hidden'); _setOpen(false); });
     clear.addEventListener('click', function () {
       state.messages = [];
       messages.innerHTML = '';
+      _saveHistory([]);
     });
 
     flash.addEventListener('click', function () {
-      state.slot = 'flash';
+      state.slot = 'flash'; _saveSlot('flash');
       flash.className = 'h-6 px-2.5 text-[10px] font-semibold transition-all bg-amber-500/15 text-amber-400';
       pro.className = 'h-6 px-2.5 text-[10px] font-semibold transition-all text-gray-500 hover:text-gray-300';
     });
     pro.addEventListener('click', function () {
-      state.slot = 'pro';
+      state.slot = 'pro'; _saveSlot('pro');
       pro.className = 'h-6 px-2.5 text-[10px] font-semibold transition-all bg-purple-500/15 text-purple-400';
       flash.className = 'h-6 px-2.5 text-[10px] font-semibold transition-all text-gray-500 hover:text-gray-300';
     });
@@ -243,6 +333,26 @@
       var item = e.target.closest('.slash-item');
       if (item) { _selectSlash(parseInt(item.dataset.idx)); }
     });
+
+    // ── Left-edge resize handle ──
+    var resizeLeft = document.getElementById('ely-resize-left');
+    var resizing = false, rStartX, rStartW;
+    resizeLeft.addEventListener('pointerdown', function (e) {
+      resizing = true; rStartX = e.clientX; rStartW = panel.offsetWidth;
+      e.preventDefault(); e.stopPropagation();
+      panel.setPointerCapture(e.pointerId);
+    });
+    panel.addEventListener('pointermove', function (e) {
+      if (!resizing) return;
+      var w = Math.max(320, Math.min(900, rStartW - (e.clientX - rStartX)));
+      panel.style.width = w + 'px';
+    });
+    panel.addEventListener('pointerup', function () {
+      if (resizing) {
+        resizing = false;
+        try { sessionStorage.setItem('elyria-ely-width', panel.style.width); } catch(e) {}
+      }
+    });
   }
 
   function _positionSlashMenu(input) {
@@ -274,6 +384,8 @@
     input.value = '';
     sendBtn.disabled = true;
     _addMessage('user', text);
+    state.messages.push({ role: 'user', content: text });
+    _saveHistory(state.messages);
 
     var loadingEl = _addMessage('ely', '<span class="text-[11px] text-gray-500 italic">Je reflechis...</span>');
 
@@ -314,6 +426,7 @@
       } else if (toolsHtml) {
         _addMessage('ely', toolsHtml);
       }
+      _saveHistory(state.messages);
     } catch (e) {
       loadingEl.remove();
       _addMessage('ely', 'Erreur : ' + _esc(e.message || 'connexion'));
@@ -327,18 +440,14 @@
     var div = document.createElement('div');
     div.className = 'flex gap-3' + (role === 'user' ? ' justify-end' : '');
     if (role === 'user') {
-      div.innerHTML = '<div class="bg-primary/15 rounded-xl rounded-tr-md px-4 py-2.5 text-xs text-gray-300 leading-relaxed max-w-[350px]">' + _esc(content) + '</div>';
+      div.innerHTML = '<div class="bg-primary/15 rounded-xl rounded-tr-md px-4 py-2.5 text-xs text-gray-300 leading-relaxed" style="max-width:85%">' + _esc(content) + '</div>';
     } else {
       var isHtml = content.indexOf('<') === 0;
-      var body = content;
-      if (!isHtml) {
-        try { if (typeof marked !== 'undefined' && marked.parse) body = marked.parse(content); }
-        catch (e) { body = _esc(content); }
-      }
+      var body = isHtml ? content : _renderMarkdown(content);
       div.innerHTML = '<div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">'
         + '<svg class="w-3.5 h-3.5 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>'
         + '</div>'
-        + '<div class="ely-msg-body bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed max-w-[350px]">' + body + '</div>';
+        + '<div class="ely-msg-body bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed" style="max-width:90%">' + body + '</div>';
     }
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;

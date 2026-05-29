@@ -497,6 +497,382 @@
 
   // ── Exports ──
 
+  // ═══════════════════════════════════════════════════════════════
+  // JSON Editor — rich JSON editing component
+  // ═══════════════════════════════════════════════════════════════
+
+  var _jsonEditorStylesInjected = false;
+
+  function _injectJsonEditorStyles() {
+    if (_jsonEditorStylesInjected) return;
+    _jsonEditorStylesInjected = true;
+    var style = document.createElement('style');
+    style.id = 'ely-json-editor-styles';
+    style.textContent = ''
+      + '.json-editor-wrap{position:relative;border:1px solid rgba(255,255,255,.06);border-radius:8px;overflow:hidden;background:#0a0f1c;min-height:80px;display:flex;flex-direction:column;}'
+      + '.json-editor-wrap:focus-within{border-color:rgba(124,58,237,.4);box-shadow:0 0 0 2px rgba(124,58,237,.1);}'
+      + '.json-editor-wrap.has-error{border-color:rgba(239,68,68,.4);box-shadow:0 0 0 2px rgba(239,68,68,.1);}'
+      + '.json-editor-wrap.has-error:focus-within{border-color:rgba(239,68,68,.5);}'
+      + '.json-editor-tb{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.04);flex-shrink:0;min-height:28px;}'
+      + '.json-editor-tb-left{display:flex;align-items:center;gap:4px;}'
+      + '.json-editor-msg{font-size:9px;font-family:"JetBrains Mono",monospace;color:#f87171;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
+      + '.json-editor-msg.ok{color:#4ade80;}'
+      + '.json-editor-btn{height:20px;padding:0 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#9ca3af;font-size:9px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:2px;font-family:"JetBrains Mono",monospace;}'
+      + '.json-editor-btn:hover{background:rgba(255,255,255,.08);color:#e5e7eb;border-color:rgba(255,255,255,.12);}'
+      + '.json-editor-btn.fmt:hover{background:rgba(124,58,237,.15);border-color:rgba(124,58,237,.3);color:#a78bfa;}'
+      + '.json-editor-btn.minify{font-size:8px;}'
+      + '.json-editor-body{display:flex;flex:1;min-height:60px;position:relative;}'
+      + '.json-editor-gutter{width:36px;flex-shrink:0;background:rgba(255,255,255,.015);border-right:1px solid rgba(255,255,255,.04);padding:8px 0;overflow:hidden;user-select:none;}'
+      + '.json-editor-gutter div{height:18px;line-height:18px;font-size:9px;font-family:"JetBrains Mono",monospace;color:rgba(255,255,255,.15);text-align:right;padding-right:6px;}'
+      + '.json-editor-area{flex:1;position:relative;overflow:hidden;}'
+      + '.json-editor-highlight{position:absolute;top:0;left:0;right:0;bottom:0;padding:8px 10px;font-family:"JetBrains Mono",monospace;font-size:11px;line-height:18px;tab-size:2;white-space:pre-wrap;word-wrap:break-word;overflow:auto;pointer-events:none;color:transparent;}'
+      + '.json-editor-highlight code{font-family:inherit;font-size:inherit;}'
+      + '.json-editor-textarea{display:block;width:100%;height:100%;padding:8px 10px;font-family:"JetBrains Mono",monospace;font-size:11px;line-height:18px;tab-size:2;color:transparent;caret-color:#e5e7eb;background:transparent;border:none;outline:none;resize:none;overflow:auto;position:relative;z-index:2;}'
+      + '.json-editor-textarea::selection{background:rgba(124,58,237,.35);}'
+      + '.json-key{color:#93c5fd;}'
+      + '.json-string{color:#86efac;}'
+      + '.json-number{color:#fde68a;}'
+      + '.json-bool{color:#c084fc;}'
+      + '.json-null{color:#94a3b8;}'
+      + '.json-punct{color:#e5e7eb;}'
+      + '.json-err-underline{text-decoration:wavy underline #ef4444;text-underline-offset:3px;}';
+    document.head.appendChild(style);
+  }
+
+  function _highlightJson(text) {
+    // Robust tokenizer that walks the JSON string
+    var out = '';
+    var i = 0;
+    var len = text.length;
+    while (i < len) {
+      var ch = text[i];
+      // String
+      if (ch === '"') {
+        var start = i;
+        i++;
+        while (i < len) {
+          if (text[i] === '\\') { i += 2; continue; }
+          if (text[i] === '"') { i++; break; }
+          i++;
+        }
+        var str = text.substring(start, i);
+        // Check if followed by :
+        var after = text.substring(i).trimStart();
+        if (after.startsWith(':')) {
+          out += '<span class="json-key">' + _esc(str) + '</span>';
+        } else {
+          out += '<span class="json-string">' + _esc(str) + '</span>';
+        }
+        continue;
+      }
+      // Number
+      if ((ch === '-' && i+1 < len && text[i+1] >= '0' && text[i+1] <= '9') || (ch >= '0' && ch <= '9')) {
+        var numStart = i;
+        if (ch === '-') i++;
+        while (i < len && ((text[i] >= '0' && text[i] <= '9') || text[i] === '.' || text[i] === 'e' || text[i] === 'E' || text[i] === '+' || text[i] === '-')) {
+          if ((text[i] === '+' || text[i] === '-') && numStart !== i-1 && text[i-1] !== 'e' && text[i-1] !== 'E') break;
+          i++;
+        }
+        out += '<span class="json-number">' + _esc(text.substring(numStart, i)) + '</span>';
+        continue;
+      }
+      // true / false / null
+      if (text.substring(i, i+4) === 'true') { out += '<span class="json-bool">true</span>'; i += 4; continue; }
+      if (text.substring(i, i+5) === 'false') { out += '<span class="json-bool">false</span>'; i += 5; continue; }
+      if (text.substring(i, i+4) === 'null') { out += '<span class="json-null">null</span>'; i += 4; continue; }
+      // Punctuation
+      if ('{}[]:,'.indexOf(ch) !== -1) {
+        out += '<span class="json-punct">' + _esc(ch) + '</span>';
+        i++;
+        continue;
+      }
+      out += _esc(ch);
+      i++;
+    }
+    return out;
+  }
+
+  function _updateLineNumbers(container) {
+    var textarea = container.querySelector('.json-editor-textarea');
+    var gutter = container.querySelector('.json-editor-gutter');
+    if (!textarea || !gutter) return;
+    var lines = (textarea.value || '').split('\n');
+    var currentCount = gutter.children.length;
+    if (lines.length === currentCount) return; // no change
+    var html = '';
+    for (var l = 0; l < lines.length; l++) {
+      html += '<div>' + (l + 1) + '</div>';
+    }
+    gutter.innerHTML = html;
+  }
+
+  function _syncScroll(container) {
+    var textarea = container.querySelector('.json-editor-textarea');
+    var highlight = container.querySelector('.json-editor-highlight');
+    var gutter = container.querySelector('.json-editor-gutter');
+    if (textarea && highlight) highlight.scrollTop = textarea.scrollTop;
+    if (textarea && gutter) gutter.scrollTop = textarea.scrollTop;
+  }
+
+  function _updateHighlight(container) {
+    var textarea = container.querySelector('.json-editor-textarea');
+    var highlight = container.querySelector('.json-editor-highlight code');
+    if (!textarea || !highlight) return;
+    var raw = textarea.value || '';
+    highlight.innerHTML = _highlightJson(raw) + '\n';
+    _updateLineNumbers(container);
+    _validateAndShow(container, raw);
+  }
+
+  function _validateAndShow(container, raw) {
+    var msgEl = container.querySelector('.json-editor-msg');
+    if (!msgEl) return;
+    if (!raw.trim()) {
+      msgEl.textContent = '';
+      msgEl.className = 'json-editor-msg';
+      container.classList.remove('has-error');
+      return;
+    }
+    try {
+      JSON.parse(raw);
+      msgEl.textContent = 'JSON valide';
+      msgEl.className = 'json-editor-msg ok';
+      container.classList.remove('has-error');
+    } catch(e) {
+      msgEl.textContent = e.message;
+      msgEl.className = 'json-editor-msg';
+      container.classList.add('has-error');
+    }
+  }
+
+  function _formatJson(container) {
+    var textarea = container.querySelector('.json-editor-textarea');
+    if (!textarea) return;
+    var raw = textarea.value.trim();
+    if (!raw) return;
+    try {
+      var parsed = JSON.parse(raw);
+      textarea.value = JSON.stringify(parsed, null, 2);
+    } catch(e) {
+      // Can't format invalid JSON
+    }
+    _updateHighlight(container);
+    _syncScroll(container);
+  }
+
+  function _minifyJson(container) {
+    var textarea = container.querySelector('.json-editor-textarea');
+    if (!textarea) return;
+    var raw = textarea.value.trim();
+    if (!raw) return;
+    try {
+      var parsed = JSON.parse(raw);
+      textarea.value = JSON.stringify(parsed);
+    } catch(e) {
+      // Can't minify invalid JSON
+    }
+    _updateHighlight(container);
+    _syncScroll(container);
+  }
+
+  function _handleTab(textarea, e) {
+    e.preventDefault();
+    var start = textarea.selectionStart;
+    var end = textarea.selectionEnd;
+    textarea.value = textarea.value.substring(0, start) + '  ' + textarea.value.substring(end);
+    textarea.selectionStart = textarea.selectionEnd = start + 2;
+    textarea.dispatchEvent(new Event('input', {bubbles: true}));
+  }
+
+  function _handleAutoPair(textarea, e) {
+    var pairs = {'{': '}', '[': ']', '"': '"'};
+    var ch = e.key;
+    if (!pairs[ch]) return;
+    var start = textarea.selectionStart;
+    var end = textarea.selectionEnd;
+    var val = textarea.value;
+    // If there's a selection, wrap it
+    if (start !== end) {
+      e.preventDefault();
+      textarea.value = val.substring(0, start) + ch + val.substring(start, end) + pairs[ch] + val.substring(end);
+      textarea.selectionStart = start + 1;
+      textarea.selectionEnd = end + 1;
+      textarea.dispatchEvent(new Event('input', {bubbles: true}));
+      return;
+    }
+    // Smart: don't double-close if next char is the closing pair
+    if (ch === '"' && val[start] === '"') {
+      e.preventDefault();
+      textarea.selectionStart = textarea.selectionEnd = start + 1;
+      return;
+    }
+    if ((ch === '}' || ch === ']') && val[start] === ch) {
+      e.preventDefault();
+      textarea.selectionStart = textarea.selectionEnd = start + 1;
+      return;
+    }
+    // Auto-insert closing pair
+    e.preventDefault();
+    textarea.value = val.substring(0, start) + ch + pairs[ch] + val.substring(end);
+    textarea.selectionStart = textarea.selectionEnd = start + 1;
+    textarea.dispatchEvent(new Event('input', {bubbles: true}));
+  }
+
+  var _debounceTimers = {};
+
+  function createJsonEditor(textarea, options) {
+    if (!textarea || textarea._jsonEditorWrapped) return textarea;
+    textarea._jsonEditorWrapped = true;
+    options = options || {};
+    var minHeight = options.minHeight || 80;
+
+    _injectJsonEditorStyles();
+
+    var wrap = document.createElement('div');
+    wrap.className = 'json-editor-wrap';
+    wrap.style.minHeight = minHeight + 'px';
+
+    // Toolbar
+    var tb = document.createElement('div');
+    tb.className = 'json-editor-tb';
+    tb.innerHTML = ''
+      + '<div class="json-editor-tb-left">'
+      + '<span class="json-editor-msg"></span>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;gap:3px;">'
+      + '<button class="json-editor-btn fmt" title="Formater (Ctrl+Shift+F)">{ }</button>'
+      + '<button class="json-editor-btn minify" title="Minifier">↔</button>'
+      + '</div>';
+
+    // Body
+    var body = document.createElement('div');
+    body.className = 'json-editor-body';
+
+    var gutter = document.createElement('div');
+    gutter.className = 'json-editor-gutter';
+    gutter.innerHTML = '<div>1</div>';
+
+    var area = document.createElement('div');
+    area.className = 'json-editor-area';
+
+    var highlight = document.createElement('div');
+    highlight.className = 'json-editor-highlight';
+    var code = document.createElement('code');
+    highlight.appendChild(code);
+
+    // Clone textarea
+    var newTextarea = textarea.cloneNode(true);
+    newTextarea.removeAttribute('id');
+    newTextarea.className = (textarea.className || '') + ' json-editor-textarea';
+    newTextarea.spellcheck = false;
+    newTextarea.style.cssText = '';
+
+    area.appendChild(highlight);
+    area.appendChild(newTextarea);
+    body.appendChild(gutter);
+    body.appendChild(area);
+    wrap.appendChild(tb);
+    wrap.appendChild(body);
+
+    textarea.replaceWith(wrap);
+    // Keep hidden textarea in DOM for backward compat (e.g. dom.reqBody.value = ...)
+    textarea.style.display = 'none';
+    textarea._jsonEditorProxy = newTextarea;
+    wrap.appendChild(textarea);
+
+    // Bidirectional sync: hidden textarea acts as transparent proxy
+    var _desc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    Object.defineProperty(textarea, 'value', {
+      get: function() { return newTextarea.value; },
+      set: function(v) {
+        _desc.set.call(newTextarea, v);
+        _updateHighlight(wrap);
+        _updateLineNumbers(wrap);
+      },
+      enumerable: true, configurable: true
+    });
+
+    // Also sync on direct input (for event listeners on the original element)
+    newTextarea.addEventListener('input', function() {
+      _desc.set.call(textarea, newTextarea.value);
+    });
+
+    // Event handlers
+    newTextarea.addEventListener('input', function() {
+      clearTimeout(_debounceTimers[wrap._jsonId]);
+      _debounceTimers[wrap._jsonId] = setTimeout(function() {
+        _updateHighlight(wrap);
+      }, 150);
+      _updateLineNumbers(wrap);
+    });
+
+    newTextarea.addEventListener('scroll', function() {
+      _syncScroll(wrap);
+    });
+
+    newTextarea.addEventListener('keydown', function(e) {
+      if (e.key === 'Tab') { _handleTab(newTextarea, e); return; }
+      if (e.key === 'Enter') {
+        // Auto-indent next line
+        setTimeout(function() {
+          var v = newTextarea.value;
+          var pos = newTextarea.selectionStart;
+          var lineStart = v.lastIndexOf('\n', pos - 2) + 1;
+          var prevLine = v.substring(lineStart, pos - 1);
+          var indent = prevLine.match(/^(\s*)/);
+          if (indent && indent[1]) {
+            var before = v.substring(0, pos);
+            var after = v.substring(pos);
+            newTextarea.value = before + indent[1] + after;
+            newTextarea.selectionStart = newTextarea.selectionEnd = pos + indent[1].length;
+          }
+        }, 0);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+        e.preventDefault();
+        _formatJson(wrap);
+        return;
+      }
+      if ('{}[]"'.indexOf(e.key) !== -1) { _handleAutoPair(newTextarea, e); }
+    });
+
+    newTextarea.addEventListener('blur', function() {
+      _validateAndShow(wrap, newTextarea.value || '');
+    });
+
+    // Toolbar buttons
+    wrap._jsonId = Math.random().toString(36).substring(2);
+    var fmtBtn = tb.querySelector('.json-editor-btn.fmt');
+    var minifyBtn = tb.querySelector('.json-editor-btn.minify');
+    fmtBtn.addEventListener('click', function() { _formatJson(wrap); });
+    minifyBtn.addEventListener('click', function() { _minifyJson(wrap); });
+
+    // Initial render
+    _updateHighlight(wrap);
+    _updateLineNumbers(wrap);
+
+    // Expose API
+    wrap._jsonEditor = {
+      format: function() { _formatJson(wrap); },
+      minify: function() { _minifyJson(wrap); },
+      validate: function() {
+        try { JSON.parse(newTextarea.value || '{}'); return true; }
+        catch(e) { return false; }
+      },
+      getValue: function() { return newTextarea.value; },
+      setValue: function(v) {
+        newTextarea.value = v || '';
+        textarea.value = newTextarea.value;
+        _updateHighlight(wrap);
+        _updateLineNumbers(wrap);
+      },
+      focus: function() { newTextarea.focus(); },
+      getTextarea: function() { return newTextarea; },
+    };
+
+    return wrap;
+  }
+
   window.ElyriaUI = {
     // Theme
     TAILWIND_THEME: TAILWIND_THEME,
@@ -520,6 +896,7 @@
     buildModal: buildModal,
     openModal: openModal,
     closeModal: closeModal,
+    createJsonEditor: createJsonEditor,
 
     // Toast
     showToast: showToast,

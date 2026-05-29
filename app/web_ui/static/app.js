@@ -176,6 +176,7 @@ function init() {
   setupResizeHandle();
   setupDocModal();
   setupJWTPanel();
+  setupJsonEditors();
   setupKeyboardShortcuts();
 
   // Burger menu sidebar toggle
@@ -2133,6 +2134,36 @@ document.addEventListener('click', (e) => {
   }
 });
 
+
+function setupJsonEditors() {
+  if (typeof ElyriaUI === 'undefined' || !ElyriaUI.createJsonEditor) return;
+
+  // Request body editor
+  if (dom.reqBody) {
+    var wrap = ElyriaUI.createJsonEditor(dom.reqBody, { minHeight: 120 });
+    // Keep reference for later updates (e.g., loading saved requests)
+    dom.reqBody._editorWrap = wrap;
+  }
+
+  // JWT panel editors — wrap lazily when panel first opens
+  var jwtWrapped = false;
+  var origJwtOpen = document.getElementById('btn-toggle-jwt');
+  if (origJwtOpen) {
+    var origClick = origJwtOpen.onclick;
+    origJwtOpen.addEventListener('click', function() {
+      if (jwtWrapped) return;
+      setTimeout(function() {
+        var jwtInput = document.getElementById('jwt-input');
+        var encHeader = document.getElementById('jwt-enc-header');
+        var encPayload = document.getElementById('jwt-enc-payload');
+        if (jwtInput && !jwtInput._jsonEditorWrapped) ElyriaUI.createJsonEditor(jwtInput, { minHeight: 80 });
+        if (encHeader && !encHeader._jsonEditorWrapped) ElyriaUI.createJsonEditor(encHeader, { minHeight: 60 });
+        if (encPayload && !encPayload._jsonEditorWrapped) ElyriaUI.createJsonEditor(encPayload, { minHeight: 80 });
+        jwtWrapped = true;
+      }, 100);
+    });
+  }
+}
 
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {

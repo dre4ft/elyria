@@ -75,7 +75,7 @@ async def security_headers(request: Request, call_next):
     # CSP — script-src allows Tailwind CDN + inline (required by the SPA)
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "connect-src 'self'; "
         "img-src 'self' data:; "
@@ -93,7 +93,8 @@ async def check_authorization(request: Request, call_next):
     # HTML shells (/app, /workflow, etc.) are served without auth so the SPA
     # can load auth.js — client-side auth handles the rest.
     PUBLIC_ROUTES = {
-        "/", "/login", "/app", "/workflow", "/pentest", "/greyteam", "/hub", "/doc", "/blueteam", "/m","/gate",
+        "/", "/login", "/app", "/workflow", "/pentest", "/greyteam", "/hub", "/doc", "/blueteam", "/m", "/gate",
+        "/enterprise", "/pricing", "/edu", "/legal", "/privacy", "/terms", "/license",
         "/api/user/login", "/api/user/create", "/api/user/refresh",
         "/api/user/verify-email", "/api/user/resend-code",
         "/api/user/reset-password", "/api/user/reset-password/confirm",
@@ -225,6 +226,43 @@ async def serve_mobile():
 @app.get("/doc")
 async def serve_doc():
     return _serve_html("doc.html")
+
+# ── Enterprise & legal pages ──
+
+def _serve_enterprise(filename: str) -> HTMLResponse:
+    try:
+        with open(f"../enterprise/pages/{filename}", "r") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Page not found")
+
+@app.get("/enterprise")
+async def serve_enterprise():
+    return _serve_enterprise("enterprise.html")
+
+@app.get("/pricing")
+async def serve_pricing():
+    return _serve_enterprise("pricing.html")
+
+@app.get("/edu")
+async def serve_edu():
+    return _serve_enterprise("edu.html")
+
+@app.get("/legal")
+async def serve_legal():
+    return _serve_enterprise("legal.html")
+
+@app.get("/privacy")
+async def serve_privacy():
+    return _serve_enterprise("legal.html")  # reuse legal page (contains privacy section)
+
+@app.get("/terms")
+async def serve_terms():
+    return _serve_enterprise("legal.html")  # reuse legal page (contains terms references)
+
+@app.get("/license")
+async def serve_license():
+    return HTMLResponse(content='<html><head><meta charset="UTF-8"><title>Licence — Elyria</title></head><body style="font-family:monospace;max-width:800px;margin:2rem auto;padding:0 1rem;background:#0a0f1c;color:#94a3b8;"><h1 style="color:#e5e7eb">Licence AGPL-3.0</h1><p>Elyria est distribue sous <strong>GNU Affero General Public License v3</strong>.</p><p>Texte complet : <a href="https://www.gnu.org/licenses/agpl-3.0.html" style="color:#8b5cf6">gnu.org/licenses/agpl-3.0.html</a></p><p>Pour une licence commerciale (SaaS, usage proprietaire) : <a href="mailto:contact@elyria.pro" style="color:#8b5cf6">contact@elyria.pro</a></p></body></html>')
 
 @app.get("/api/doc")
 async def get_doc(lang: str = "fr"):

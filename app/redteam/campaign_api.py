@@ -37,7 +37,7 @@ from redteam.scanner import Scanner
 from redteam.report_generator import generate_report
 from redteam.ai_enhancer import analyze_findings
 from redteam.ai_scanner import AIScanner
-
+from pydantic import BaseModel
 import ipaddress
 import json
 import re
@@ -55,35 +55,48 @@ init_pentest_db()
 from database.auth_utils import get_auth_user, get_auth_user_teams
 from core.auth import verify_ownership as _verify_ownership
 
+class ProfileCreateRequest(BaseModel):
+    name: str
+    target_url: str
+    description: str = ""
+    auth_config: dict = None
+    openapi_spec_url: str = ""
+    openapi_spec_content: str = ""  # for direct spec upload
+    id_list: dict = None
+    collection_id: str = ""
+    explore_rounds: int = 15
+    analysis_rounds: int = 5
+    expert_mode: bool = False
+    master_prompt: str = ""
+    documentation: str = ""
+
+
 
 # ── Scan Profiles CRUD ──
 
 @app.post("/profiles")
-async def api_create_profile(request: Request):
-    body = await request.json()
-    name = body.get("name", "").strip()
-    target_url = body.get("target_url", "").strip()
+async def api_create_profile(_request : ProfileCreateRequest, request: Request):
+    name = _request.name
+    target_url = _request.target_url
     if not name or not target_url:
         raise HTTPException(400, "name and target_url are required")
-    team_ids = body.get("team_ids", "")
-    if not team_ids:
-        team_ids = get_auth_user_teams(request)
+    team_ids = _request.team_ids if _request.team_ids else get_auth_user_teams(request)
     pid = create_profile(
         name=name, target_url=target_url,
         user_id=get_auth_user(request), team_ids=team_ids,
-        description=body.get("description", ""),
-        auth_config=body.get("auth_config"),
-        openapi_spec_url=body.get("openapi_spec_url", ""),
-        id_list=body.get("id_list"),
-        collection_id=body.get("collection_id", ""),
-        explore_rounds=body.get("explore_rounds", 15),
-        analysis_rounds=body.get("analysis_rounds", 5),
-        expert_mode=body.get("expert_mode", 0),
-        master_prompt=body.get("master_prompt", ""),
-        documentation=body.get("documentation", ""),
+        description=_request.description,
+        auth_config=_request.auth_config,
+        openapi_spec_url=_request.openapi_spec_url,
+        id_list=_request.id_list,
+        collection_id=_request.collection_id,
+        explore_rounds=_request.explore_rounds,
+        analysis_rounds=_request.analysis_rounds,
+        expert_mode=_request.expert_mode,
+        master_prompt=_request.master_prompt,
+        documentation=_request.documentation,
     )
     # Store file content for later use
-    spec_content = body.get("openapi_spec_content", "")
+    spec_content = _request.openapi_spec_content
     if spec_content:
         _spec_cache[pid] = spec_content
     return {"profile_id": pid}
@@ -509,7 +522,13 @@ async def api_start_scan(profile_id: str, request: Request):
             _running_scans.pop(campaign_id, None)
 
         try:
-            loop.run_until_complete(_run())
+            loop.run_until_complete(asyncio.wait_for(_run(), timeout=900))  # 15 min max for AI phase
+        except asyncio.TimeoutError:
+            update_campaign_status(campaign_id, "completed", 100)
+            publish(campaign_id, "done", {"status": "completed", "note": "AI phase timed out — deterministic results available"})
+            _running_scans.pop(campaign_id, None)
+            cleanup(campaign_id)
+            return
         except Exception as e:
             import traceback
             err = f"{type(e).__name__}: {str(e)[:300]}"

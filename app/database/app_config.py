@@ -29,7 +29,7 @@ def _load_cfg_file() -> dict:
     for path in cfg_paths:
         if os.path.isfile(path):
             parser = ConfigParser()
-            parser.read(path)
+            parser.read(path,encoding="utf-8")
             for section in parser.sections():
                 for key, value in parser[section].items():
                     result[f"{section}.{key}"] = value

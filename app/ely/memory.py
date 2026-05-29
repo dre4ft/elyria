@@ -47,7 +47,7 @@ def get_memory(user_id: str) -> str:
         "SELECT profile FROM ely_memory WHERE user_id=?", (user_id,)
     ).fetchone()
     conn.close()
-    return row["profile"] if row and row.get("profile") else ""
+    return (row["profile"] or "") if row else ""
 
 
 def save_memory(user_id: str, profile: str):

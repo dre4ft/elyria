@@ -52,7 +52,7 @@ def _load():
     # Override with .cfg file
     for path in (_CFG_PATH, "elyria.cfg"):
         if os.path.isfile(path):
-            _parser.read(path)
+            _parser.read(path,encoding="utf-8")
             for section in _parser.sections():
                 for key, value in _parser[section].items():
                     result[f"{section}.{key}"] = value
