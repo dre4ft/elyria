@@ -40,8 +40,6 @@ def init_ely_db():
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
-        -- Migration: add max_turns if missing
-        ALTER TABLE ely_preferences ADD COLUMN max_turns INTEGER DEFAULT 5;
     """)
     conn.commit()
     conn.close()
@@ -146,3 +144,12 @@ def save_preferences(user_id, **kw):
 
 # Init on import
 init_ely_db()
+
+# Migration: add max_turns to existing tables
+try:
+    conn = get_connection()
+    conn.execute("ALTER TABLE ely_preferences ADD COLUMN max_turns INTEGER DEFAULT 5")
+    conn.commit()
+    conn.close()
+except Exception:
+    pass  # column already exists
