@@ -177,31 +177,32 @@ async def run_scan(args,  request):
 @_action("ely_osint_scan", "Launch a Grey Team OSINT scan on a domain",
          {"profile_id": {"type": "string"}})
 async def osint_scan(args,request):
-    from greyteam.api import api_start_scan
-    profile = args["profile_id"]
+    from greyteam.database import create_report as _create, get_profile, add_finding, update_report
+    import threading, json as _json
+    profile = get_profile(args["profile_id"])
     if not profile:
         return {"error": "Profile not found"}
-    
-    try:
-        import asyncio
-        asyncio.ensure_future(api_start_scan(profile_id=profile, request=request))
-        return {"status": 200, "data": "Scan started successfully you can check the report page for live updates."}
-    except Exception as e :
-        return {"error": str(e)[:200]}
-    
-    """ try:
-        exit = api_start_scan(profile_id=profile, request=request)
-        
-
-
-
-        if exit.status_code == 200:
-            data = json.loads(exit.content.decode())
-            return {"status": 200, "data": {"report_id": data.get("report_id")}}
-        else:
-            return {"error": f"Failed to start OSINT scan: {exit.content.decode()[:200]}"}
-    except Exception as e:
-        return {"error": str(e)[:200]}"""
+    rid = _create(profile_id=args["profile_id"], name="OSINT via Ely")
+    def _run():
+        from greyteam.osint_scanner import OSINTDomainScanner
+        domain = profile.get("target_domain", "")
+        categories = profile.get("categories", "[]")
+        if isinstance(categories, str):
+            try: categories = _json.loads(categories)
+            except: categories = []
+        try:
+            scanner = OSINTDomainScanner(domain=domain, modules=categories)
+            findings = scanner.run_all()
+            for f in findings:
+                add_finding(report_id=rid, title=f.get("title",""), severity=f.get("severity","medium"),
+                    category=f.get("category",""), description=f.get("description",""),
+                    evidence=f.get("evidence",""), remediation=f.get("remediation",""),
+                    cwe_id=f.get("cwe_id",""), source="deterministic", finding_type=f.get("finding_type","osint"))
+            update_report(rid, status="completed")
+        except Exception:
+            update_report(rid, status="failed")
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": 200, "data": {"report_id": rid}}
 
 
 @_action("ely_blueteam_analyze", "Launch a Blue Team security analysis on an API spec",
