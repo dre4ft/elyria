@@ -28,10 +28,27 @@ class UploadReq(BaseModel):
     team_id: str = ""
 
 @app.post("/openapi")
-async def upload(request : Request, target_url: str="http://localhost:9000", team_id: str = "", inputs_values: str = "", openapi_url: str = "", file: UploadFile = File(...), openapi_file: UploadFile = None):
+async def upload(request : Request, target_url: str="http://localhost:9000", team_id: str = "", inputs_values: str = "", openapi_url: str = "", file: UploadFile = None, openapi_file: UploadFile = None):
     user_id = request.state.token
-    file_type = _validate_file(file)
-    try:
+
+    # If no file but a URL is provided, fetch it
+    if file is None and openapi_url:
+        from core.security import validate_url_or_raise
+        validate_url_or_raise(openapi_url)
+        import requests as req
+        r = req.get(openapi_url, timeout=15)
+        if r.status_code != 200:
+            return JSONResponse(status_code=400, content={"detail": f"Failed to fetch URL: {r.status_code}"})
+        content = r.text
+        content_type = r.headers.get('content-type', '')
+        is_yaml = 'yaml' in content_type or openapi_url.endswith('.yaml') or openapi_url.endswith('.yml')
+        try:
+            content_as_dict = json.loads(content) if not is_yaml else safe_load(content)
+        except Exception:
+            from yaml import safe_load as _sl
+            content_as_dict = _sl(content)
+    elif file is not None:
+        file_type = _validate_file(file)
         content = file.file.read()
         if file_type == "json":
             content_as_dict = json.loads(content)
@@ -39,7 +56,10 @@ async def upload(request : Request, target_url: str="http://localhost:9000", tea
             content_as_dict = safe_load(content)
         else:
             return JSONResponse(status_code=400, content={"detail": "invalid file format"})
+    else:
+        return JSONResponse(status_code=400, content={"detail": "No file or URL provided"})
 
+    try:
         # Route to OpenAPI parser
         if openapi_parser.validate_wrapper(content_as_dict):
             result = openapi_parser.import_to_db(

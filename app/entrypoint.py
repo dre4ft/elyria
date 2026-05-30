@@ -94,7 +94,6 @@ async def check_authorization(request: Request, call_next):
     # can load auth.js — client-side auth handles the rest.
     PUBLIC_ROUTES = {
         "/", "/login", "/app", "/workflow", "/pentest", "/greyteam", "/hub", "/doc", "/blueteam", "/m", "/gate",
-        "/enterprise", "/pricing", "/edu", "/legal", "/privacy", "/terms", "/license",
         "/api/user/login", "/api/user/create", "/api/user/refresh",
         "/api/user/verify-email", "/api/user/resend-code",
         "/api/user/reset-password", "/api/user/reset-password/confirm",
@@ -254,11 +253,11 @@ async def serve_legal():
 
 @app.get("/privacy")
 async def serve_privacy():
-    return _serve_enterprise("legal.html")  # reuse legal page (contains privacy section)
+    return _serve_enterprise("privacy.html")
 
 @app.get("/terms")
 async def serve_terms():
-    return _serve_enterprise("legal.html")  # reuse legal page (contains terms references)
+    return _serve_enterprise("terms.html")
 
 @app.get("/license")
 async def serve_license():
