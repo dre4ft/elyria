@@ -8,6 +8,7 @@ running scans, viewing findings, and generating reports.
 
 import asyncio
 import threading
+import time
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from redteam.scan_events import publish, heartbeat, cleanup

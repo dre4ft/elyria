@@ -451,7 +451,7 @@ function addHeaderRow(key = '', value = '', enabled = true) {
     <button class="btn-toggle-header ${enabled ? 'enabled' : 'disabled'}" title="Activer/Désactiver">
       <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
     </button>
-    <input type="text" placeholder="Header name" value="${escapeHtml(key)}" class="flex-1" />
+    <input type="text" placeholder="Header name" value="${escapeHtml(key)}" class="flex-1" list="header-suggestions" autocomplete="off" />
     <input type="text" placeholder="Value" value="${escapeHtml(value)}" class="flex-[2]" />
     <button class="btn-remove-header" title="Supprimer">
       <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -1703,6 +1703,11 @@ function setupDocModal() {
     if (file) setDocFile(file);
   });
 
+  // URL input: enable button when a URL is provided
+  dom.docTargetServer.addEventListener('input', () => {
+    dom.btnDocModalUpload.disabled = !dom.docTargetServer.value.trim() && !selectedDocFile;
+  });
+
   // Drag & drop
   dom.docDropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -1771,11 +1776,16 @@ function setDocFile(file) {
   dom.docFileSize.textContent = formatFileSize(file.size);
   dom.docMsg.classList.add('hidden');
   dom.btnDocModalUpload.disabled = false;
+  // If URL field is empty, prefill with a default
+  if (!dom.docTargetServer.value.trim()) {
+    dom.docTargetServer.value = 'http://localhost:9000';
+  }
   dom.docDropZone.classList.add('border-violet-500/30');
 }
 
 async function uploadDocument() {
-  if (!selectedDocFile) return;
+  const specUrl = (dom.docTargetServer && dom.docTargetServer.value.trim()) || '';
+  if (!selectedDocFile && !specUrl) return;
 
   dom.btnDocModalUpload.disabled = true;
   dom.btnDocModalUpload.innerHTML = `
@@ -1784,16 +1794,25 @@ async function uploadDocument() {
   `;
 
   try {
-    const targetUrl = (dom.docTargetServer && dom.docTargetServer.value.trim()) || 'http://localhost:9000';
-    const formData = new FormData();
-    formData.append('file', selectedDocFile);
-
-    const qs = `?target_url=${encodeURIComponent(targetUrl)}`;
-    const res = await fetch(API.uploadOpenAPI + qs, {
-      method: 'POST',
-      headers: { ...getAuthHeader() },
-      body: formData,
-    });
+    const targetUrl = specUrl || 'http://localhost:9000';
+    let res;
+    if (selectedDocFile) {
+      const formData = new FormData();
+      formData.append('file', selectedDocFile);
+      const qs = `?target_url=${encodeURIComponent(targetUrl)}`;
+      res = await fetch(API.uploadOpenAPI + qs, {
+        method: 'POST',
+        headers: { ...getAuthHeader() },
+        body: formData,
+      });
+    } else {
+      // Backend fetches the spec from URL directly
+      res = await fetch(API.uploadOpenAPI + `?openapi_url=${encodeURIComponent(specUrl)}&target_url=${encodeURIComponent(targetUrl)}`, {
+        method: 'POST',
+        headers: { ...getAuthHeader() },
+        body: new FormData(),
+      });
+    }
 
     if (res.ok) {
       const data = await res.json();
@@ -2156,7 +2175,6 @@ function setupJsonEditors() {
         var jwtInput = document.getElementById('jwt-input');
         var encHeader = document.getElementById('jwt-enc-header');
         var encPayload = document.getElementById('jwt-enc-payload');
-        if (jwtInput && !jwtInput._jsonEditorWrapped) ElyriaUI.createJsonEditor(jwtInput, { minHeight: 80 });
         if (encHeader && !encHeader._jsonEditorWrapped) ElyriaUI.createJsonEditor(encHeader, { minHeight: 60 });
         if (encPayload && !encPayload._jsonEditorWrapped) ElyriaUI.createJsonEditor(encPayload, { minHeight: 80 });
         jwtWrapped = true;

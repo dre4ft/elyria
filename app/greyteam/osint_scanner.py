@@ -401,13 +401,13 @@ def _collect_ssl(domain: str) -> list[dict]:
     ftype = "ssl"
     cert_text = ""
 
-    # Try openssl s_client for detailed cert info
+    # Try openssl s_client for detailed cert info (merge stdout+stderr)
     stdout, stderr, rc = _run([
         "openssl", "s_client", "-connect", f"{domain}:443",
         "-servername", domain, "-showcerts",
     ], timeout=15)
-    if rc == 0 and stdout:
-        cert_text = stdout
+    if rc == 0 and (stdout or stderr):
+        cert_text = stdout + stderr
     else:
         # Fallback: Python ssl module
         try:
@@ -451,10 +451,10 @@ def _collect_ssl(domain: str) -> list[dict]:
                 os.unlink(temp_path)
 
         # Parse key fields from cert text
-        issuer = re.search(r'(?:issuer|Issuer)\s*[=:]\s*(.+?)(?:\n|$)', cert_text, re.IGNORECASE)
-        subject = re.search(r'(?:subject|Subject)\s*[=:]\s*(.+?)(?:\n|$)', cert_text, re.IGNORECASE)
-        not_before = re.search(r'(?:notBefore|Not Before)\s*[=:]\s*(.+?)(?:\n|$)', cert_text, re.IGNORECASE)
-        not_after = re.search(r'(?:notAfter|Not After)\s*[=:]\s*(.+?)(?:\n|$)', cert_text, re.IGNORECASE)
+        issuer = re.search(r'(?:issuer|Issuer)\s*[=:]\s*(.+)', cert_text, re.IGNORECASE)
+        subject = re.search(r'(?:subject|Subject)\s*[=:]\s*(.+)', cert_text, re.IGNORECASE)
+        not_before = re.search(r'(?:notBefore|Not Before)\s*[=:]\s*(.+)', cert_text, re.IGNORECASE)
+        not_after = re.search(r'(?:notAfter|Not After)\s*[=:]\s*(.+)', cert_text, re.IGNORECASE)
         sans = re.findall(r'DNS:([\w.\-*]+)', cert_text)
 
         # SANs are highly valuable for subdomain enum
@@ -474,7 +474,10 @@ def _collect_ssl(domain: str) -> list[dict]:
         # Expiry
         if not_after:
             exp_str = not_after.group(1).strip()
-            for fmt in ["%b %d %H:%M:%S %Y %Z", "%b  %d %H:%M:%S %Y %Z", "%Y-%m-%d %H:%M:%S"]:
+            # strip leading dot+whitespace (common in x509 output indentation)
+            exp_str = re.sub(r'^\.\s*', '', exp_str)
+            for fmt in ["%b %d %H:%M:%S %Y %Z", "%b  %d %H:%M:%S %Y %Z", "%Y-%m-%d %H:%M:%S",
+                        "%b %d %H:%M:%S %Y", "%b  %d %H:%M:%S %Y"]:
                 try:
                     exp_date = datetime.strptime(exp_str, fmt)
                     days = (exp_date - datetime.now()).days
@@ -493,7 +496,7 @@ def _collect_ssl(domain: str) -> list[dict]:
                 except ValueError:
                     continue
 
-        issuer_str = issuer.group(1).strip() if issuer else "unknown"
+        issuer_str = re.sub(r'^\s*\.?\s*', '', issuer.group(1).strip()) if issuer else "unknown"
         findings.append({
             "title": f"SSL Certificate issued by: {issuer_str[:80]}",
             "severity": "info", "category": "SSL/TLS",
@@ -954,10 +957,25 @@ def _collect_tech_fingerprint(domain: str) -> list[dict]:
         resp_headers = _http_get_headers(f"http://{domain}", timeout=10)
     resp_headers = resp_headers or {}
 
-    if html is None and not resp_headers:
-        return findings
-
     detected = []
+
+    # ── nmap service detection ──
+    nmap_out, _, nmap_rc = _run([
+        "nmap", "-sV", "--top-ports", "20", "--open", "-T4", domain,
+    ], timeout=60)
+    if nmap_rc == 0 and nmap_out:
+        for line in nmap_out.split("\n"):
+            # Parse lines like: "80/tcp   open  http    nginx 1.18.0"
+            m = re.match(r'(\d+/tcp)\s+open\s+(\S+)\s+(.+)', line)
+            if m:
+                port = m.group(1)
+                service = m.group(2)
+                version = m.group(3).strip()
+                label = f"{service}/{port}" if version == service else f"{service}/{port}: {version}"
+                detected.append((f"nmap: {label}", version))
+
+    if html is None and not resp_headers and not detected:
+        return findings
 
     # ── Header-based detection ──
     h = {k.lower(): v for k, v in resp_headers.items()}
@@ -1018,6 +1036,25 @@ def _collect_tech_fingerprint(domain: str) -> list[dict]:
                 "cwe_id": "CWE-200", "source": "deterministic",
             })
         return findings
+
+    # ── Frontend build tooling from HTML comments & source maps ──
+    build_tools = {
+        "Vite": r'(?:vite|@vite)\s*\(|/assets/.*?\.[a-f0-9]{8,}\.|type=["\']module["\'].*?src=["\']/assets/',
+        "Webpack": r'webpack(?:Jsonp|Bootstrap|Chunk)|/js/bundle\.[a-f0-9]{8,}\.js|webpack-dev-server',
+        "esbuild": r'esbuild|/esbuild/',
+        "Parcel": r'/dist/.*?\.[a-f0-9]{8,}\.|parcelRequire',
+        "Rollup": r'rollup',
+        "Gulp": r'gulp',
+        "Grunt": r'grunt',
+    }
+    for tool, pattern in build_tools.items():
+        if re.search(pattern, html, re.IGNORECASE):
+            detected.append((f"Build tool: {tool}", ""))
+
+    # Source map references
+    sm = re.search(r'sourceMappingURL=([^\s"\']+)', html, re.IGNORECASE)
+    if sm:
+        detected.append(("Source Map", sm.group(1)[:80]))
 
     # ── Meta generator ──
     gen = re.search(r'<meta[^>]+name=["\']generator["\'][^>]+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
