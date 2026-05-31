@@ -57,7 +57,18 @@
     try { sessionStorage.setItem(_slotKey, s); } catch(e) {}
   }
 
-  var state = { slot: _loadSlot(), messages: _loadHistory(), page: _detectPage(), _context: {} };
+  var state = {
+    slot: _loadSlot(),
+    messages: _loadHistory(),
+    page: _detectPage(),
+    _context: {},
+    _diaryView: sessionStorage.getItem('elyria-ely-diaryview') === '1',
+    _diaryEntries: [],
+    _diaryTotal: 0,
+    _diaryOffset: 0,
+    _diarySearchQuery: '',
+    _diaryTagFilter: '',
+  };
 
   function _detectPage() {
     var p = window.location.pathname.replace(/\/$/, '');
@@ -97,9 +108,7 @@
     // Header
     + '<div class="h-12 px-4 border-b border-white/5 flex items-center justify-between shrink-0">'
     + '<div class="flex items-center gap-3">'
-    + '<div class="w-6 h-6 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">'
-    + '<svg class="w-3.5 h-3.5 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>'
-    + '</div>'
+    + '<svg class="w-7 h-7 text-primary-light shrink-0 mt-0.5" viewBox="0 0 400 400" fill="currentColor"><ellipse stroke="currentColor" stroke-width="18" ry="72" rx="48" cy="195" cx="200"/><ellipse stroke="currentColor" stroke-width="16" ry="29" rx="36" cy="125" cx="200"/><circle class="ely-eye" r="10" cy="122" cx="175"/><circle class="ely-eye" r="10" cy="122" cx="225"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M150 165 L85 70 L65 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M145 185 L75 130 L55 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M145 220 L80 235 L65 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M155 245 L95 285 L105 335"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M250 165 L315 70 L335 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M255 185 L325 130 L345 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M255 220 L320 235 L335 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M245 245 L305 285 L295 335"/></svg>'
     + '<span class="text-xs font-semibold text-white">ELY Copilot</span>'
     // Model toggle
     + '<div class="flex items-center rounded-lg bg-base-700 border border-white/5 overflow-hidden">'
@@ -108,6 +117,10 @@
     + '</div>'
     + '</div>'
     + '<div class="flex items-center gap-2">'
+    + '<button id="ely-copilot-diary" class="h-7 px-2.5 rounded-lg bg-base-700 hover:bg-cyan-500/10 border border-white/5 hover:border-cyan-500/30 text-[10px] font-medium text-gray-500 hover:text-cyan-400 transition-all flex items-center gap-1" title="Ely Diary">'
+    + '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+    + 'Diary'
+    + '</button>'
     + '<button id="ely-copilot-clear" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors" title="Nouvelle conversation">'
     + '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>'
     + '</button>'
@@ -119,9 +132,7 @@
     // Messages
     + '<div id="ely-copilot-messages" class="flex-1 overflow-y-auto p-3 space-y-4 scrollbar-thin">'
     + '<div class="flex gap-3">'
-    + '<div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">'
-    + '<svg class="w-3.5 h-3.5 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>'
-    + '</div>'
+    + '<svg class="w-7 h-7 text-primary-light shrink-0 mt-0.5" viewBox="0 0 400 400" fill="currentColor"><ellipse stroke="currentColor" stroke-width="18" ry="72" rx="48" cy="195" cx="200"/><ellipse stroke="currentColor" stroke-width="16" ry="29" rx="36" cy="125" cx="200"/><circle class="ely-eye" r="10" cy="122" cx="175"/><circle class="ely-eye" r="10" cy="122" cx="225"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M150 165 L85 70 L65 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M145 185 L75 130 L55 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M145 220 L80 235 L65 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M155 245 L95 285 L105 335"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M250 165 L315 70 L335 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M255 185 L325 130 L345 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M255 220 L320 235 L335 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M245 245 L305 285 L295 335"/></svg>'
     + '<div class="bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed" style="max-width:90%">Bonjour ! Je suis Ely, votre assistant IA contextuel. Je connais la page sur laquelle vous etes et je peux vous aider a utiliser Elyria. Tapez <b>/</b> pour voir les commandes disponibles.</div>'
     + '</div>'
     + '</div>'
@@ -131,6 +142,42 @@
     + '<textarea id="ely-copilot-input" rows="1" placeholder="Posez une question ou tapez / pour les commandes…" class="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-base-900/60 border border-white/8 text-xs text-gray-300 placeholder-gray-600 resize-none focus:outline-none focus:border-primary/40 transition-all scrollbar-thin"></textarea>'
     + '<button id="ely-copilot-send" class="absolute right-1.5 top-1.5 w-7 h-7 rounded-lg bg-primary hover:bg-primary-light text-white flex items-center justify-center transition-all active:scale-90">'
     + '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>'
+    + '</button>'
+    + '</div>'
+    + '</div>'
+        // Diary view (hidden by default, replaces messages + input when active)
+    + '<div id="ely-copilot-diary-view" class="hidden flex-1 flex flex-col overflow-hidden">'
+    + '<div class="px-3 py-2 border-b border-white/5 shrink-0">'
+    + '<div class="relative">'
+    + '<svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>'
+    + '<input id="diary-search" type="text" placeholder="Rechercher dans le diary..." class="w-full h-7 pl-7 pr-3 rounded-md bg-base-900/60 border border-white/5 text-[11px] text-gray-300 placeholder-gray-600 focus:outline-none focus:border-cyan-500/40 transition-all">'
+    + '</div>'
+    + '<div class="flex gap-1 mt-1.5 flex-wrap">'
+    + '<button data-dtag="" class="diary-theme-filter h-5 px-2 rounded text-[9px] font-semibold bg-cyan-500/15 text-cyan-400 border border-cyan-500/20 transition-all">Tous</button>'
+    + '<button data-dtag="requêtes" class="diary-theme-filter h-5 px-2 rounded text-[9px] font-medium text-gray-500 hover:text-gray-300 border border-transparent hover:border-white/10 transition-all">Requetes</button>'
+    + '<button data-dtag="scan" class="diary-theme-filter h-5 px-2 rounded text-[9px] font-medium text-gray-500 hover:text-gray-300 border border-transparent hover:border-white/10 transition-all">Scans</button>'
+    + '<button data-dtag="osint" class="diary-theme-filter h-5 px-2 rounded text-[9px] font-medium text-gray-500 hover:text-gray-300 border border-transparent hover:border-white/10 transition-all">OSINT</button>'
+    + '<button data-dtag="audit" class="diary-theme-filter h-5 px-2 rounded text-[9px] font-medium text-gray-500 hover:text-gray-300 border border-transparent hover:border-white/10 transition-all">Audit</button>'
+    + '<button data-dtag="workflow" class="diary-theme-filter h-5 px-2 rounded text-[9px] font-medium text-gray-500 hover:text-gray-300 border border-transparent hover:border-white/10 transition-all">Workflows</button>'
+    + '<button data-dtag="notes" class="diary-theme-filter h-5 px-2 rounded text-[9px] font-medium text-gray-500 hover:text-gray-300 border border-transparent hover:border-white/10 transition-all">Notes</button>'
+    + '</div>'
+    + '</div>'
+    + '<div id="diary-entries-list" class="flex-1 overflow-y-auto p-3 scrollbar-thin">'
+    + '<div id="diary-empty-state" class="flex flex-col items-center justify-center h-full text-center px-6">'
+    + '<div class="w-12 h-12 rounded-2xl bg-base-700/50 flex items-center justify-center mb-3">'
+    + '<svg class="w-6 h-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+    + '</div>'
+    + '<p class="text-xs text-gray-600">Aucune entree dans le diary.<br/>Les entrees seront creees automatiquement.</p>'
+    + '</div>'
+    + '<div id="diary-entries-scroll" class="space-y-2"></div>'
+    + '</div>'
+    + '<div class="px-3 py-2 border-t border-white/5 shrink-0 flex gap-2">'
+    + '<button id="diary-add-entry" class="flex-1 h-7 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 hover:border-cyan-500/40 text-[10px] font-medium text-cyan-400 transition-all flex items-center justify-center gap-1">'
+    + '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>'
+    + 'Nouvelle entree'
+    + '</button>'
+    + '<button id="diary-refresh" class="h-7 w-7 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-all" title="Actualiser">'
+    + '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>'
     + '</button>'
     + '</div>'
     + '</div>'
@@ -188,6 +235,9 @@
         + '.ely-tool-badge{font-size:10px;padding:2px 7px;border-radius:5px;font-family:"JetBrains Mono",monospace;}'
         + '.ely-tool-ok{background:rgba(34,197,94,.1);color:#4ade80;border:1px solid rgba(34,197,94,.15);}'
         + '.ely-tool-err{background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.15);}';
+        + '.diary-entry .line-clamp-2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}'
+        + '.ely-eye{fill:#06b6d4;}'
+        + '[data-theme="dark"] .ely-eye{fill:#7c3aed;}';
       document.head.appendChild(style);
     }
 
@@ -241,9 +291,7 @@
     if (!msgs.length) {
       // Show default greeting
       container.innerHTML = '<div class="flex gap-3">'
-        + '<div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">'
-        + '<svg class="w-3.5 h-3.5 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>'
-        + '</div>'
+        + '<svg class="w-7 h-7 text-primary-light shrink-0 mt-0.5" viewBox="0 0 400 400" fill="currentColor"><ellipse stroke="currentColor" stroke-width="18" ry="72" rx="48" cy="195" cx="200"/><ellipse stroke="currentColor" stroke-width="16" ry="29" rx="36" cy="125" cx="200"/><circle class="ely-eye" r="10" cy="122" cx="175"/><circle class="ely-eye" r="10" cy="122" cx="225"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M150 165 L85 70 L65 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M145 185 L75 130 L55 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M145 220 L80 235 L65 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M155 245 L95 285 L105 335"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M250 165 L315 70 L335 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M255 185 L325 130 L345 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M255 220 L320 235 L335 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M245 245 L305 285 L295 335"/></svg>'
         + '<div class="bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed" style="max-width:90%">Bonjour ! Je suis Ely, votre assistant IA contextuel. Tapez <b>/</b> pour voir les commandes disponibles.</div>'
         + '</div>';
       return;
@@ -295,6 +343,72 @@
       pro.className = 'h-6 px-2.5 text-[10px] font-semibold transition-all bg-purple-500/15 text-purple-400';
       flash.className = 'h-6 px-2.5 text-[10px] font-semibold transition-all text-gray-500 hover:text-gray-300';
     });
+
+    // ── Diary toggle ──
+    var diaryBtn = document.getElementById('ely-copilot-diary');
+    var diaryView = document.getElementById('ely-copilot-diary-view');
+    var inputWrapper = null;
+    if (input && input.closest) inputWrapper = input.closest('.px-4.py-3');
+
+    if (diaryBtn) {
+      if (state._diaryView) {
+        setTimeout(function () {
+          messages.classList.add('hidden');
+          if (inputWrapper) inputWrapper.classList.add('hidden');
+          diaryView.classList.remove('hidden');
+          diaryView.classList.add('flex');
+          diaryBtn.className = 'h-7 px-2.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-[10px] font-medium text-cyan-400 transition-all flex items-center gap-1';
+          _loadDiaryEntries();
+        }, 50);
+      }
+      diaryBtn.addEventListener('click', function () {
+        state._diaryView = !state._diaryView;
+        sessionStorage.setItem('elyria-ely-diaryview', state._diaryView ? '1' : '0');
+        if (state._diaryView) {
+          messages.classList.add('hidden');
+          if (inputWrapper) inputWrapper.classList.add('hidden');
+          diaryView.classList.remove('hidden');
+          diaryView.classList.add('flex');
+          diaryBtn.className = 'h-7 px-2.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-[10px] font-medium text-cyan-400 transition-all flex items-center gap-1';
+          _loadDiaryEntries();
+        } else {
+          diaryView.classList.add('hidden');
+          diaryView.classList.remove('flex');
+          messages.classList.remove('hidden');
+          if (inputWrapper) inputWrapper.classList.remove('hidden');
+          diaryBtn.className = 'h-7 px-2.5 rounded-lg bg-base-700 hover:bg-cyan-500/10 border border-white/5 hover:border-cyan-500/30 text-[10px] font-medium text-gray-500 hover:text-cyan-400 transition-all flex items-center gap-1';
+        }
+      });
+    }
+
+    // ── Diary theme filter buttons ──
+    var diaryFilterBtns = document.querySelectorAll('.diary-theme-filter');
+    var DIARY_FILTER_GRAY = 'h-5 px-2 rounded text-[9px] font-medium text-gray-500 border border-transparent transition-all';
+    var DIARY_FILTER_CYAN = 'h-5 px-2 rounded text-[9px] font-semibold bg-cyan-500/15 text-cyan-400 border border-cyan-500/20 transition-all';
+    diaryFilterBtns.forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        var clicked = e.currentTarget;
+        state._diaryTagFilter = clicked.dataset.dtag;
+        diaryFilterBtns.forEach(function (b) { b.className = DIARY_FILTER_GRAY; });
+        clicked.className = DIARY_FILTER_CYAN;
+        _loadDiaryEntries();
+      });
+    });
+
+    // ── Diary search ──
+    var diarySearch = document.getElementById('diary-search');
+    if (diarySearch) {
+      diarySearch.addEventListener('input', function () {
+        state._diarySearchQuery = this.value;
+        _loadDiaryEntries();
+      });
+    }
+
+    // ── Diary add/refresh ──
+    var diaryAdd = document.getElementById('diary-add-entry');
+    if (diaryAdd) diaryAdd.addEventListener('click', function () { _createDiarySnapshot(); });
+    var diaryRefresh = document.getElementById('diary-refresh');
+    if (diaryRefresh) diaryRefresh.addEventListener('click', function () { _loadDiaryEntries(true); });
 
     send.addEventListener('click', _send);
     input.addEventListener('keydown', function (e) {
@@ -444,15 +558,183 @@
     } else {
       var isHtml = content.indexOf('<') === 0;
       var body = isHtml ? content : _renderMarkdown(content);
-      div.innerHTML = '<div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">'
-        + '<svg class="w-3.5 h-3.5 text-primary-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>'
-        + '</div>'
+      div.innerHTML = '<svg class="w-7 h-7 text-primary-light shrink-0 mt-0.5" viewBox="0 0 400 400" fill="currentColor"><ellipse stroke="currentColor" stroke-width="18" ry="72" rx="48" cy="195" cx="200"/><ellipse stroke="currentColor" stroke-width="16" ry="29" rx="36" cy="125" cx="200"/><circle class="ely-eye" r="10" cy="122" cx="175"/><circle class="ely-eye" r="10" cy="122" cx="225"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M150 165 L85 70 L65 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M145 185 L75 130 L55 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M145 220 L80 235 L65 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M155 245 L95 285 L105 335"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M250 165 L315 70 L335 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M255 185 L325 130 L345 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M255 220 L320 235 L335 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M245 245 L305 285 L295 335"/></svg>'
         + '<div class="ely-msg-body bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed" style="max-width:90%">' + body + '</div>';
     }
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
     return div;
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Diary helpers
+  // ═══════════════════════════════════════════════════════════════
+
+  var _lastDiaryFilter = '';
+  var _lastDiarySearch = '';
+
+  function _loadDiaryEntries(forceRefresh) {
+    var filterChanged = state._diaryTagFilter !== _lastDiaryFilter;
+    var searchChanged = state._diarySearchQuery !== _lastDiarySearch;
+    if (!forceRefresh && !filterChanged && !searchChanged && state._diaryEntries.length > 0) return;
+    _lastDiaryFilter = state._diaryTagFilter;
+    _lastDiarySearch = state._diarySearchQuery;
+
+    var token = (typeof getToken === 'function') ? getToken() : (sessionStorage.getItem('elyria_token') || '');
+    var url;
+    if (state._diarySearchQuery) {
+      url = '/api/ely/diary/search?q=' + encodeURIComponent(state._diarySearchQuery) + '&limit=50';
+    } else {
+      url = '/api/ely/diary?limit=100&offset=' + state._diaryOffset;
+      if (state._diaryTagFilter) url += '&tag=' + encodeURIComponent(state._diaryTagFilter);
+    }
+    fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      state._diaryEntries = data.items || [];
+      state._diaryTotal = data.total || 0;
+      _renderDiaryEntries();
+    })
+    .catch(function () {});
+  }
+
+  function _renderDiaryEntries() {
+    var scroll = document.getElementById('diary-entries-scroll');
+    var empty = document.getElementById('diary-empty-state');
+    if (!scroll) return;
+    scroll.innerHTML = '';
+    if (state._diaryEntries.length === 0) {
+      if (empty) empty.classList.remove('hidden');
+      return;
+    }
+    if (empty) empty.classList.add('hidden');
+
+    var token = (typeof getToken === 'function') ? getToken() : (sessionStorage.getItem('elyria_token') || '');
+
+    state._diaryEntries.forEach(function (entry) {
+      var date = (entry.created_at || '').substring(0, 19).replace('T', ' ');
+      var preview = (entry.content || '').replace(/[#*`\n]/g, ' ').substring(0, 150);
+      var tags = [];
+      try { tags = JSON.parse(entry.tags || '[]'); } catch (e) {}
+      var tagHtml = tags.map(function (t) {
+        return '<span class="px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-[8px] text-cyan-400 font-medium">' + _esc(t) + '</span>';
+      }).join('');
+
+      var entryEl = document.createElement('div');
+      entryEl.className = 'diary-entry rounded-lg bg-base-700/30 border border-white/5 hover:border-cyan-500/20 transition-all overflow-hidden cursor-pointer';
+      entryEl.dataset.did = entry.diary_id;
+      entryEl.dataset.content = entry.content || '';
+      entryEl.innerHTML = '<div class="p-3">'
+        + '<div class="flex items-start justify-between gap-2">'
+        + '<div class="min-w-0 flex-1">'
+        + '<div class="text-xs font-semibold text-gray-200 truncate">' + _esc(entry.title || 'Sans titre') + '</div>'
+        + '<div class="text-[10px] text-gray-500 mt-0.5">' + _esc(date) + ' \u00b7 ' + _esc(entry.page || '') + '</div>'
+        + '</div>'
+        + '<div class="flex gap-1 shrink-0 flex-wrap justify-end">' + tagHtml + '</div>'
+        + '</div>'
+        + '<div class="mt-2 text-[11px] text-gray-400 line-clamp-2 leading-relaxed">' + _esc(preview) + '</div>'
+        + '</div>'
+        + '<div class="diary-entry-expanded hidden p-3 pt-0 border-t border-white/5">'
+        + '<div class="ely-msg-body text-xs text-gray-300 leading-relaxed">' + _renderMarkdown(entry.content || '') + '</div>'
+        + '<div class="flex gap-2 mt-3 pt-2 border-t border-white/5">'
+        + '<button class="diary-copy-btn h-6 px-2 rounded bg-base-700 hover:bg-white/5 text-[9px] text-gray-500 hover:text-gray-300 transition-all">Copier</button>'
+        + '<button class="diary-del-btn h-6 px-2 rounded bg-red-500/10 hover:bg-red-500/20 text-[9px] text-red-400 transition-all">Supprimer</button>'
+        + '</div>'
+        + '</div>';
+
+      entryEl.addEventListener('click', function (e) {
+        if (e.target.closest('.diary-del-btn') || e.target.closest('.diary-copy-btn')) return;
+        this.querySelector('.diary-entry-expanded').classList.toggle('hidden');
+      });
+
+      entryEl.querySelector('.diary-del-btn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (!confirm('Supprimer cette entree du diary ?')) return;
+        var did = entryEl.dataset.did;
+        fetch('/api/ely/diary/' + encodeURIComponent(did), {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + token }
+        }).then(function (r) {
+          if (r.ok) {
+            entryEl.remove();
+            state._diaryEntries = state._diaryEntries.filter(function (e) { return e.diary_id !== did; });
+            state._diaryTotal--;
+            if (state._diaryEntries.length === 0) _renderDiaryEntries();
+          }
+        });
+      });
+
+      entryEl.querySelector('.diary-copy-btn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        navigator.clipboard.writeText(entryEl.dataset.content || '').catch(function () {});
+      });
+
+      scroll.appendChild(entryEl);
+    });
+  }
+
+  function _createDiarySnapshot() {
+    var token = (typeof getToken === 'function') ? getToken() : (sessionStorage.getItem('elyria_token') || '');
+    var ctx = Object.assign({ url: window.location.href }, state._context || {});
+    fetch('/api/ely/diary/snapshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({
+        page: state.page,
+        url: ctx.url,
+        method: ctx.method || '',
+        status_code: ctx.status_code || 0,
+        response_preview: ctx.response_preview || '',
+      }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.diary_id) {
+        state._diaryEntries.unshift({
+          diary_id: data.diary_id,
+          title: data.title,
+          content: 'Prise de snapshot automatique.',
+          created_at: new Date().toISOString(),
+          page: state.page,
+          tags: '["auto-snapshot"]',
+        });
+        state._diaryTotal++;
+        _renderDiaryEntries();
+      }
+    })
+    .catch(function () {});
+  }
+
+  // ── Periodic diary snapshots ──
+  var _diaryInterval = null;
+  var _lastDiarySnapshot = 0;
+  var DIARY_INTERVAL_MS = 3 * 60 * 1000;
+
+  function _maybeTakeDiarySnapshot() {
+    var now = Date.now();
+    if (now - _lastDiarySnapshot < DIARY_INTERVAL_MS) return;
+    var ctx = state._context || {};
+    if (!ctx.url && !ctx.method) return;
+    _lastDiarySnapshot = now;
+    _createDiarySnapshot();
+  }
+
+  _diaryInterval = setInterval(_maybeTakeDiarySnapshot, DIARY_INTERVAL_MS);
+
+  window.addEventListener('beforeunload', function () {
+    if (_diaryInterval) clearInterval(_diaryInterval);
+  });
+
+  function _tryHookRequestWatcher() {
+    if (typeof onRequestComplete !== 'function') { setTimeout(_tryHookRequestWatcher, 500); return; }
+    onRequestComplete(function () {
+      var now = Date.now();
+      if (now - _lastDiarySnapshot < 60 * 1000) return;
+      _lastDiarySnapshot = now;
+      setTimeout(_createDiarySnapshot, 100);
+    });
+  }
+  setTimeout(_tryHookRequestWatcher, 200);
 
   // ── Init ──
   if (document.readyState === 'loading') {

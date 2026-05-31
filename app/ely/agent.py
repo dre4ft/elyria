@@ -90,6 +90,14 @@ def build_system_prompt(page, context_snapshot=None):
         parts.append(f"\nDonnees actuelles de la page :\n{json.dumps(context_snapshot, indent=2, default=str)[:2000]}")
     if page in ("app","pentest", "greyteam", "blueteam"):
         parts.append(BASH_TOOL_ADD)
+    # Diary awareness
+    diary_context = (context_snapshot or {}).get("recent_diary", [])
+    if diary_context:
+        parts.append(
+            "\nNote: L'utilisateur a un journal de bord (Diary). "
+            "Tu peux consulter ses entrees recentes avec ely_diary_list ou ely_diary_query "
+            "pour comprendre le contexte de ses actions passees."
+        )
     return "\n\n".join(parts)
 
 
@@ -317,4 +325,17 @@ def get_context_for_page(page, request):
                 "target": report.get("target_path", ""),
                 "status": report.get("status", ""),
             }
+
+    # ── Recent diary entries as context ──
+    try:
+        from ely.diary_database import diary_list
+        recent = diary_list(user_id, limit=5)
+        if recent:
+            context["recent_diary"] = [
+                {"title": e["title"], "diary_id": e["diary_id"], "date": e["created_at"], "page": e["page"]}
+                for e in recent
+            ]
+    except Exception:
+        pass
+
     return context

@@ -21,6 +21,7 @@ from database.teams_api import app as teams_router
 from ai_core.ai_config_api import app as ai_config_router
 from auth_users.oidc_api import app as oidc_router
 from ely.api import app as ely_router
+from ely.api import diary_app as ely_diary_router
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -294,6 +295,7 @@ app.include_router(teams_router)
 app.include_router(ai_config_router)
 app.include_router(oidc_router)
 app.include_router(ely_router)
+app.include_router(ely_diary_router)
 
 if __name__ == "__main__":
     import os
@@ -336,7 +338,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "entrypoint:app",
         host=get("server", "host", "127.0.0.1"),
-        port=get_int("server", "port", 8000),
+        port=get_int("server", "port", 8001),
         reload=get_bool("server", "reload", False),
         **ssl_kwargs,
         reload_dirs=["app/"],

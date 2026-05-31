@@ -120,7 +120,9 @@
       + '[data-theme="light"] .elyria-theme-toggle-track{background:#cbd5e1;}'
       + '.elyria-theme-toggle-thumb{width:18px;height:18px;border-radius:50%;background:#fff;transform:translateX(0);transition:transform .3s cubic-bezier(.4,0,.2,1);display:flex;align-items:center;justify-content:center;font-size:10px;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,.25);}'
       + '[data-theme="light"] .elyria-theme-toggle-thumb{transform:translateX(16px);}'
-      + '.elyria-theme-toggle:hover .elyria-theme-toggle-track{box-shadow:inset 0 1px 3px rgba(0,0,0,.3),0 0 0 2px rgba(124,58,237,.3);}';
+      + '.elyria-theme-toggle:hover .elyria-theme-toggle-track{box-shadow:inset 0 1px 3px rgba(0,0,0,.3),0 0 0 2px rgba(124,58,237,.3);}'
+      + '.ely-eye{fill:#06b6d4;}'
+      + '[data-theme="dark"] .ely-eye{fill:#7c3aed;}';
 
     var style = document.createElement('style');
     style.id = 'elyria-theme-css';
@@ -314,7 +316,7 @@
       rightHTML += '<button onclick="navigateTo(\'/doc\')" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-purple-500/10 border border-white/5 hover:border-purple-500/30 text-xs font-medium text-gray-400 hover:text-purple-400 transition-all">Docs</button>';
     }
     rightHTML += '<button id="btn-toggle-copilot" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-primary/20 border border-white/5 hover:border-primary/40 text-xs font-medium text-gray-400 hover:text-primary-light transition-all flex items-center gap-1.5" title="Ely Copilot">'
-      + '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>'
+      + '<svg class="w-3.5 h-3.5" viewBox="0 0 400 400" fill="currentColor"><ellipse stroke="currentColor" stroke-width="18" ry="72" rx="48" cy="195" cx="200"/><ellipse stroke="currentColor" stroke-width="16" ry="29" rx="36" cy="125" cx="200"/><circle class="ely-eye" r="10" cy="122" cx="175"/><circle class="ely-eye" r="10" cy="122" cx="225"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M150 165 L85 70 L65 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M145 185 L75 130 L55 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M145 220 L80 235 L65 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M155 245 L95 285 L105 335"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M250 165 L315 70 L335 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M255 185 L325 130 L345 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M255 220 L320 235 L335 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M245 245 L305 285 L295 335"/></svg>'
       + 'ELY</button>';
     rightHTML += '<span id="header-username" class="text-[10px] text-gray-500 font-medium hidden"></span>';
     if (logoutBtn) {
