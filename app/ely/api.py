@@ -12,6 +12,7 @@ Endpoints:
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
@@ -152,3 +153,136 @@ async def ely_save_preferences(request: Request):
         return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
     prefs = save_preferences(user_id, **body)
     return prefs
+
+
+# ═══════════════════════════════════════════════════════════════
+# Diary endpoints
+# ═══════════════════════════════════════════════════════════════
+
+diary_app = APIRouter(prefix="/api/ely/diary", tags=["ely-diary"])
+
+# Page → theme mapping for auto-snapshots
+_PAGE_THEME = {
+    "app": "requêtes", "pentest": "scan", "greyteam": "osint",
+    "blueteam": "audit", "workflow": "workflow",
+    "hub": "requêtes", "doc": "notes",
+}
+
+
+@diary_app.post("")
+async def api_diary_create(request: Request):
+    user_id = get_user_id(request)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
+    from ely.diary_database import diary_create
+    did = diary_create(
+        user_id=user_id,
+        page=body.get("page", ""),
+        title=body.get("title", ""),
+        content=body.get("content", ""),
+        context_url=body.get("context_url", ""),
+        tags=body.get("tags"),
+    )
+    return {"diary_id": did}
+
+
+@diary_app.get("")
+async def api_diary_list(request: Request, page: str = "", tag: str = "", limit: int = 50, offset: int = 0):
+    from ely.diary_database import diary_list, diary_count
+    user_id = get_user_id(request)
+    items = diary_list(user_id, page=page or None, tag=tag or None, limit=min(limit, 200), offset=offset)
+    total = diary_count(user_id)
+    return {"items": items, "total": total}
+
+
+@diary_app.get("/search")
+async def api_diary_search(request: Request, q: str = "", limit: int = 50):
+    if not q:
+        return JSONResponse(status_code=400, content={"detail": "Query parameter 'q' is required"})
+    from ely.diary_database import diary_search
+    user_id = get_user_id(request)
+    items = diary_search(user_id, q, limit=min(limit, 100))
+    return {"items": items, "total": len(items)}
+
+
+@diary_app.get("/count")
+async def api_diary_count(request: Request):
+    from ely.diary_database import diary_count
+    user_id = get_user_id(request)
+    return {"count": diary_count(user_id)}
+
+
+@diary_app.post("/snapshot")
+async def api_diary_snapshot(request: Request):
+    from ely.diary_database import diary_create
+    from ely.agent import get_context_for_page
+    user_id = get_user_id(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    page = body.get("page", "app")
+    theme = _PAGE_THEME.get(page, "notes")
+    context = get_context_for_page(page, request)
+
+    context_url = body.get("url", "")
+    method = body.get("method", "")
+    status_code = body.get("status_code", 0)
+    response_preview = body.get("response_preview", "")
+
+    parts = [f"## Snapshot — {page}"]
+    if method and context_url:
+        parts.append(f"**Requete:** `{method} {context_url}` → {status_code}")
+    if response_preview:
+        parts.append(f"**Reponse:**\n```\n{response_preview[:800]}\n```")
+    if context:
+        parts.append(f"**Contexte:**\n```json\n{json.dumps(context, indent=2, default=str)[:1500]}\n```")
+
+    content = "\n\n".join(parts)[:5000]
+    title = f"Snapshot: {page} — {datetime.now(timezone.utc).strftime('%H:%M')}"
+
+    did = diary_create(
+        user_id=user_id,
+        page=page,
+        title=title,
+        content=content,
+        context_url=context_url,
+        tags=["auto-snapshot", theme],
+    )
+    return {"diary_id": did, "title": title}
+
+
+@diary_app.get("/{diary_id}")
+async def api_diary_get(diary_id: str, request: Request):
+    from ely.diary_database import diary_get
+    user_id = get_user_id(request)
+    entry = diary_get(diary_id, user_id)
+    if not entry:
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+    return entry
+
+
+@diary_app.put("/{diary_id}")
+async def api_diary_update(diary_id: str, request: Request):
+    from ely.diary_database import diary_update
+    user_id = get_user_id(request)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
+    entry = diary_update(diary_id, user_id, **body)
+    if not entry:
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+    return entry
+
+
+@diary_app.delete("/{diary_id}")
+async def api_diary_delete(diary_id: str, request: Request):
+    from ely.diary_database import diary_delete
+    user_id = get_user_id(request)
+    ok = diary_delete(diary_id, user_id)
+    if not ok:
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+    return {"deleted": True}

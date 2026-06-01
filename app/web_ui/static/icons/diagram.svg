@@ -1,0 +1,36 @@
+<svg aria-labelledby="title desc" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" height="400" width="400">
+  <title>Araignée stylée</title>
+  <desc id="desc">Une araignée noire avec des yeux rouges et des pattes stylisées</desc>
+
+  
+  <ellipse stroke-width="12" stroke="#111" fill="#1a1a1a" ry="85" rx="70" cy="200" cx="200"></ellipse>
+  <ellipse stroke-width="8" stroke="#111" fill="#222" ry="38" rx="45" cy="165" cx="200"></ellipse>
+
+  
+  <ellipse stroke-width="12" stroke="#111" fill="#1a1a1a" ry="48" rx="55" cy="245" cx="200"></ellipse>
+
+  
+  <circle fill="#ff2222" r="18" cy="155" cx="165"></circle>
+  <circle fill="#ff2222" r="18" cy="155" cx="235"></circle>
+  <circle fill="#fff" r="8" cy="152" cx="168"></circle>
+  <circle fill="#fff" r="8" cy="152" cx="238"></circle>
+
+  
+  
+  <path stroke-linecap="round" stroke-width="18" stroke="#1a1a1a" fill="none" d="M140 200 Q70 80 45 120"></path>
+  <path stroke-linecap="round" stroke-width="17" stroke="#1a1a1a" fill="none" d="M135 220 Q65 150 40 190"></path>
+  <path stroke-linecap="round" stroke-width="16" stroke="#1a1a1a" fill="none" d="M135 245 Q70 220 55 280"></path>
+  <path stroke-linecap="round" stroke-width="15" stroke="#1a1a1a" fill="none" d="M145 265 Q85 280 75 340"></path>
+
+  
+  <path stroke-linecap="round" stroke-width="18" stroke="#1a1a1a" fill="none" d="M260 200 Q330 80 355 120"></path>
+  <path stroke-linecap="round" stroke-width="17" stroke="#1a1a1a" fill="none" d="M265 220 Q335 150 360 190"></path>
+  <path stroke-linecap="round" stroke-width="16" stroke="#1a1a1a" fill="none" d="M265 245 Q330 220 345 280"></path>
+  <path stroke-linecap="round" stroke-width="15" stroke="#1a1a1a" fill="none" d="M255 265 Q315 280 325 340"></path>
+
+  
+  <circle fill="#333" r="6" cy="130" cx="160"></circle>
+  <circle fill="#333" r="5" cy="135" cx="240"></circle>
+  <circle fill="#333" r="7" cy="255" cx="180"></circle>
+  <circle fill="#333" r="6" cy="260" cx="225"></circle>
+</svg>

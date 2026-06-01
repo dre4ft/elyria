@@ -99,17 +99,17 @@
 .wf-connection-temp { fill:none;stroke:rgba(124,58,237,.5);stroke-width:2;stroke-dasharray:6 4;pointer-events:none; }
 
 /* ── Config Panel ── */
-.wf-config-section { margin-bottom:1rem;padding-bottom:.75rem;border-bottom:1px solid rgba(255,255,255,.03); }
+.wf-config-section { margin-bottom:1rem;padding-bottom:.75rem;border-bottom:1px solid rgba(255,255,255,.03);width:100%; }
 .wf-config-section:last-child { border-bottom:none;margin-bottom:0; }
 .wf-config-label { font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;font-weight:600;margin-bottom:.4rem;display:block; }
 .wf-config-input {
-  width:100%;height:2.25rem;padding:0 .75rem;border-radius:.5rem;
+  width:100%;height:2.25rem;padding:0 .75rem;border-radius:.5rem;box-sizing:border-box;
   background:rgba(10,15,28,.6);border:1px solid rgba(255,255,255,.08);
   font-size:11.5px;font-family:'JetBrains Mono',monospace;color:#d1d5db;transition:all .2s;
 }
 .wf-config-input:focus { outline:none;border-color:rgba(124,58,237,.4);box-shadow:0 0 0 2px rgba(124,58,237,.1); }
 .wf-config-textarea {
-  width:100%;padding:.55rem .75rem;border-radius:.5rem;
+  width:100%;padding:.55rem .75rem;border-radius:.5rem;box-sizing:border-box;
   background:rgba(10,15,28,.6);border:1px solid rgba(255,255,255,.08);
   font-size:11px;font-family:'JetBrains Mono',monospace;color:#d1d5db;resize:vertical;min-height:48px;
   transition:all .2s;line-height:1.55;
@@ -117,7 +117,7 @@
 .wf-config-textarea:focus { outline:none;border-color:rgba(124,58,237,.4);box-shadow:0 0 0 2px rgba(124,58,237,.1); }
 .wf-config-textarea::placeholder { color:#374151; }
 .wf-config-select {
-  width:100%;height:2.25rem;padding:0 .5rem;border-radius:.5rem;
+  width:100%;height:2.25rem;padding:0 .5rem;border-radius:.5rem;box-sizing:border-box;
   background:rgba(10,15,28,.6);border:1px solid rgba(255,255,255,.08);
   font-size:11.5px;color:#d1d5db;appearance:none;cursor:pointer;transition:all .2s;
 }

@@ -370,6 +370,74 @@ async def bash_tool(args, request):
 
 
 # ═══════════════════════════════════════════════════════════════
+# Diary tools — available on all pages
+# ═══════════════════════════════════════════════════════════════
+
+@_action("ely_diary_add", "Create a diary entry to record an observation, decision, or important event during the session",
+         {"title": {"type": "string", "description": "Short title for the diary entry"},
+          "content": {"type": "string", "description": "Markdown content (max 5000 chars)"},
+          "page": {"type": "string", "description": "Page context, e.g. 'app', 'pentest'"},
+          "tags": {"type": "string", "description": "Optional comma-separated tags"}})
+async def diary_add_tool(args, request):
+    from ely.diary_database import diary_create
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+    did = diary_create(
+        user_id=user_id,
+        page=args.get("page", ""),
+        title=args.get("title", ""),
+        content=args.get("content", ""),
+        tags=args.get("tags", "").split(",") if args.get("tags") else [],
+    )
+    return {"status": "ok", "diary_id": did}
+
+
+@_action("ely_diary_query", "Search diary entries by keyword. Returns matching entries with title, date, and preview.",
+         {"query": {"type": "string", "description": "Search keyword(s)"},
+          "limit": {"type": "integer", "description": "Max results (default 10)"}})
+async def diary_query_tool(args, request):
+    from ely.diary_database import diary_search
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+    results = diary_search(user_id, query=args.get("query", ""), limit=min(int(args.get("limit", 10)), 50))
+    return {"status": "ok", "results": results, "count": len(results)}
+
+
+@_action("ely_diary_list", "List recent diary entries. Returns entries newest first with title, date, page, and a preview.",
+         {"limit": {"type": "integer", "description": "Max entries (default 20)"},
+          "page": {"type": "string", "description": "Optional page filter"}})
+async def diary_list_tool(args, request):
+    from ely.diary_database import diary_list, diary_count
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+    items = diary_list(user_id, page=args.get("page") or None, limit=min(int(args.get("limit", 20)), 100))
+    total = diary_count(user_id)
+    return {"status": "ok", "entries": items, "total": total}
+
+
+@_action("ely_diary_get", "Get the full content of a specific diary entry by its ID.",
+         {"diary_id": {"type": "string", "description": "ID of the diary entry"}})
+async def diary_get_tool(args, request):
+    from ely.diary_database import diary_get
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+    entry = diary_get(args.get("diary_id", ""), user_id)
+    if not entry:
+        return {"error": "Diary entry not found"}
+    return {"status": "ok", "entry": entry}
+
+
+@_action("ely_diary_delete", "Delete a diary entry by its ID.",
+         {"diary_id": {"type": "string", "description": "ID of the diary entry to delete"}})
+async def diary_delete_tool(args, request):
+    from ely.diary_database import diary_delete
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+    ok = diary_delete(args.get("diary_id", ""), user_id)
+    return {"status": "ok" if ok else "error"}
+
+
+# ═══════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════
 
@@ -386,7 +454,8 @@ def get_action_definitions(page=None):
         "hub":      ["ely_list_resources", "ely_create_collection"],
         "doc":      ["ely_get_doc", "ely_list_doc_pages"],
     }
-    allowed = set(page_actions.get(page, []))
+    diary_tools = ["ely_diary_add", "ely_diary_query", "ely_diary_list", "ely_diary_get", "ely_diary_delete"]
+    allowed = set(page_actions.get(page, [])) | set(diary_tools)
     return [d for d in all_defs if d.get("function", {}).get("name") in allowed or page is None]
 
 

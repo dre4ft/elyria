@@ -178,6 +178,24 @@ Example prompts:
 
 ELY Copilot has access to your collections, requests, workflows, scan profiles, and history. It can create, execute, and analyze based on the page you're on.
 
+### ELY Diary
+
+The **Diary** is a chronological event journal integrated into the ELY Copilot panel. It automatically captures snapshots of your activity and lets you browse, search, and manage them — without saving full conversations.
+
+Key features:
+- **Automatic snapshots**: Every 3 minutes and on each HTTP request sent, a contextual markdown entry is saved (method, URL, status, response preview)
+- **Manual entries**: Click "Nouvelle entrée" to snapshot the current context on demand
+- **Theme filtering**: Filter entries by theme — Requêtes, Scans, OSINT, Audit, Workflows, Notes
+- **Full-text search**: Search across all diary entry titles and content
+- **Expand/collapse**: Click an entry to view its full markdown content
+- **Copy & Delete**: Copy entry content to clipboard or delete entries you no longer need
+- **AI context**: ELY automatically sees your 5 most recent diary entries for contextual awareness
+- **AI tools**: ELY can create, query, list, read, and delete diary entries via `ely_diary_*` actions — available on every page
+
+**Opening the Diary**: Click the clock-icon **Diary** button next to the model toggle (Flash/Pro) in the ELY Copilot header. This replaces the chat view with the diary timeline. Click it again to return to the chat.
+
+**Important**: The Diary saves contextual events (requests, scans, analyses) — **not** full chat conversations. Chat history remains separate in the chat panel.
+
 ---
 
 ## 8. Document Import
