@@ -705,37 +705,6 @@
     .catch(function () {});
   }
 
-  // ── Periodic diary snapshots ──
-  var _diaryInterval = null;
-  var _lastDiarySnapshot = 0;
-  var DIARY_INTERVAL_MS = 3 * 60 * 1000;
-
-  function _maybeTakeDiarySnapshot() {
-    var now = Date.now();
-    if (now - _lastDiarySnapshot < DIARY_INTERVAL_MS) return;
-    var ctx = state._context || {};
-    if (!ctx.url && !ctx.method) return;
-    _lastDiarySnapshot = now;
-    _createDiarySnapshot();
-  }
-
-  _diaryInterval = setInterval(_maybeTakeDiarySnapshot, DIARY_INTERVAL_MS);
-
-  window.addEventListener('beforeunload', function () {
-    if (_diaryInterval) clearInterval(_diaryInterval);
-  });
-
-  function _tryHookRequestWatcher() {
-    if (typeof onRequestComplete !== 'function') { setTimeout(_tryHookRequestWatcher, 500); return; }
-    onRequestComplete(function () {
-      var now = Date.now();
-      if (now - _lastDiarySnapshot < 60 * 1000) return;
-      _lastDiarySnapshot = now;
-      setTimeout(_createDiarySnapshot, 100);
-    });
-  }
-  setTimeout(_tryHookRequestWatcher, 200);
-
   // ── Init ──
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', _init);

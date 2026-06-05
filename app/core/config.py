@@ -37,6 +37,7 @@ _DEFAULTS = {
     "security": {
         "server_wrap_key": "",
         "blocked_hosts": "metadata.google.internal,169.254.169.254,instance-data,host.docker.internal",
+        "blocked_urls": "",
     },
 }
 

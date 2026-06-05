@@ -10,6 +10,7 @@ import json
 import threading
 from core.logging import get_logger
 
+
 _log = get_logger("ely.actions")
 
 ACTIONS = {}
@@ -96,6 +97,28 @@ async def send_raw_request(args, request):
     except Exception as e:
         return {"error": str(e)[:200]}
 
+
+
+@_action("ely_fuzz", "fuzz an HTTP request with a list of payloads and send them",
+            {"request": {"type": "object", "properties": {
+                "method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]},
+                "url": {"type": "string"},
+                "headers": {"type": "object"},
+                "body": {"type": "string"},
+            }},
+          "payloads": {"type": "array", "items": {"type": "string"}},
+          "fuzzing_type": {"type": "string", "enum": ["sniper"]}})
+def fuzz(args, request):
+    from ely.superfuzzer3000 import fuzz_and_send
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+    try:
+        _log.info(f"User {user_id} is fuzzing request: {args['request']} with payloads: {args['payloads']}")
+        fuzzing_type = args.get("fuzzing_type", "sniper")
+        responses = fuzz_and_send(args["request"], args["payloads"], fuzzing_type=fuzzing_type)
+        return {"status": 200, "data": responses}
+    except Exception as e:
+        return {"error": str(e)[:200]}
 
 @_action("ely_create_request", "Create an HTTP request",
          {"method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]},
@@ -368,6 +391,31 @@ async def bash_tool(args, request):
         return {"error": str(e)[:200]}
 
 
+@_action("ely_browser_query", "Use a headless browser to interact with web pages, useful for complex interactions and JS-heavy sites",
+            {"url": {"type": "string"}, "selector": {"type": "string", "description": "CSS selector for the element to interact with"}})
+async def browser_query_tool(args, request):
+    from ely.browser import basic_handler
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+    try:
+        result = await basic_handler(user_id=user_id, url=args["url"], selector=args.get("selector", "body"), action="query")
+        return {"status": 200, "data": {"result": result}}
+    except Exception as e:
+        return {"error": str(e)[:200]}
+    
+@_action("ely_browser_click", "Use a headless browser to interact with web pages, useful for complex interactions and JS-heavy sites",
+            {"url": {"type": "string"}, "selector": {"type": "string", "description": "CSS selector for the element to interact with"}})
+async def browser_click_tool(args, request):
+    from ely.browser import basic_handler
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+    try:
+        result = await basic_handler(user_id=user_id, url=args["url"], selector=args.get("selector", "body"), action="click")
+        return {"status": 200, "data": {"result": result}}
+    except Exception as e:
+        return {"error": str(e)[:200]}
+
+
 
 # ═══════════════════════════════════════════════════════════════
 # Diary tools — available on all pages
@@ -446,10 +494,10 @@ def get_action_definitions(page=None):
     if not page:
         return all_defs
     page_actions = {
-        "app":      ["ely_create_request", "ely_create_collection", "ely_get_request_result", "ely_send_raw_request", "ely_send_request", "ely_list_resources", "ely_bash"],
-        "workflow": ["ely_create_workflow", "ely_list_resources","ely_bash"],
-        "pentest":  ["ely_run_scan", "ely_get_findings", "ely_list_resources", "ely_bash"],
-        "greyteam": ["ely_osint_scan", "ely_get_findings", "ely_list_resources", "ely_bash"],
+        "app":      ["ely_create_request", "ely_create_collection", "ely_get_request_result", "ely_send_raw_request", "ely_send_request", "ely_list_resources", "ely_bash", "ely_fuzz","ely_browser_query", "ely_browser_click"],
+        "workflow": ["ely_create_workflow", "ely_list_resources","ely_bash", "ely_fuzz"],
+        "pentest":  ["ely_run_scan", "ely_get_findings", "ely_list_resources", "ely_bash", "ely_fuzz","ely_browser_query", "ely_browser_click"],
+        "greyteam": ["ely_osint_scan", "ely_get_findings", "ely_list_resources", "ely_bash","ely_browser_query", "ely_browser_click"],
         "blueteam": ["ely_blueteam_analyze", "ely_get_findings", "ely_list_resources", "ely_bash"],
         "hub":      ["ely_list_resources", "ely_create_collection"],
         "doc":      ["ely_get_doc", "ely_list_doc_pages"],

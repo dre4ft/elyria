@@ -76,8 +76,8 @@ def get_action_definitions(page=None):
         "pentest":  ["ely_prompt_pentest", "ely_prompt_osint", "ely_prompt_api_expert"],
         "greyteam": ["ely_prompt_pentest", "ely_prompt_osint", "ely_prompt_api_expert"],
         "blueteam": ["ely_prompt_pentest", "ely_prompt_osint", "ely_prompt_api_expert"],
-        "hub":      ["ely_prompt_pentest", "ely_prompt_osint", "ely_prompt_api_expert"],
-        "doc":      ["ely_prompt_pentest", "ely_prompt_osint", "ely_prompt_api_expert"]
+        "hub":      [],
+        "doc":      []
     }
     allowed = set(page_actions.get(page, []))
     return [d for d in all_defs if d.get("function", {}).get("name") in allowed or page is None]

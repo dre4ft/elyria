@@ -142,7 +142,7 @@ def _seal_saved_payload(method: str, url: str, headers_str, body_str, user_id: s
         payload = {"method": method, "url": url}
         if headers_str: payload["headers"] = headers_str
         if body_str: payload["body"] = body_str
-        return crypto_seal(payload, user_id, team_id)
+        return crypto_seal(payload, user_id, team_id=team_id)
     except Exception:
         return ""
 
