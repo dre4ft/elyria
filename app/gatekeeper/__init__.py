@@ -69,7 +69,7 @@ def _sign_gate_token(gate_key: str) -> str:
     return f"{payload}.{sig}"
 
 
-GATE_DEADLINE_MS = 1.30
+GATE_DEADLINE_MS = 500
 
 
 def _deadline_exceeded(start: float) -> bool:

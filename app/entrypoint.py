@@ -338,9 +338,6 @@ if __name__ == "__main__":
     uvicorn.run(
         "entrypoint:app",
         host=get("server", "host", "127.0.0.1"),
-        port=get_int("server", "port", 8001),
-        reload=get_bool("server", "reload", False),
+        port=get_int("server", "port", 8000),
         **ssl_kwargs,
-        reload_dirs=["app/"],
-        reload_excludes=["logs/*", "*.db"]
     )

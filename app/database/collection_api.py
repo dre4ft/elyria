@@ -260,6 +260,9 @@ def api_compile_curl(body: CurlCompileBody, request: Request):
 def api_update_request(saved_request_id: str, body: UpdateRequestBody, request: Request):
     token = request.state.token
     update_data = {k: v for k, v in body.model_dump().items() if v is not None}
+    # Convert camelCase folderId to snake_case folder_id
+    if "folderId" in update_data:
+        update_data["folder_id"] = update_data.pop("folderId")
     ok = update_saved_request(saved_request_id, author_user_id=token, **update_data)
     if ok:
         _invalidate_tree_cache(token)

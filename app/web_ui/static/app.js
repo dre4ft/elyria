@@ -47,13 +47,11 @@ function getCurrentBuilderState() {
   };
 }
 
-async function saveCurrentRequestToDb() {
+async function saveCurrentRequestToDb(opts = {}) {
   if (!state.activeCollectionId) {
-    console.log('[save] skipped: no activeCollectionId');
     return;
   }
   const data = getCurrentBuilderState();
-  console.log('[save] PUT', state.activeCollectionId, data);
   try {
     const res = await fetch(`${API.updateRequest}/${state.activeCollectionId}`, {
       method: 'PUT',
@@ -63,13 +61,46 @@ async function saveCurrentRequestToDb() {
     if (!res.ok) {
       const err = await res.text();
       console.error('[save] failed:', res.status, err);
-    } else {
-      console.log('[save] ok');
+    } else if (!opts.silent) {
       await loadCollections();
     }
   } catch (e) {
     console.error('[save] error:', e);
   }
+}
+
+// ─────────────────────────────────────────────
+// AUTO-SAVE (debounced)
+// ─────────────────────────────────────────────
+let _saveTimer = null;
+const AUTO_SAVE_DELAY = 1500;
+
+function scheduleAutoSave() {
+  if (!state.activeCollectionId) return;
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null;
+    saveCurrentRequestToDb({ silent: true });
+  }, AUTO_SAVE_DELAY);
+}
+
+function setupAutoSave() {
+  // Method / URL / Body — input/change events
+  dom.reqMethod.addEventListener('change', scheduleAutoSave);
+  dom.reqUrl.addEventListener('input', scheduleAutoSave);
+  dom.reqBody.addEventListener('input', scheduleAutoSave);
+  dom.bodyContentType.addEventListener('change', scheduleAutoSave);
+
+  // Observer for dynamically added header/param rows (MutationObserver on the lists)
+  const observer = new MutationObserver(() => {
+    scheduleAutoSave();
+  });
+  observer.observe(dom.headersList, { childList: true, subtree: true, characterData: true });
+  observer.observe(dom.paramsList, { childList: true, subtree: true, characterData: true });
+
+  // Delegate input events on headers/params for key/value changes
+  dom.headersList.addEventListener('input', scheduleAutoSave);
+  dom.paramsList.addEventListener('input', scheduleAutoSave);
 }
 
 // ─────────────────────────────────────────────
@@ -178,6 +209,9 @@ function init() {
   setupJWTPanel();
   setupJsonEditors();
   setupKeyboardShortcuts();
+
+  // Auto-save on field changes
+  setupAutoSave();
 
   // Burger menu sidebar toggle
   const btnSidebar = document.getElementById('btn-toggle-sidebar');
@@ -659,7 +693,7 @@ async function sendStructured() {
     displayResponse(entry, elapsed);
 
     // Sync collection request if anything changed
-    saveCurrentRequestToDb();
+    await saveCurrentRequestToDb();
   } catch (err) {
     displayError(err.message);
   } finally {
