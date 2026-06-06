@@ -263,6 +263,10 @@ def import_to_db(parsed: dict, author_user_id: str="http://localhost:9000") -> d
                     body=req.get("body"),
                 )
 
+    # Invalidate collection tree cache so the frontend sees the new collection
+    from core.cache import cache
+    cache.invalidate_prefix(f"tree:{author_user_id}:")
+
     return {
         "root_folder_id": root_folder_id,
         "folders": folder_ids,

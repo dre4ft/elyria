@@ -49,9 +49,11 @@ function getCurrentBuilderState() {
 
 async function saveCurrentRequestToDb(opts = {}) {
   if (!state.activeCollectionId) {
+    console.warn('[save] skipped: no activeCollectionId — load a request from the collection first');
     return;
   }
   const data = getCurrentBuilderState();
+  console.log('[save] PUT', state.activeCollectionId, data.method, data.url);
   try {
     const res = await fetch(`${API.updateRequest}/${state.activeCollectionId}`, {
       method: 'PUT',
@@ -61,12 +63,29 @@ async function saveCurrentRequestToDb(opts = {}) {
     if (!res.ok) {
       const err = await res.text();
       console.error('[save] failed:', res.status, err);
-    } else if (!opts.silent) {
-      await loadCollections();
+      showSaveErrorToast(res.status, err);
+    } else {
+      console.log('[save] ok');
+      if (!opts.silent) {
+        await loadCollections();
+      }
     }
   } catch (e) {
     console.error('[save] error:', e);
+    showSaveErrorToast(0, e.message);
   }
+}
+
+function showSaveErrorToast(status, detail) {
+  // Affiche un toast temporaire pour signaler l'erreur de sauvegarde
+  const existing = document.getElementById('save-error-toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.id = 'save-error-toast';
+  toast.className = 'fixed bottom-4 right-4 bg-red-500/90 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 animate-pulse';
+  toast.textContent = `Echec sauvegarde${status ? ' (' + status + ')' : ''} : ${detail || 'Erreur réseau'}`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 5000);
 }
 
 // ─────────────────────────────────────────────

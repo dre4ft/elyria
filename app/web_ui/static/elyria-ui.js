@@ -182,7 +182,8 @@
     { id: 'workflow', label: 'Workflows',  path: '/workflow', color: 'green' },
     { id: 'pentest',  label: 'Red Team',   path: '/pentest',  color: 'red' },
     { id: 'greyteam', label: 'Grey Team',  path: '/greyteam', color: 'gray' },
-    { id: 'blueteam', label: 'Blue Team',  path: '/blueteam', color: 'blue' },
+    { id: 'blueteam',   label: 'Blue Team',   path: '/blueteam',   color: 'blue' },
+    { id: 'purpleteam', label: 'Purple Team', path: '/purpleteam', color: 'purple' },
   ];
 
   // ── DOM helpers ──
@@ -561,9 +562,9 @@
         // Check if followed by :
         var after = text.substring(i).trimStart();
         if (after.startsWith(':')) {
-          out += '<span class="json-key">' + _esc(str) + '</span>';
+          out += '<span class="json-key">' + esc(str) + '</span>';
         } else {
-          out += '<span class="json-string">' + _esc(str) + '</span>';
+          out += '<span class="json-string">' + esc(str) + '</span>';
         }
         continue;
       }
@@ -575,7 +576,7 @@
           if ((text[i] === '+' || text[i] === '-') && numStart !== i-1 && text[i-1] !== 'e' && text[i-1] !== 'E') break;
           i++;
         }
-        out += '<span class="json-number">' + _esc(text.substring(numStart, i)) + '</span>';
+        out += '<span class="json-number">' + esc(text.substring(numStart, i)) + '</span>';
         continue;
       }
       // true / false / null
@@ -584,11 +585,11 @@
       if (text.substring(i, i+4) === 'null') { out += '<span class="json-null">null</span>'; i += 4; continue; }
       // Punctuation
       if ('{}[]:,'.indexOf(ch) !== -1) {
-        out += '<span class="json-punct">' + _esc(ch) + '</span>';
+        out += '<span class="json-punct">' + esc(ch) + '</span>';
         i++;
         continue;
       }
-      out += _esc(ch);
+      out += esc(ch);
       i++;
     }
     return out;

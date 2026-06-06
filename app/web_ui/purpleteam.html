@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Elyria — Purple Team (IAST)</title>
+  <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg" />
+  <link rel="alternate icon" type="image/x-icon" href="/static/icons/favicon.ico" />
+  <script src="static/elyria-ui.js"></script>
+  <script>
+    window.tailwind = { config: ElyriaUI.tailwindConfig({
+      primary: { DEFAULT:'#a855f7', light:'#c084fc', dark:'#7e22ce', 50:'rgba(168,85,247,0.08)', 100:'rgba(168,85,247,0.15)' }
+    }) };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="static/styles.css" />
+  <style>
+    .card-purple { border: 1px solid rgba(168,85,247,0.15); transition: all 0.2s; }
+    .card-purple:hover { border-color: rgba(168,85,247,0.3); background: rgba(168,85,247,0.04); }
+    .finding-row:hover { background: rgba(168,85,247,0.04); }
+    @keyframes pulse-scan { 0%,100%{opacity:1} 50%{opacity:0.6} }
+    .scanning-pulse { animation: pulse-scan 1.5s ease-in-out infinite; }
+    .tab-active { border-bottom: 2px solid #a855f7; color: #e9d5ff; }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body class="h-full bg-base-900 text-gray-200 font-['Inter',sans-serif] overflow-hidden">
+
+  <header id="elyria-header"></header>
+  <script>
+    (function() {
+      var ph = document.getElementById('elyria-header');
+      if (ph) ph.outerHTML = ElyriaUI.renderHeader({active: 'purpleteam'});
+    })();
+  </script>
+
+  <div class="flex h-[calc(100%-3rem)]">
+
+    <!-- LEFT SIDEBAR -->
+    <aside class="w-56 bg-base-800 border-r border-white/5 flex flex-col shrink-0">
+      <div class="p-3 border-b border-white/5 flex items-center justify-between">
+        <span class="text-[11px] uppercase tracking-widest text-gray-500 font-semibold">Repositories</span>
+        <button id="btn-new-profile" class="w-6 h-6 rounded-md hover:bg-primary/15 flex items-center justify-center text-gray-500 hover:text-primary-light transition-colors" title="Add repository">+</button>
+      </div>
+      <div id="profile-list" class="flex-1 overflow-y-auto px-2 py-1 space-y-0.5"></div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+
+      <div id="main-placeholder" class="flex flex-col items-center justify-center h-full text-gray-600">
+        <svg class="w-16 h-16 mb-4 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+        <p class="text-sm font-medium mb-1">Purple Team — IAST Code Analysis</p>
+        <p class="text-xs">Add a repository to start static + dynamic security scanning</p>
+        <button onclick="openModal()" class="mt-4 h-8 px-4 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/25 text-[11px] text-purple-300 font-medium transition-all">Add Repository</button>
+      </div>
+
+      <div id="main-dashboard" class="hidden flex-1 flex flex-col overflow-hidden">
+
+        <!-- HEADER -->
+        <div id="dashboard-header" class="px-5 py-3 border-b border-white/5 shrink-0">
+          <div class="flex items-start justify-between">
+            <div class="flex-1">
+              <div class="flex items-center gap-3">
+                <h2 id="dash-name" class="text-lg font-semibold text-gray-200"></h2>
+                <span id="dash-lang" class="px-2 py-0.5 rounded-md text-[10px] font-medium bg-purple-500/10 text-purple-300"></span>
+              </div>
+              <div id="dash-meta" class="flex items-center gap-3 mt-1 text-[11px] text-gray-500 font-mono"></div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="btn-edit-profile" onclick="editActiveProfile()" class="h-7 px-2.5 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-500 hover:text-gray-300 text-xs transition-all">Edit</button>
+              <button id="btn-delete-profile" onclick="deleteActiveProfile()" class="h-7 px-2.5 rounded-lg bg-base-700 hover:bg-red-500/10 border border-white/5 hover:border-red-500/30 text-gray-500 hover:text-red-400 text-xs transition-all">Delete</button>
+              <button id="btn-run-scan" onclick="runScan()" class="h-8 px-4 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-[11px] text-purple-300 font-medium transition-all flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                Run IAST Scan
+              </button>
+              <button id="btn-send-blueteam" onclick="sendToBlueTeam()" class="hidden h-8 px-3 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/25 text-[11px] text-blue-300 font-medium transition-all flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
+                Send to Blue Team
+              </button>
+            </div>
+          </div>
+          <div id="scan-progress-container" class="hidden mt-2">
+            <div class="flex items-center justify-between mb-1">
+              <span id="scan-progress-label" class="text-[11px] text-purple-300 font-medium scanning-pulse">Scanning...</span>
+              <span id="scan-progress-pct" class="text-[11px] text-purple-300 font-mono">0%</span>
+            </div>
+            <div class="w-full h-1.5 rounded-full bg-base-700 overflow-hidden">
+              <div id="scan-progress-bar" class="h-full bg-gradient-to-r from-purple-500 to-purple-300 transition-all duration-300 rounded-full" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUMMARY CARDS -->
+        <div id="dashboard-cards" class="hidden px-5 py-3 border-b border-white/5 shrink-0">
+          <div class="grid grid-cols-5 gap-2">
+            <div id="card-cves" class="card-purple rounded-xl bg-base-800 p-3 border-l-2 border-l-red-500">
+              <div class="text-[9px] uppercase tracking-widest text-gray-500 font-semibold">CVE</div>
+              <div class="text-2xl font-bold text-red-400 font-mono mt-1">0</div>
+            </div>
+            <div id="card-cwes" class="card-purple rounded-xl bg-base-800 p-3 border-l-2 border-l-orange-500">
+              <div class="text-[9px] uppercase tracking-widest text-gray-500 font-semibold">CWE</div>
+              <div class="text-2xl font-bold text-orange-400 font-mono mt-1">0</div>
+            </div>
+            <div id="card-practices" class="card-purple rounded-xl bg-base-800 p-3 border-l-2 border-l-yellow-500">
+              <div class="text-[9px] uppercase tracking-widest text-gray-500 font-semibold">Practices</div>
+              <div class="text-2xl font-bold text-yellow-400 font-mono mt-1">0</div>
+            </div>
+            <div id="card-critical" class="card-purple rounded-xl bg-base-800 p-3 border-l-2 border-l-critical">
+              <div class="text-[9px] uppercase tracking-widest text-gray-500 font-semibold">Critical</div>
+              <div class="text-2xl font-bold text-critical-light font-mono mt-1">0</div>
+            </div>
+            <div id="card-high" class="card-purple rounded-xl bg-base-800 p-3 border-l-2 border-l-high">
+              <div class="text-[9px] uppercase tracking-widest text-gray-500 font-semibold">High</div>
+              <div class="text-2xl font-bold text-high-light font-mono mt-1">0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FINDINGS -->
+        <div class="px-5 py-2 flex items-center gap-3 border-b border-white/5 text-[11px] shrink-0">
+          <span class="text-gray-500">Filter:</span>
+          <select id="filter-part" class="h-6 px-2 rounded-md bg-base-700 border border-white/5 text-[11px] text-gray-300 focus:outline-none focus:border-purple-500/30">
+            <option value="all">All Parts</option>
+            <option value="cves">Part 1: CVEs</option>
+            <option value="cwes">Part 2: CWEs</option>
+            <option value="practices">Part 3: Practices</option>
+          </select>
+          <select id="filter-severity" class="h-6 px-2 rounded-md bg-base-700 border border-white/5 text-[11px] text-gray-300 focus:outline-none focus:border-purple-500/30">
+            <option value="all">All Severities</option>
+            <option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option>
+          </select>
+          <div class="flex-1"></div>
+          <button id="btn-download-report" onclick="downloadReport()" class="h-7 px-3 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-[11px] text-purple-300 font-medium transition-all">Download Report</button>
+          <button id="btn-view-report" onclick="viewReport()" class="h-7 px-3 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-[11px] text-gray-300 font-medium transition-all">View Report</button>
+        </div>
+
+        <div id="findings-container" class="flex-1 overflow-y-auto">
+          <div id="findings-empty" class="flex flex-col items-center justify-center h-full text-gray-600">
+            <p class="text-xs">Run an IAST scan to populate findings</p>
+          </div>
+          <div id="findings-list" class="hidden divide-y divide-white/5"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- RIGHT PANEL -->
+    <aside id="detail-panel" class="hidden w-80 bg-base-800 border-l border-white/5 flex flex-col shrink-0 overflow-y-auto">
+      <div class="p-3 border-b border-white/5 flex items-center justify-between shrink-0">
+        <span class="text-[11px] uppercase tracking-widest text-gray-500 font-semibold">Finding Detail</span>
+        <button onclick="closeDetail()" class="w-5 h-5 rounded text-gray-500 hover:text-gray-300 text-sm">&times;</button>
+      </div>
+      <div id="detail-content" class="p-3 space-y-3 text-xs"></div>
+    </aside>
+  </div>
+
+  <!-- MODAL -->
+  <div id="modal-profile" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div class="bg-base-800 border border-white/10 rounded-xl w-[520px] max-h-[85vh] overflow-y-auto shadow-2xl">
+      <div class="p-4 border-b border-white/5">
+        <h3 id="modal-title" class="text-sm font-semibold text-gray-200">Add Repository for IAST</h3>
+      </div>
+      <div class="p-4 space-y-3">
+        <div>
+          <label class="text-[11px] text-gray-500 block mb-1">Name</label>
+          <input id="modal-name" class="w-full h-8 px-2.5 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-purple-400/40" placeholder="e.g., Production API Review" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-[11px] text-gray-500 block mb-1">Repo Source</label>
+            <select id="modal-repo-source" class="w-full h-8 px-2 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 focus:outline-none focus:border-purple-400/40">
+              <option value="github">GitHub</option>
+              <option value="gitlab">GitLab</option>
+              <option value="bitbucket">Bitbucket</option>
+              <option value="local">Local / Upload</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-[11px] text-gray-500 block mb-1">Branch</label>
+            <input id="modal-branch" class="w-full h-8 px-2.5 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-purple-400/40" placeholder="main" />
+          </div>
+        </div>
+        <div>
+          <label class="text-[11px] text-gray-500 block mb-1">Repository URL</label>
+          <input id="modal-repo-url" class="w-full h-8 px-2.5 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-purple-400/40 font-mono" placeholder="https://github.com/user/repo.git" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-[11px] text-gray-500 block mb-1">Auth Type</label>
+            <select id="modal-auth-type" class="w-full h-8 px-2 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 focus:outline-none focus:border-purple-400/40">
+              <option value="">None (public)</option>
+              <option value="token">Bearer Token</option>
+              <option value="api_key">API Key</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-[11px] text-gray-500 block mb-1">Auth Key</label>
+            <input id="modal-auth-key" type="password" class="w-full h-8 px-2.5 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-purple-400/40 font-mono" placeholder="ghp_xxx or glpat-xxx" />
+          </div>
+        </div>
+        <div>
+          <label class="text-[11px] text-gray-500 block mb-1">Target Endpoint (for dynamic IAST testing)</label>
+          <input id="modal-endpoint" class="w-full h-8 px-2.5 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-purple-400/40 font-mono" placeholder="https://api.example.com" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-[11px] text-gray-500 block mb-1">OpenAPI Spec URL (optional)</label>
+            <input id="modal-spec-url" class="w-full h-8 px-2.5 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-purple-400/40 font-mono" placeholder="https://api.example.com/openapi.json" />
+          </div>
+          <div>
+            <label class="text-[11px] text-gray-500 block mb-1">Scan Depth</label>
+            <select id="modal-scan-depth" class="w-full h-8 px-2 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 focus:outline-none focus:border-purple-400/40">
+              <option value="full">Full (Static + Dynamic + AI)</option>
+              <option value="quick">Quick (Static only)</option>
+              <option value="iast">IAST (Static + Dynamic)</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="text-[11px] text-gray-500 block mb-1">Description</label>
+          <textarea id="modal-desc" rows="2" class="w-full px-2.5 py-1.5 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-purple-400/40 resize-none" placeholder="What are you assessing?"></textarea>
+        </div>
+      </div>
+      <div class="p-3 border-t border-white/5 flex justify-end gap-2">
+        <button id="btn-modal-cancel" class="h-7 px-3 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-[11px] text-gray-400 transition-all">Cancel</button>
+        <button id="btn-modal-save" class="h-7 px-3 rounded-lg bg-purple-500/80 hover:bg-purple-500 border border-purple-500/30 text-[11px] text-white font-medium transition-all">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- REPORT MODAL -->
+  <div id="modal-report" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div class="bg-base-800 border border-white/10 rounded-xl w-[900px] max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div class="p-4 border-b border-white/5 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-gray-200">Purple Team Report</h3>
+        <button onclick="closeReport()" class="w-6 h-6 rounded text-gray-500 hover:text-gray-300 text-lg">&times;</button>
+      </div>
+      <div id="report-content" class="p-5 text-sm text-gray-300 font-mono whitespace-pre-wrap"></div>
+    </div>
+  </div>
+
+  <script src="static/auth.js"></script>
+  <script src="static/purpleteam.js"></script>
+</body>
+</html>
