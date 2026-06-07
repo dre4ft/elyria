@@ -82,31 +82,106 @@ class DynamicScanner:
     def run(self, scan_id, add_finding_fn, progress_cb=None):
         """Run dynamic validation tests against target endpoint."""
         total = 0
-        tests = [
+
+        # Phase 1: Baseline security tests (always run)
+        baseline_tests = [
             self._test_security_headers,
             self._test_cors,
             self._test_http_methods,
             self._test_error_disclosure,
             self._test_auth_required,
             self._test_sensitive_data_exposure,
+        ]
+        for i, test_fn in enumerate(baseline_tests):
+            if progress_cb:
+                progress_cb(5 + int(i / len(baseline_tests) * 30), f"Baseline: {test_fn.__name__}")
+            try:
+                total += test_fn(scan_id, add_finding_fn)
+            except Exception as e:
+                _log.warning(f"Dynamic test {test_fn.__name__} failed: {e}")
+
+        # Phase 2: Validate static findings against live endpoint
+        if self.static_findings:
+            if progress_cb:
+                progress_cb(35, "Validating static findings against target...")
+            try:
+                validated = self._validate_static_findings(scan_id, add_finding_fn)
+                total += validated
+            except Exception as e:
+                _log.warning(f"Static findings validation failed: {e}")
+
+        # Phase 3: Targeted injection tests
+        if progress_cb:
+            progress_cb(60, "Running targeted injection tests...")
+        targeted_tests = [
             self._test_xss_reflected,
             self._test_sqli_basic,
             self._test_path_traversal,
             self._test_open_redirect,
         ]
-
-        for i, test_fn in enumerate(tests):
+        for i, test_fn in enumerate(targeted_tests):
             if progress_cb:
-                progress_cb(10 + int(i / len(tests) * 80), f"Running: {test_fn.__name__}")
+                progress_cb(60 + int(i / len(targeted_tests) * 25), f"Targeted: {test_fn.__name__}")
             try:
-                count = test_fn(scan_id, add_finding_fn)
-                total += count
+                total += test_fn(scan_id, add_finding_fn)
             except Exception as e:
                 _log.warning(f"Dynamic test {test_fn.__name__} failed: {e}")
 
         if progress_cb:
             progress_cb(90, f"Dynamic testing complete ({total} findings)")
         return total
+
+    def _validate_static_findings(self, scan_id, add_finding_fn):
+        """Use static findings to target specific endpoints for validation."""
+        count = 0
+        import re
+
+        # Extract potential endpoints from findings
+        endpoints = set()
+        for f in self.static_findings:
+            file_path = f.get("file_path", "")
+            title = f.get("title", "")
+            cwe = f.get("cwe_id", "")
+            evidence = f.get("evidence", {})
+            if isinstance(evidence, str):
+                try:
+                    evidence = json.loads(evidence)
+                except Exception:
+                    evidence = {}
+
+            # Extract URL patterns from evidence or title
+            for text in [file_path, title, json.dumps(evidence)]:
+                for m in re.finditer(r'(?:/[a-zA-Z0-9._~:/?#\[\]@!$&\'()*+,;=%-]+){2,}', text):
+                    path = m.group(0)
+                    if path.startswith("/") and len(path) > 2:
+                        endpoints.add(path[:100])
+
+        # Test each discovered endpoint
+        for path in list(endpoints)[:20]:
+            resp, log = self._request("GET", path)
+            if resp is None:
+                continue
+
+            # Check if endpoint is accessible without auth
+            if resp.status_code == 200:
+                count += self._add(scan_id, add_finding_fn,
+                    f"Endpoint accessible without auth: {path}",
+                    f"Static analysis identified endpoint {path} which returned 200 OK without authentication.",
+                    "medium", "auth_bypass",
+                    {"path": path, "status": resp.status_code})
+
+            # Check for error disclosure on discovered endpoints
+            body = resp.text.lower()
+            error_kw = ["traceback", "exception", "sql", "syntax error", "stack trace",
+                       "debug", "internal server error", "at line"]
+            if any(kw in body for kw in error_kw):
+                count += self._add(scan_id, add_finding_fn,
+                    f"Error disclosure on {path}",
+                    f"Endpoint {path} returns verbose error information.",
+                    "medium", "error_disclosure",
+                    {"path": path, "status": resp.status_code})
+
+        return count
 
     def _add(self, scan_id, add_finding_fn, title, description, severity, category, evidence=None):
         add_finding_fn(

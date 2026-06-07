@@ -1,841 +1,648 @@
-/* Grey Team — Passive OSINT Dashboard */
+/* Grey Team — OSINT Signals Intelligence Dashboard */
 
-const A = {
-  profiles:    () => `/api/greyteam/profiles`,
-  profile:     (id) => `/api/greyteam/profiles/${id}`,
-  reports:     (pid) => `/api/greyteam/reports?profile_id=${pid}`,
-  createReport: '/api/greyteam/reports',
-  report:      (rid) => `/api/greyteam/reports/${rid}`,
-  findings:    (rid) => `/api/greyteam/reports/${rid}/findings`,
-  events:      (rid) => `/api/greyteam/events/${rid}`,
-  stop:        (rid) => `/api/greyteam/reports/${rid}/stop`,
-};
+(function () {
+  'use strict';
 
-const $ = s => document.querySelector(s);
-const esc = s => { const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; };
+  var A = {
+    profiles:    '/api/greyteam/profiles',
+    profile:     function (id) { return '/api/greyteam/profiles/' + id; },
+    reports:     function (pid) { return '/api/greyteam/reports?profile_id=' + pid; },
+    createReport:'/api/greyteam/reports',
+    report:      function (rid) { return '/api/greyteam/reports/' + rid; },
+    findings:    function (rid) { return '/api/greyteam/reports/' + rid + '/findings'; },
+    stop:        function (rid) { return '/api/greyteam/reports/' + rid + '/stop'; },
+  };
 
-const SEV_ORDER = { critical:0, high:1, medium:2, low:3, info:4 };
-const STATUS_CLASS = { ok:'bg-low', warn:'bg-medium', bad:'bg-critical', unknown:'bg-info' };
+  var $ = function (s) { return document.querySelector(s); };
+  var esc = function (s) {
+    if (!s) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  };
 
-let S = {
-  profiles: [],
-  activePid: null,
-  activeRid: null,
-  reports: [],
-  findings: [],
-  editingPid: null,
-};
+  var SEV_ORDER = { critical:0, high:1, medium:2, low:3, info:4 };
 
-// ── DOM refs ──
-const D = {
-  placeholder: $('#main-placeholder'),
-  dashboard: $('#main-dashboard'),
-  profileList: $('#profile-list'),
-  statsBar: $('#stats-bar'),
-  findingsEmpty: $('#findings-empty'),
-  findingsList: $('#findings-list'),
-  detailPanel: $('#detail-panel'),
-  detailContent: $('#detail-content'),
-  scanProg: $('#scan-progress-container'),
-  scanBar: $('#scan-progress-bar'),
-  scanPct: $('#scan-progress-pct'),
-  scanLabel: $('#scan-progress-label'),
-  dashCards: $('#dashboard-cards'),
-  dashIndicators: $('#dashboard-indicators'),
-};
+  var S = {
+    profiles: [],
+    activePid: null,
+    activeRid: null,
+    reports: [],
+    findings: [],
+    editingPid: null,
+  };
 
-// ── Init ──
-function init() {
-  if (window.__greyteamInit) return;
-  window.__greyteamInit = true;
-  initAuth();
-  initHeaderUser();
-  setupButtons();
-  setupModal();
-  setupFilters();
-  loadProfiles();
-}
+  var D = {
+    empty: $('#gt-empty'),
+    content: $('#gt-content'),
+    profileList: $('#gt-profile-list'),
+    kpiRow: $('#gt-kpi-row'),
+    indicators: $('#gt-indicators'),
+    statsBar: $('#gt-stats-bar'),
+    findingsEmpty: $('#gt-findings-empty'),
+    findingsList: $('#gt-findings-list'),
+    detailPanel: $('#gt-detail-panel'),
+    detailContent: $('#gt-detail-content'),
+    progressContainer: $('#gt-progress-container'),
+    progressBar: $('#gt-progress-bar'),
+    progressPct: $('#gt-progress-pct'),
+    progressMsg: $('#gt-progress-msg'),
+    liveProgress: $('#gt-live-progress'),
+    liveMsg: $('#gt-live-msg'),
+    livePct: $('#gt-live-pct'),
+    liveBar: $('#gt-live-bar'),
+    riskArc: $('#gt-risk-arc'),
+    riskValue: $('#gt-risk-value'),
+    riskLabel: $('#gt-risk-label'),
+    threatBadge: $('#gt-threat-badge'),
+    domain: $('#gt-domain'),
+    meta: $('#gt-meta'),
+    statusBadge: $('#gt-status-badge'),
+  };
 
-// ── Profile list ──
-async function loadProfiles() {
-  try {
-    const r = await fetch(A.profiles(), { headers: _authHeaders() });
-    S.profiles = await r.json();
-    renderProfiles();
-  } catch (e) {
-    console.error('Failed to load profiles', e);
-  }
-}
-
-function renderProfiles() {
-  if (!D.profileList) return;
-  if (!S.profiles.length) {
-    D.profileList.innerHTML = '<div class="text-[11px] text-gray-600 px-2 py-3 text-center">No domains yet</div>';
-    return;
-  }
-  D.profileList.innerHTML = S.profiles.map(p => {
-    const active = S.activePid === p.profile_id ? 'bg-primary/10 border-primary/20 text-primary-light' : 'text-gray-400 hover:bg-white/5 border-transparent';
-    const domain = esc(p.target_domain || p.target_path || 'No domain');
-    return `<button onclick="selectProfile('${p.profile_id}')" class="w-full text-left px-2.5 py-1.5 rounded-md border text-[11px] transition-all ${active}">
-      <div class="truncate font-medium">${esc(p.name)}</div>
-      <div class="text-[10px] text-gray-600 truncate mt-0.5 font-mono">${domain}</div>
-    </button>`;
-  }).join('');
-}
-
-async function selectProfile(pid) {
-  S.activePid = pid;
-  S.activeRid = null;
-  S.findings = [];
-  renderProfiles();
-  hideDetail();
-
-  try {
-    const r = await fetch(A.profile(pid), { headers: _authHeaders() });
-    const p = await r.json();
-    S.reports = p.reports || [];
-    renderDashboard(p);
-    if (S.reports.length > 0) {
-      selectReport(S.reports[0].report_id);
-    } else {
-      showEmptyFindings();
-    }
-  } catch (e) {
-    console.error('Failed to load profile', e);
-  }
-}
-
-// ── Dashboard ──
-function renderDashboard(p) {
-  D.placeholder.classList.add('hidden');
-  D.dashboard.classList.remove('hidden');
-  D.dashCards.classList.remove('hidden');
-  D.dashIndicators.classList.remove('hidden');
-  D.statsBar.classList.remove('hidden');
-
-  // Domain header
-  const domain = p.target_domain || p.target_path || '';
-  $('#dash-domain').textContent = domain || 'No domain configured';
-  $('#dash-meta').innerHTML = domain ? `<span>Target: ${esc(domain)}</span>` : '';
-
-  if (p.description) {
-    $('#dash-meta').innerHTML += `<span class="text-gray-600">· ${esc(p.description)}</span>`;
+  // ── Auth ──
+  function authHeaders() {
+    var t = localStorage.getItem('elyria_token');
+    return t ? { 'Authorization': 'Bearer ' + t } : {};
   }
 
-  // Buttons are wired inline in the HTML (onclick="runScan()" etc)
-  // They read S.activePid dynamically to know the current profile
-
-  // Reset indicators
-  resetIndicators();
-
-  // Load latest report findings
-  if (S.reports.length > 0) {
-    const latest = S.reports[0];
-    loadFindings(latest.report_id);
-  }
-}
-
-function resetIndicators() {
-  // DNS
-  ['a','mx','spf','dmarc'].forEach(k => $('#ind-dns-'+k).textContent = '--');
-  setIndicatorStatus('dns', 'unknown');
-  // SSL
-  ['issuer','expiry','sans','oldtls'].forEach(k => $('#ind-ssl-'+k).textContent = '--');
-  setIndicatorStatus('ssl', 'unknown');
-  // HTTP
-  ['hsts','csp','xfo','server'].forEach(k => $('#ind-http-'+k).textContent = '--');
-  setIndicatorStatus('http', 'unknown');
-  // Subs
-  $('#ind-subs-count').textContent = '--';
-  $('#ind-subs-list').innerHTML = '';
-  setIndicatorStatus('subs', 'unknown');
-  // Emails
-  $('#ind-emails-count').textContent = '--';
-  $('#ind-emails-list').innerHTML = '';
-  setIndicatorStatus('emails', 'unknown');
-  // Tech
-  $('#ind-tech-body').innerHTML = '';
-  setIndicatorStatus('tech', 'unknown');
-
-  // Risk gauge
-  $('#risk-gauge-value').textContent = '--';
-  $('#risk-gauge-label').textContent = 'No data';
-  $('#risk-gauge-arc').setAttribute('stroke', '#e2a03f');
-  $('#risk-gauge-arc').setAttribute('stroke-dashoffset', '201');
-  $('#dash-risk-badge').classList.add('hidden');
-
-  // Summary cards
-  $('#card-critical .text-2xl').textContent = '0';
-  $('#card-high .text-2xl').textContent = '0';
-  $('#card-total .text-2xl').textContent = '0';
-}
-
-function setIndicatorStatus(name, status) {
-  const el = $(`#ind-${name}-status`);
-  if (el) {
-    el.className = `w-2 h-2 rounded-full ${STATUS_CLASS[status] || 'bg-info'}`;
-  }
-}
-
-function updateDashboardFromFindings(findings) {
-  if (!findings || !findings.length) return;
-
-  // Per-type extraction
-  const byType = {};
-  for (const f of findings) {
-    const t = f.finding_type || 'osint';
-    byType[t] = byType[t] || [];
-    byType[t].push(f);
-  }
-
-  // ── DNS indicator ──
-  const dns = byType['dns'] || [];
-  for (const f of dns) {
-    const t = f.title || '';
-    const ev = f.evidence || '';
-    if (t.includes('A record')) {
-      $('#ind-dns-a').textContent = ev.split(':')[1]?.trim() || '✓';
-    }
-    if (t.includes('MX')) {
-      const match = ev.match(/mx/i) ? '✓' : (ev.length > 2 ? ev.substring(0,40) : '--');
-      $('#ind-dns-mx').textContent = '✓';
-    }
-    if (t.includes('SPF record present')) {
-      $('#ind-dns-spf').textContent = '✓';
-      $('#ind-dns-spf').className = 'text-[10px] indicator-good';
-    }
-    if (t.includes('Missing SPF')) {
-      $('#ind-dns-spf').textContent = '✗ Missing';
-      $('#ind-dns-spf').className = 'text-[10px] indicator-bad';
-    }
-    if (t.includes('DMARC record present')) {
-      $('#ind-dns-dmarc').textContent = t.includes('p=reject') ? '✓ Reject' : '✓ Monitor';
-      $('#ind-dns-dmarc').className = t.includes('p=reject') ? 'text-[10px] indicator-good' : 'text-[10px] indicator-warn';
-    }
-    if (t.includes('Missing DMARC')) {
-      $('#ind-dns-dmarc').textContent = '✗ Missing';
-      $('#ind-dns-dmarc').className = 'text-[10px] indicator-bad';
-    }
-  }
-
-  const dnsIssues = dns.filter(f => f.severity !== 'info').length;
-  const spfOk = dns.some(f => f.title.includes('SPF record present'));
-  const dmarcOk = dns.some(f => f.title.includes('DMARC record present') && (f.title.includes('p=reject') || f.title.includes('p=quarantine')));
-  if (dnsIssues > 0) setIndicatorStatus('dns', 'bad');
-  else if (!spfOk || !dmarcOk) setIndicatorStatus('dns', 'warn');
-  else setIndicatorStatus('dns', 'ok');
-
-  // ── SSL indicator ──
-  const ssl = byType['ssl'] || [];
-  for (const f of ssl) {
-    const t = f.title || '';
-    if (t.includes('issued by')) {
-      $('#ind-ssl-issuer').textContent = f.evidence?.split(':')[1]?.trim()?.substring(0,30) || '✓';
-    }
-    if (t.includes('expires in')) {
-      const days = t.match(/(\d+)\s*days/);
-      $('#ind-ssl-expiry').textContent = days ? `${days[1]}d` : '✓';
-      if (days && parseInt(days[1]) < 30) {
-        $('#ind-ssl-expiry').className = 'text-[10px] indicator-bad';
-      } else if (days && parseInt(days[1]) < 90) {
-        $('#ind-ssl-expiry').className = 'text-[10px] indicator-warn';
-      }
-    }
-    if (t.includes('SANs')) {
-      const m = t.match(/(\d+)\s*subdomains/);
-      $('#ind-ssl-sans').textContent = m ? m[1] : '✓';
-    }
-    if (t.includes('TLS 1.0 enabled') || t.includes('TLS 1.1 enabled')) {
-      $('#ind-ssl-oldtls').textContent = '✗ Enabled';
-      $('#ind-ssl-oldtls').className = 'text-[10px] indicator-bad';
-    }
-    if (t.includes('TLS 1.0/1.1 disabled')) {
-      $('#ind-ssl-oldtls').textContent = '✓ Disabled';
-      $('#ind-ssl-oldtls').className = 'text-[10px] indicator-good';
-    }
-  }
-  if (!$('#ind-ssl-oldtls').textContent || $('#ind-ssl-oldtls').textContent === '--') {
-    $('#ind-ssl-oldtls').textContent = '✗ Unknown';
-  }
-
-  const sslIssues = ssl.filter(f => f.severity !== 'info').length;
-  const hasOldTls = ssl.some(f => (f.title||'').includes('TLS 1.0 enabled') || (f.title||'').includes('TLS 1.1 enabled'));
-  const nearExpiry = ssl.some(f => (f.title||'').includes('expires in') && (f.severity === 'critical' || f.severity === 'high'));
-  if (nearExpiry || hasOldTls) setIndicatorStatus('ssl', 'bad');
-  else if (sslIssues > 0) setIndicatorStatus('ssl', 'warn');
-  else if (ssl.length > 0) setIndicatorStatus('ssl', 'ok');
-  else setIndicatorStatus('ssl', 'unknown');
-
-  // ── HTTP indicator ──
-  const http = byType['http'] || [];
-  const hasHttpData = http.length > 0;
-  const hasHsts = hasHttpData && !http.some(f => (f.title||'').includes('Missing') && (f.title||'').includes('HSTS'));
-  const hasCsp = hasHttpData && !http.some(f => (f.title||'').includes('Missing') && (f.title||'').includes('CSP'));
-  const hasXfo = hasHttpData && !http.some(f => (f.title||'').includes('Missing') && (f.title||'').includes('X-Frame'));
-
-  if (!hasHttpData) {
-    $('#ind-http-hsts').textContent = '--';
-    $('#ind-http-hsts').className = 'text-[10px]';
-    $('#ind-http-csp').textContent = '--';
-    $('#ind-http-csp').className = 'text-[10px]';
-    $('#ind-http-xfo').textContent = '--';
-    $('#ind-http-xfo').className = 'text-[10px]';
-  } else {
-    $('#ind-http-hsts').textContent = hasHsts ? '✓' : '✗';
-    $('#ind-http-hsts').className = hasHsts ? 'text-[10px] indicator-good' : 'text-[10px] indicator-bad';
-    $('#ind-http-csp').textContent = hasCsp ? '✓' : '✗';
-    $('#ind-http-csp').className = hasCsp ? 'text-[10px] indicator-good' : 'text-[10px] indicator-bad';
-    $('#ind-http-xfo').textContent = hasXfo ? '✓' : '✗';
-    $('#ind-http-xfo').className = hasXfo ? 'text-[10px] indicator-good' : 'text-[10px] indicator-bad';
-  }
-
-  // Server header
-  const serverFinding = http.find(f => (f.title||'').includes('Server header'));
-  if (serverFinding) {
-    const sv = serverFinding.evidence || '';
-    $('#ind-http-server').textContent = sv.replace('Server:','').trim().substring(0,25);
-    $('#ind-http-server').className = 'text-[10px] indicator-warn';
-  }
-
-  const httpIssues = http.filter(f => f.severity !== 'info').length;
-  if (httpIssues > 2) setIndicatorStatus('http', 'bad');
-  else if (httpIssues > 0 || !hasHsts || !hasCsp) setIndicatorStatus('http', 'warn');
-  else if (http.length > 0) setIndicatorStatus('http', 'ok');
-  else setIndicatorStatus('http', 'unknown');
-
-  // ── Subdomains (CT + SSL SANs + DNS) ──
-  const ct = byType['ct'] || [];
-  let subCount = 0;
-  let subList = [];
-  for (const f of ct) {
-    const t = f.title || '';
-    const m = t.match(/(\d+)\s*subdomains/);
-    if (m) subCount = parseInt(m[1]);
-    try {
-      const ev = JSON.parse(f.evidence || '{}');
-      if (ev.subdomains && Array.isArray(ev.subdomains)) {
-        subList = ev.subdomains.slice(0, 5);
-      }
-    } catch(e) {}
-  }
-  // Fallback: extract SANs from SSL
-  if (subCount === 0) {
-    const ssl = byType['ssl'] || [];
-    for (const f of ssl) {
-      if ((f.title||'').includes('SANs')) {
-        const m = (f.title||'').match(/(\d+)\s*subdomains/);
-        if (m) subCount = parseInt(m[1]);
-        // Parse SAN names from evidence (newline-separated)
-        const ev = f.evidence || '';
-        if (ev && !ev.startsWith('{')) {
-          const sans = ev.split('\n').filter(s => s.trim() && !s.includes('DNS:')).slice(0, 5);
-          if (sans.length > 0) subList = sans;
-        }
-        break;
-      }
-    }
-  }
-  // Fallback: count DNS A/AAAA records as subdomain indicator
-  if (subCount === 0) {
-    const dns = byType['dns'] || [];
-    for (const f of dns) {
-      if ((f.title||'').includes('A records')) {
-        const m = (f.evidence||'').match(/A:\s*(.+)/);
-        if (m) {
-          const ips = m[1].split(',').map(s => s.trim()).filter(Boolean);
-          if (ips.length > 0 && subCount === 0) subCount = Math.max(subCount, ips.length);
-        }
-      }
-    }
-  }
-
-  $('#ind-subs-count').textContent = subCount || '--';
-  $('#ind-subs-list').innerHTML = subList.length > 0
-    ? subList.map(s => `<div class="truncate">${esc(String(s).trim())}</div>`).join('')
-    : (subCount > 0 ? `<div class="text-gray-600">${subCount} subdomain(s) found</div>` : '');
-
-  if (subCount > 10) setIndicatorStatus('subs', 'bad');
-  else if (subCount > 3) setIndicatorStatus('subs', 'warn');
-  else if (subCount > 0) setIndicatorStatus('subs', 'ok');
-  else setIndicatorStatus('subs', 'unknown');
-
-  // ── Emails (from email module + WHOIS) ──
-  const email = byType['email'] || [];
-  let emailCount = 0;
-  let emailList = [];
-
-  for (const f of email) {
-    const ev = (f.evidence || '').trim();
-    if (!ev || ev === 'No data' || ev.includes('Connection failed')) continue;
-    // Comma-separated list
-    const items = ev.split(',').map(e => e.trim()).filter(e => e.includes('@') && e.length < 80);
-    if (items.length > 0) {
-      emailCount += items.length;
-      for (const item of items) {
-        if (emailList.length < 4) emailList.push(item);
-      }
-    } else if (ev.includes('@') && ev.length < 80) {
-      // Single email
-      emailCount++;
-      if (emailList.length < 4) emailList.push(ev);
-    }
-  }
-
-  $('#ind-emails-count').textContent = emailCount || '--';
-  $('#ind-emails-list').innerHTML = emailList.length > 0
-    ? emailList.map(e => `<div class="truncate">${esc(e)}</div>`).join('')
-    : '';
-
-  if (emailCount > 5) setIndicatorStatus('emails', 'warn');
-  else if (emailCount > 0) setIndicatorStatus('emails', 'ok');
-  else setIndicatorStatus('emails', 'unknown');
-
-  // ── Tech Stack (fingerprint + response headers) ──
-  const tech = byType['tech'] || [];
-  let techItems = [];
-  let techSeen = new Set();
-
-  for (const f of tech) {
-    if ((f.title||'').includes('components detected')) {
-      try {
-        const ev = JSON.parse(f.evidence || '[]');
-        if (Array.isArray(ev)) {
-          ev.forEach(t => {
-            const s = String(t).trim();
-            if (s && !techSeen.has(s)) {
-              techSeen.add(s);
-              techItems.push(s);
-            }
-          });
-        }
-      } catch(e) {
-        // Evidence might be plain text, try line-by-line
-        const lines = (f.evidence || '').split('\n').filter(l => l.trim());
-        lines.forEach(l => {
-          const s = l.trim();
-          if (s && !techSeen.has(s)) {
-            techSeen.add(s);
-            techItems.push(s);
-          }
-        });
-      }
-    }
-  }
-
-  $('#ind-tech-body').innerHTML = techItems.length > 0
-    ? techItems.slice(0, 5).map(t => {
-        // Truncate long entries
-        const display = String(t).length > 35 ? String(t).substring(0, 32) + '...' : String(t);
-        return `<div class="truncate" title="${esc(String(t))}">${esc(display)}</div>`;
-      }).join('')
-    : '<div class="text-gray-600">No components detected</div>';
-
-  if (techItems.length > 0) setIndicatorStatus('tech', 'ok');
-  else setIndicatorStatus('tech', 'unknown');
-
-  // ── Risk Score ──
-  const critical = findings.filter(f => f.severity === 'critical').length;
-  const high = findings.filter(f => f.severity === 'high').length;
-  const medium = findings.filter(f => f.severity === 'medium').length;
-  const low = findings.filter(f => f.severity === 'low').length;
-  const info = findings.filter(f => f.severity === 'info').length;
-
-  let score = 0;
-  score += critical * 25;
-  score += high * 15;
-  score += medium * 5;
-  score += low * 2;
-  score = Math.min(100, score);
-
-  let riskLabel, riskColor;
-  if (findings.length === 0) {
-    riskLabel = 'No data';
-    riskColor = '#6b7280';
-  } else if (score === 0) {
-    riskLabel = 'Info';
-    riskColor = '#6b7280';
-  } else if (score < 15) {
-    riskLabel = 'Low';
-    riskColor = '#22c55e';
-  } else if (score < 35) {
-    riskLabel = 'Medium';
-    riskColor = '#e2a03f';
-  } else if (score < 65) {
-    riskLabel = 'High';
-    riskColor = '#f97316';
-  } else {
-    riskLabel = 'Critical';
-    riskColor = '#ef4444';
-  }
-
-  $('#risk-gauge-value').textContent = score;
-  $('#risk-gauge-label').textContent = riskLabel;
-  $('#risk-gauge-arc').setAttribute('stroke', riskColor);
-  const circumference = 201;
-  const offset = circumference - (score / 100) * circumference;
-  $('#risk-gauge-arc').setAttribute('stroke-dashoffset', offset);
-
-  // Risk badge
-  const badge = $('#dash-risk-badge');
-  badge.classList.remove('hidden');
-  badge.textContent = riskLabel;
-  badge.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide';
-  if (riskLabel === 'Critical') {
-    badge.classList.add('bg-critical/15', 'text-critical-light', 'border', 'border-critical/20');
-  } else if (riskLabel === 'High') {
-    badge.classList.add('bg-high/15', 'text-high-light', 'border', 'border-high/20');
-  } else if (riskLabel === 'Medium') {
-    badge.classList.add('bg-medium/15', 'text-medium-light', 'border', 'border-medium/20');
-  } else if (riskLabel === 'Low') {
-    badge.classList.add('bg-low/15', 'text-low-light', 'border', 'border-low/20');
-  } else {
-    badge.classList.add('bg-info/15', 'text-info-light', 'border', 'border-info/20');
-  }
-
-  // Summary cards
-  $('#card-critical .text-2xl').textContent = critical;
-  $('#card-high .text-2xl').textContent = high;
-  $('#card-total .text-2xl').textContent = findings.length;
-}
-
-// ── Reports & Findings ──
-function selectReport(rid) {
-  S.activeRid = rid;
-  loadFindings(rid);
-}
-
-async function loadFindings(rid) {
-  try {
-    const r = await fetch(A.findings(rid), { headers: _authHeaders() });
-    const data = await r.json();
-    S.findings = data.findings || [];
-    updateStats(data.counts || {});
-    renderFindings(S.findings);
-    updateDashboardFromFindings(S.findings);
-  } catch (e) {
-    console.error('Failed to load findings', e);
-  }
-}
-
-function showEmptyFindings() {
-  D.findingsEmpty.classList.remove('hidden');
-  D.findingsList.classList.add('hidden');
-  D.statsBar.classList.add('hidden');
-}
-
-// ── Scan + Hybrid Polling (adaptive: /1.5 when active, *2 when idle, 2s–30s) ──
-
-let _pollTimer = null;
-let _pollInterval = 2000;
-let _pollLastPct = -1;
-let _pollSameCount = 0;
-
-async function runScan() {
-  if (!S.activePid) return;
-
-  D.scanProg.classList.remove('hidden');
-  D.scanBar.style.width = '0%';
-  D.scanPct.textContent = '0%';
-  D.scanLabel.textContent = 'Starting OSINT collection...';
-  D.scanLabel.classList.add('scanning-pulse');
-  D.statsBar.classList.remove('hidden');
-  D.dashCards.classList.remove('hidden');
-  D.dashIndicators.classList.remove('hidden');
-  resetIndicators();
-
-  try {
-    const r = await fetch(A.createReport, {
-      method: 'POST',
-      headers: { ..._authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile_id: S.activePid }),
+  function api(method, path, body) {
+    var opts = { method: method, headers: { 'Content-Type': 'application/json' } };
+    var ah = authHeaders();
+    for (var k in ah) opts.headers[k] = ah[k];
+    if (body) opts.body = JSON.stringify(body);
+    return fetch(path, opts).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'Request failed'); });
+      return r.json();
     });
-    const { report_id } = await r.json();
-    S.activeRid = report_id;
-    startPolling(report_id);
-  } catch (e) {
-    console.error('Failed to start scan', e);
-    D.scanProg.classList.add('hidden');
   }
-}
 
-function startPolling(rid) {
-  stopPolling();
-  _pollInterval = 2000;
-  _pollLastPct = -1;
-  _pollSameCount = 0;
+  // ── Init ──
+  function init() {
+    if (window.__gtInit) return;
+    window.__gtInit = true;
 
-  // Fire first poll after 500ms (blueteam pattern)
-  _pollTimer = setTimeout(() => poll(rid), 500);
-}
+    $('#btn-new-profile').addEventListener('click', function () { openModal(); });
+    if ($('#btn-create-first')) $('#btn-create-first').addEventListener('click', function () { openModal(); });
+    if ($('#btn-gt-modal-save')) $('#btn-gt-modal-save').addEventListener('click', saveProfile);
+    $('#btn-run-scan').addEventListener('click', function () { if (S.activePid) runScan(); });
+    $('#btn-stop-scan').addEventListener('click', function () { if (S.activePid) stopScan(); });
+    $('#btn-edit-profile').addEventListener('click', function () {
+      var p = S.profiles.find(function (x) { return x.profile_id === S.activePid; });
+      if (p) openModal(p);
+    });
+    $('#btn-delete-profile').addEventListener('click', function () {
+      if (!S.activePid) return;
+      if (!confirm('Delete this target and all its intelligence reports?')) return;
+      deleteProfile(S.activePid);
+    });
 
-function stopPolling() {
-  if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; }
-}
+    $('#filter-severity').addEventListener('change', function () { renderFindings(); });
+    $('#filter-source').addEventListener('change', function () { renderFindings(); });
+    $('#filter-type').addEventListener('change', function () { renderFindings(); });
 
-async function poll(rid) {
-  try {
-    const r = await fetch(A.report(rid), { headers: _authHeaders() });
-    if (!r.ok) { stopPolling(); return; }
-    const report = await r.json();
+    loadProfiles();
+  }
 
-    const pct = report.scan_progress || 0;
-    const status = report.status;
+  // ── Profiles ──
+  function loadProfiles() {
+    api('GET', A.profiles).then(function (data) {
+      S.profiles = data || [];
+      renderProfileList();
+    }).catch(function () {});
+  }
 
-    // Update progress UI
-    D.scanProg.classList.remove('hidden');
-    D.scanBar.style.width = `${pct}%`;
-    D.scanPct.textContent = `${pct}%`;
+  function renderProfileList() {
+    if (!D.profileList) return;
+    D.profileList.innerHTML = '';
+    S.profiles.forEach(function (p) {
+      var el = document.createElement('div');
+      var statusColors = { pending:'bg-gray-600', running:'bg-amber-400 animate-pulse', completed:'bg-emerald-400', stopped:'bg-amber-400', failed:'bg-red-400' };
+      var dot = statusColors[p.status] || 'bg-gray-600';
+      var total = p.total_findings || 0;
+      el.className = 'profile-item' + (p.profile_id === S.activePid ? ' active' : '');
+      el.innerHTML = '<span class="flex items-center gap-2 min-w-0 flex-1"><span class="w-2 h-2 rounded-full flex-shrink-0 ' + dot + '"></span><span class="text-xs text-gray-300 truncate">' + esc(p.name) + '</span></span>' +
+        '<span class="text-[9px] text-gray-600 font-mono flex-shrink-0">' + (total > 0 ? total + ' sig' : '—') + '</span>';
+      el.style.cssText = 'display:flex;align-items:center;gap:.5rem;padding:.5rem .625rem;border-radius:.5rem;cursor:pointer;transition:all .15s;border:1px solid transparent;';
+      el.addEventListener('click', function () { selectProfile(p.profile_id); });
+      D.profileList.appendChild(el);
+    });
+  }
 
-    if (pct >= 100) {
-      D.scanLabel.textContent = status === 'completed' ? 'OSINT scan complete' : status === 'failed' ? 'Scan failed' : 'Done';
-      D.scanLabel.classList.remove('scanning-pulse');
-    }
+  function selectProfile(pid) {
+    S.activePid = pid;
+    S.activeRid = null;
+    S.findings = [];
+    renderProfileList();
+    hideDetail();
 
-    // Adaptive interval
-    if (pct !== _pollLastPct) {
-      _pollInterval = Math.max(2000, _pollInterval / 1.5);
-      _pollSameCount = 0;
-      // Reload findings when progress changes
-      loadFindings(rid);
-    } else {
-      _pollSameCount++;
-      if (_pollSameCount >= 2) {
-        _pollInterval = Math.min(30000, _pollInterval * 2);
-        _pollSameCount = 0;
+    api('GET', A.profile(pid)).then(function (p) {
+      S.reports = p.reports || [];
+      showDashboard(p);
+      if (S.reports.length > 0) {
+        selectReport(S.reports[0].report_id);
+      } else {
+        showEmptyFindings();
       }
-    }
-    _pollLastPct = pct;
+    }).catch(function () {});
+  }
 
-    // Stop condition
-    if (status !== 'running') {
-      D.scanLabel.classList.remove('scanning-pulse');
-      D.scanLabel.textContent = status === 'completed' ? 'OSINT scan complete' : 'Scan failed';
-      setTimeout(() => D.scanProg.classList.add('hidden'), 3000);
-      loadFindings(rid);
+  window._selectProfile = selectProfile;
+
+  function deleteProfile(pid) {
+    api('DELETE', A.profile(pid)).then(function () {
+      if (S.activePid === pid) {
+        S.activePid = null; S.activeRid = null; S.findings = [];
+        D.content.classList.add('hidden');
+        D.empty.classList.remove('hidden');
+      }
+      loadProfiles();
+    }).catch(function (e) { alert('Delete failed: ' + e.message); });
+  }
+
+  // ── Dashboard ──
+  function showDashboard(p) {
+    D.empty.classList.add('hidden');
+    D.content.classList.remove('hidden');
+    D.kpiRow.classList.remove('hidden');
+    D.indicators.classList.remove('hidden');
+    D.statsBar.classList.remove('hidden');
+
+    var domain = p.target_domain || p.target_path || '';
+    D.domain.textContent = domain || 'NO TARGET CONFIGURED';
+    D.meta.textContent = (domain ? 'TARGET: ' + domain : '') + (p.description ? '  //  ' + p.description : '');
+
+    updateStatusBadge(p.status);
+    if (p.status === 'running') {
+      $('#btn-run-scan').classList.add('hidden');
+      $('#btn-stop-scan').classList.remove('hidden');
+      D.liveProgress.classList.remove('hidden');
+      var pct = p.scan_progress || 0;
+      D.livePct.textContent = pct + '%';
+      D.liveBar.style.width = pct + '%';
+      D.liveMsg.textContent = 'COLLECTION IN PROGRESS...';
+    } else {
+      D.liveProgress.classList.add('hidden');
+      $('#btn-run-scan').classList.remove('hidden');
+      $('#btn-stop-scan').classList.add('hidden');
+    }
+
+    resetAllIndicators();
+  }
+
+  function updateStatusBadge(status) {
+    var b = D.statusBadge;
+    b.classList.remove('hidden');
+    var map = {
+      pending: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
+      running: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+      completed: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+      stopped: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+      failed: 'bg-red-500/10 text-red-400 border-red-500/20',
+    };
+    b.className = 'px-2 py-0.5 rounded-full text-[9px] font-bold border ' + (map[status] || map.pending);
+    b.textContent = status.toUpperCase();
+  }
+
+  // ── Scan ──
+  function runScan() {
+    if (!S.activePid) return;
+    var btn = $('#btn-run-scan');
+    btn.disabled = true; btn.textContent = 'INITIALIZING...';
+    D.liveProgress.classList.remove('hidden');
+    D.liveBar.style.width = '0%';
+    D.livePct.textContent = '0%';
+    D.liveMsg.textContent = 'SIGNALS COLLECTION IN PROGRESS...';
+    $('#btn-run-scan').classList.add('hidden');
+    $('#btn-stop-scan').classList.remove('hidden');
+    updateStatusBadge('running');
+    resetAllIndicators();
+
+    api('POST', A.createReport, { profile_id: S.activePid }).then(function (data) {
+      S.activeRid = data.report_id;
+      startPolling(data.report_id);
+    }).catch(function (e) {
+      alert('Scan failed: ' + e.message);
+      btn.disabled = false;
+      resetRunButton();
+    });
+  }
+
+  function stopScan() {
+    if (!S.activeRid) return;
+    api('POST', A.stop(S.activeRid)).then(function () {
       stopPolling();
+      D.liveProgress.classList.add('hidden');
+      $('#btn-run-scan').classList.remove('hidden');
+      $('#btn-stop-scan').classList.add('hidden');
+      resetRunButton();
+    }).catch(function () {});
+  }
+
+  function resetRunButton() {
+    var btn = $('#btn-run-scan');
+    btn.disabled = false;
+    btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>COLLECT';
+  }
+
+  // ── Polling ──
+  var _pollTimer = null, _pollInterval = 2000, _lastPct = -1, _sameCount = 0, _pollCount = 0, _scanDone = false;
+
+  function startPolling(rid) {
+    stopPolling();
+    _pollInterval = 2000; _lastPct = -1; _sameCount = 0; _pollCount = 0; _scanDone = false;
+    _pollTimer = setTimeout(function () { poll(rid); }, 500);
+  }
+
+  function stopPolling() {
+    if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; }
+    setTimeout(function () { _scanDone = false; }, 500);
+  }
+
+  function poll(rid) {
+    _pollCount++;
+    if (_pollCount > 180) { stopPolling(); D.liveProgress.classList.add('hidden'); return; }
+    api('GET', A.report(rid)).then(function (r) {
+      var pct = r.scan_progress || 0;
+      D.livePct.textContent = pct + '%';
+      D.liveBar.style.width = pct + '%';
+      if (r.progress_msg) D.liveMsg.textContent = r.progress_msg;
+
+      if (r.status === 'completed') { _onScanDone(r); return; }
+      if (r.status === 'failed') { _onScanFailed(r); return; }
+
+      if (pct !== _lastPct) {
+        _pollInterval = Math.max(2000, _pollInterval / 1.5); _sameCount = 0;
+        loadFindingsSilent(rid);
+      } else {
+        _sameCount++;
+        if (_sameCount >= 3) { _pollInterval = Math.min(30000, _pollInterval * 2); _sameCount = 0; }
+      }
+      _lastPct = pct;
+      _pollTimer = setTimeout(function () { poll(rid); }, _pollInterval);
+    }).catch(function () {
+      _pollInterval = Math.min(30000, _pollInterval * 2);
+      _pollTimer = setTimeout(function () { poll(rid); }, _pollInterval);
+    });
+  }
+
+  function _onScanDone(r) {
+    if (_scanDone) return; _scanDone = true; stopPolling();
+    D.livePct.textContent = '100%'; D.liveBar.style.width = '100%';
+    D.liveMsg.textContent = 'COLLECTION COMPLETE';
+    D.liveProgress.classList.add('hidden');
+    $('#btn-run-scan').classList.remove('hidden'); $('#btn-stop-scan').classList.add('hidden');
+    resetRunButton(); updateStatusBadge('completed');
+    selectReport(S.activeRid); loadProfiles();
+  }
+
+  function _onScanFailed(r) {
+    if (_scanDone) return; _scanDone = true; stopPolling();
+    D.liveMsg.textContent = 'COLLECTION FAILED';
+    D.liveProgress.classList.add('hidden');
+    $('#btn-run-scan').classList.remove('hidden'); $('#btn-stop-scan').classList.add('hidden');
+    resetRunButton(); updateStatusBadge('failed');
+  }
+
+  // ── Reports & Findings ──
+  function selectReport(rid) { S.activeRid = rid; loadFindings(rid); }
+
+  function loadFindings(rid) {
+    api('GET', A.findings(rid)).then(function (data) {
+      S.findings = data.findings || [];
+      updateStats(data.counts || {});
+      renderFindings();
+      extractIntelFromFindings(S.findings);
+    }).catch(function () {});
+  }
+
+  function loadFindingsSilent(rid) {
+    api('GET', A.findings(rid)).then(function (data) {
+      S.findings = data.findings || [];
+      updateStats(data.counts || {});
+      renderFindings();
+      extractIntelFromFindings(S.findings);
+    }).catch(function () {});
+  }
+
+  function showEmptyFindings() {
+    D.findingsEmpty.classList.remove('hidden'); D.findingsList.classList.add('hidden');
+    D.statsBar.classList.add('hidden');
+  }
+
+  // ── Stats bar ──
+  function updateStats(counts) {
+    var c = counts || {};
+    if (!Object.keys(c).length && S.findings.length) {
+      S.findings.forEach(function (f) { c[f.severity] = (c[f.severity] || 0) + 1; });
+    }
+    $('#stat-critical').textContent = c.critical || 0;
+    $('#stat-high').textContent = c.high || 0;
+    $('#stat-medium').textContent = c.medium || 0;
+    $('#stat-low').textContent = c.low || 0;
+    $('#stat-info').textContent = c.info || 0;
+
+    var det = 0, ai = 0;
+    S.findings.forEach(function (f) {
+      if (!f.ai_description) det++; else ai++;
+    });
+    $('#stat-det').textContent = det;
+    $('#stat-ai').textContent = ai;
+
+    if (S.findings.length > 0) {
+      D.findingsEmpty.classList.add('hidden'); D.findingsList.classList.remove('hidden');
+      D.statsBar.classList.remove('hidden');
+    }
+  }
+
+  // ── Findings rendering ──
+  function renderFindings() {
+    if (!D.findingsList) return;
+    var sev = ($('#filter-severity') || {}).value || 'all';
+    var src = ($('#filter-source') || {}).value || 'all';
+    var type = ($('#filter-type') || {}).value || 'all';
+
+    var filtered = S.findings;
+    if (sev !== 'all') filtered = filtered.filter(function (f) { return f.severity === sev; });
+    if (src !== 'all') filtered = filtered.filter(function (f) {
+      if (src === 'ai') return !!f.ai_description;
+      if (src === 'deterministic') return !f.ai_description;
+      return true;
+    });
+    if (type !== 'all') filtered = filtered.filter(function (f) { return f.finding_type === type; });
+
+    if (!filtered.length) {
+      D.findingsList.innerHTML = '<div class="text-gray-600 text-xs text-center py-12 font-[\'JetBrains_Mono\']">NO SIGNALS MATCH FILTER</div>';
       return;
     }
 
-    // Schedule next poll
-    _pollTimer = setTimeout(() => poll(rid), _pollInterval);
-  } catch (e) {
-    console.error('Poll failed:', e);
-    _pollInterval = Math.min(30000, _pollInterval * 2);
-    _pollTimer = setTimeout(() => poll(rid), _pollInterval);
-  }
-}
+    filtered.sort(function (a, b) { return (SEV_ORDER[a.severity] || 4) - (SEV_ORDER[b.severity] || 4); });
 
-// ── Render findings ──
-function updateStats(counts) {
-  if (!counts) {
-    counts = {};
-    for (const f of S.findings) {
-      counts[f.severity] = (counts[f.severity] || 0) + 1;
+    var sevBorders = { critical:'border-l-red-500', high:'border-l-orange-500', medium:'border-l-yellow-500', low:'border-l-green-500', info:'border-l-gray-600' };
+    var sevBadges = {
+      critical:'text-red-400 bg-red-500/10 border-red-500/20',
+      high:'text-orange-400 bg-orange-500/10 border-orange-500/20',
+      medium:'text-yellow-400 bg-yellow-500/10 border-yellow-500/20',
+      low:'text-green-400 bg-green-500/10 border-green-500/20',
+      info:'text-gray-400 bg-gray-500/10 border-gray-500/20'
+    };
+
+    D.findingsList.innerHTML = filtered.map(function (f) {
+      var sevBorder = sevBorders[f.severity] || 'border-l-gray-600';
+      var sevBadge = sevBadges[f.severity] || sevBadges.info;
+      var ft = f.finding_type || 'osint';
+      return '<div onclick="window.gtShowDetail(\'' + f.finding_id + '\')" class="finding-row cursor-pointer px-5 py-2.5 border-l-2 ' + sevBorder + ' transition-all">' +
+        '<div class="flex items-start justify-between gap-3">' +
+          '<div class="flex-1 min-w-0">' +
+            '<div class="flex items-center gap-2">' +
+              '<span class="text-xs font-medium text-gray-200 truncate">' + esc(f.title) + '</span>' +
+              '<span class="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ' + sevBadge + '">' + esc(f.severity) + '</span>' +
+              '<span class="shrink-0 px-1 py-0.5 rounded text-[8px] font-mono text-gray-500 bg-[#0d1117] uppercase border border-white/5">' + esc(ft) + '</span>' +
+            '</div>' +
+            (f.ai_description ? '<div class="text-[10px] text-amber-300/70 mt-0.5 italic line-clamp-2 font-[\'JetBrains_Mono\']">' + esc(f.ai_description) + '</div>' : '') +
+            '<div class="text-[10px] text-gray-500 mt-0.5 truncate">' + esc((f.description || '').substring(0, 180)) + '</div>' +
+            '<div class="flex items-center gap-2 mt-1">' +
+              '<span class="text-[9px] text-gray-600 font-mono">' + esc(f.category || '') + '</span>' +
+              (f.evidence && f.evidence !== 'Connection failed' ? '<span class="text-[9px] text-gray-500 font-mono truncate max-w-[220px]">' + esc(String(f.evidence).substring(0, 60)) + '</span>' : '') +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  window.gtShowDetail = function (fid) {
+    var f = S.findings.find(function (x) { return x.finding_id === fid; });
+    if (!f) return;
+    D.detailPanel.classList.remove('hidden');
+    D.detailContent.innerHTML =
+      '<div class="flex items-center gap-2">' +
+        '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase border ' + (f.severity==='critical'?'text-red-400 bg-red-500/10 border-red-500/20':f.severity==='high'?'text-orange-400 bg-orange-500/10 border-orange-500/20':f.severity==='low'?'text-green-400 bg-green-500/10 border-green-500/20':f.severity==='info'?'text-gray-400 bg-gray-500/10 border-gray-500/20':'text-yellow-400 bg-yellow-500/10 border-yellow-500/20') + '">' + esc(f.severity) + '</span>' +
+        '<span class="text-[10px] text-gray-600 font-mono uppercase tracking-wider">' + esc(f.finding_type || 'osint') + '</span>' +
+      '</div>' +
+      '<h3 class="text-sm font-semibold text-gray-200 leading-snug">' + esc(f.title) + '</h3>' +
+      (f.ai_description ? '<div class="text-[11px] text-amber-300/80 italic leading-relaxed p-3 bg-amber-500/5 rounded-lg border border-amber-500/10 font-[\'JetBrains_Mono\']">' + esc(f.ai_description) + '</div>' : '') +
+      '<div class="space-y-3 pt-1">' +
+        '<div><div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wider mb-0.5">Description</div><div class="text-[11px] text-gray-400 leading-relaxed">' + esc(f.description || '—') + '</div></div>' +
+        '<div><div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wider mb-0.5">Category</div><div class="text-[11px] text-gray-400 font-mono">' + esc(f.category || '—') + '</div></div>' +
+        (f.cwe_id ? '<div><div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wider mb-0.5">CWE</div><div class="text-[11px] text-gray-400 font-mono">' + esc(f.cwe_id) + '</div></div>' : '') +
+        (f.evidence ? '<div><div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wider mb-1">Evidence</div><pre class="p-3 rounded-lg bg-[#0a0e14] border border-white/5 text-[10px] text-gray-400 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">' + esc(String(f.evidence)) + '</pre></div>' : '') +
+        (f.remediation ? '<div><div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wider mb-0.5">Remediation</div><div class="text-[11px] text-emerald-400/70 leading-relaxed">' + esc(f.remediation) + '</div></div>' : '') +
+      '</div>';
+  };
+
+  window.gtCloseDetail = function () { D.detailPanel.classList.add('hidden'); };
+  function hideDetail() { D.detailPanel.classList.add('hidden'); }
+
+  // ── KPI / Intel Extraction ──
+  function resetAllIndicators() {
+    ['a','mx','spf','dmarc'].forEach(function (k) { $('#ind-dns-' + k).textContent = '--'; $('#ind-dns-' + k).className = 'text-gray-400'; });
+    setDot('dns', 'unknown');
+    ['issuer','expiry','sans','oldtls'].forEach(function (k) { $('#ind-ssl-' + k).textContent = '--'; $('#ind-ssl-' + k).className = 'text-gray-400'; });
+    setDot('ssl', 'unknown');
+    ['hsts','csp','xfo','server'].forEach(function (k) { $('#ind-http-' + k).textContent = '--'; $('#ind-http-' + k).className = 'text-gray-400'; });
+    setDot('http', 'unknown');
+    $('#ind-subs-count').textContent = '--'; $('#ind-subs-list').innerHTML = ''; setDot('subs', 'unknown');
+    $('#ind-emails-count').textContent = '--'; $('#ind-emails-list').innerHTML = ''; setDot('emails', 'unknown');
+    $('#ind-tech-body').innerHTML = '<div class="text-gray-600">No components detected</div>'; setDot('tech', 'unknown');
+    D.riskValue.textContent = '--'; D.riskLabel.textContent = 'NO DATA';
+    D.riskArc.setAttribute('stroke', '#6b7280'); D.riskArc.setAttribute('stroke-dashoffset', '201');
+    D.threatBadge.classList.add('hidden');
+    $('#kpi-critical').textContent = '0'; $('#kpi-high').textContent = '0'; $('#kpi-total').textContent = '0';
+  }
+
+  function setDot(name, status) {
+    var el = $('#ind-' + name + '-dot');
+    if (!el) return;
+    var map = { ok:'bg-emerald-500', warn:'bg-amber-500', bad:'bg-red-500', unknown:'bg-gray-600' };
+    el.className = 'w-2 h-2 rounded-full ' + (map[status] || 'bg-gray-600');
+    if (status === 'bad') el.style.boxShadow = '0 0 6px rgba(239,68,68,0.4)';
+    else el.style.boxShadow = 'none';
+  }
+
+  function extractIntelFromFindings(findings) {
+    if (!findings || !findings.length) return;
+
+    var byType = {};
+    findings.forEach(function (f) { var t = f.finding_type || 'osint'; byType[t] = byType[t] || []; byType[t].push(f); });
+
+    // ── DNS Intel ──
+    var dns = byType['dns'] || [];
+    dns.forEach(function (f) {
+      var t = f.title || '', ev = f.evidence || '';
+      if (t.toLowerCase().includes('a record')) { var m = ev.match(/A:\s*(.+)/i); $('#ind-dns-a').textContent = m ? m[1].split(',')[0].trim() : '✓'; }
+      if (t.toLowerCase().includes('mx')) $('#ind-dns-mx').textContent = '✓';
+      if (t.includes('SPF record present')) { $('#ind-dns-spf').textContent = '✓ Present'; $('#ind-dns-spf').className = 'text-emerald-400'; }
+      if (t.includes('Missing SPF')) { $('#ind-dns-spf').textContent = '✗ Missing'; $('#ind-dns-spf').className = 'text-red-400'; }
+      if (t.includes('DMARC record present')) { var pol = t.includes('p=reject') ? '✓ Reject' : '✓ Monitor'; $('#ind-dns-dmarc').textContent = pol; $('#ind-dns-dmarc').className = t.includes('p=reject') ? 'text-emerald-400' : 'text-amber-400'; }
+      if (t.includes('Missing DMARC')) { $('#ind-dns-dmarc').textContent = '✗ Missing'; $('#ind-dns-dmarc').className = 'text-red-400'; }
+    });
+    var dnsIssues = dns.filter(function (f) { return f.severity !== 'info'; }).length;
+    var spfOk = dns.some(function (f) { return (f.title||'').includes('SPF record present'); });
+    var dmarcOk = dns.some(function (f) { return (f.title||'').includes('DMARC record present'); });
+    if (dnsIssues > 0) setDot('dns', 'bad'); else if (!spfOk || !dmarcOk) setDot('dns', 'warn'); else if (dns.length > 0) setDot('dns', 'ok');
+
+    // ── SSL Intel ──
+    var ssl = byType['ssl'] || [];
+    ssl.forEach(function (f) {
+      var t = f.title || '', ev = f.evidence || '';
+      if (t.includes('issued by')) { var parts = ev.split(':'); var issuer = parts.slice(1).join(':').trim().substring(0, 28); $('#ind-ssl-issuer').textContent = issuer || '✓'; }
+      if (t.includes('expires in')) { var dm = t.match(/(\d+)\s*days/); var days = dm ? parseInt(dm[1]) : null; $('#ind-ssl-expiry').textContent = days !== null ? days + 'd' : '✓'; if (days !== null && days < 30) $('#ind-ssl-expiry').className = 'text-red-400'; else if (days !== null && days < 90) $('#ind-ssl-expiry').className = 'text-amber-400'; else $('#ind-ssl-expiry').className = 'text-emerald-400'; }
+      if (t.includes('SANs')) { var sm = t.match(/(\d+)\s*subdomain/); $('#ind-ssl-sans').textContent = sm ? sm[1] : '✓'; }
+      if (t.includes('TLS version negotiated')) { var vm = t.match(/TLS version negotiated:\s*(.+)/); var v = vm ? vm[1].trim() : ''; $('#ind-ssl-oldtls').textContent = v || '--'; $('#ind-ssl-oldtls').className = v && (v.includes('1.0') || v.includes('1.1')) ? 'text-red-400' : 'text-emerald-400'; }
+      if (t.includes('SSL connection failed')) { $('#ind-ssl-issuer').textContent = '✗ Failed'; $('#ind-ssl-issuer').className = 'text-red-400'; }
+    });
+    if (!$('#ind-ssl-oldtls').textContent || $('#ind-ssl-oldtls').textContent === '--') { $('#ind-ssl-oldtls').textContent = '✗ Unknown'; }
+    var sslIssues = ssl.filter(function (f) { return f.severity !== 'info'; }).length;
+    var hasOldTls = ssl.some(function (f) { return (f.title||'').includes('TLS version negotiated') && ((f.title||'').includes('TLSv1.0') || (f.title||'').includes('TLSv1.1')); });
+    var nearExpiry = ssl.some(function (f) { return (f.title||'').includes('expires in') && (f.severity === 'critical' || f.severity === 'high'); });
+    if (nearExpiry || hasOldTls) setDot('ssl', 'bad'); else if (sslIssues > 0) setDot('ssl', 'warn'); else if (ssl.length > 0) setDot('ssl', 'ok');
+
+    // ── HTTP Intel ──
+    var http = byType['http'] || [];
+    var hasHttp = http.length > 0;
+    var hasHsts = hasHttp && !http.some(function (f) { return (f.title||'').includes('Missing') && (f.title||'').includes('HSTS'); });
+    var hasCsp = hasHttp && !http.some(function (f) { return (f.title||'').includes('Missing') && (f.title||'').includes('CSP'); });
+    var hasXfo = hasHttp && !http.some(function (f) { return (f.title||'').includes('Missing') && (f.title||'').includes('X-Frame'); });
+    if (hasHttp) {
+      $('#ind-http-hsts').textContent = hasHsts ? '✓' : '✗'; $('#ind-http-hsts').className = hasHsts ? 'text-emerald-400' : 'text-red-400';
+      $('#ind-http-csp').textContent = hasCsp ? '✓' : '✗'; $('#ind-http-csp').className = hasCsp ? 'text-emerald-400' : 'text-red-400';
+      $('#ind-http-xfo').textContent = hasXfo ? '✓' : '✗'; $('#ind-http-xfo').className = hasXfo ? 'text-emerald-400' : 'text-red-400';
+    }
+    var serverFinding = http.find(function (f) { return (f.title||'').includes('Server header'); });
+    if (serverFinding) { $('#ind-http-server').textContent = (serverFinding.evidence || '').replace('Server:', '').trim().substring(0, 22); $('#ind-http-server').className = 'text-amber-400'; }
+    var httpIssues = http.filter(function (f) { return f.severity !== 'info'; }).length;
+    if (httpIssues > 2) setDot('http', 'bad'); else if (httpIssues > 0 || !hasHsts || !hasCsp) setDot('http', 'warn'); else if (http.length > 0) setDot('http', 'ok');
+
+    // ── Attack Surface (Subdomains) ──
+    var ct = byType['ct'] || [];
+    var subCount = 0, subList = [];
+    ct.forEach(function (f) {
+      var tm = (f.title||'').match(/(\d+)\s*subdomains/); if (tm) subCount = Math.max(subCount, parseInt(tm[1]));
+      try { var ev = JSON.parse(f.evidence || '{}'); if (ev.subdomains && Array.isArray(ev.subdomains)) subList = ev.subdomains.slice(0, 5); } catch (e) {}
+    });
+    if (subCount === 0) {
+      ssl.forEach(function (f) {
+        if ((f.title||'').includes('SANs')) { var m = (f.title||'').match(/(\d+)\s*subdomain/); if (m) subCount = Math.max(subCount, parseInt(m[1])); var ev = f.evidence || ''; if (ev && !ev.startsWith('{')) { var sans = ev.split('\n').filter(function (s) { return s.trim(); }).slice(0, 5); if (sans.length) subList = sans; } }
+      });
+    }
+    $('#ind-subs-count').textContent = subCount || '--';
+    $('#ind-subs-list').innerHTML = subList.length ? subList.map(function (s) { return '<div class="truncate">' + esc(String(s).trim()) + '</div>'; }).join('') : (subCount > 0 ? '<div class="text-gray-600">' + subCount + ' discovered</div>' : '');
+    if (subCount > 10) setDot('subs', 'bad'); else if (subCount > 3) setDot('subs', 'warn'); else if (subCount > 0) setDot('subs', 'ok');
+
+    // ── Personnel Intel (Emails) ──
+    var email = byType['email'] || [];
+    var emailCount = 0, emailList = [];
+    email.forEach(function (f) {
+      var ev = (f.evidence || '').trim();
+      if (!ev || ev === 'No data' || ev.includes('Connection failed')) return;
+      var items = ev.split(',').map(function (e) { return e.trim(); }).filter(function (e) { return e.includes('@') && e.length < 80; });
+      if (items.length) { emailCount += items.length; items.forEach(function (i) { if (emailList.length < 4) emailList.push(i); }); }
+      else if (ev.includes('@') && ev.length < 80) { emailCount++; if (emailList.length < 4) emailList.push(ev); }
+    });
+    // Also check whois for emails
+    var whois = byType['whois'] || [];
+    whois.forEach(function (f) {
+      var ev = (f.evidence || '').trim();
+      var em = ev.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g);
+      if (em) { emailCount += em.length; em.forEach(function (e) { if (emailList.length < 4 && !emailList.includes(e)) emailList.push(e); }); }
+    });
+    $('#ind-emails-count').textContent = emailCount || '--';
+    $('#ind-emails-list').innerHTML = emailList.length ? emailList.map(function (e) { return '<div class="truncate">' + esc(e) + '</div>'; }).join('') : '';
+    if (emailCount > 5) setDot('emails', 'warn'); else if (emailCount > 0) setDot('emails', 'ok');
+
+    // ── Tech Stack ──
+    var tech = byType['tech'] || [];
+    var techItems = [], techSeen = {};
+    tech.forEach(function (f) {
+      if ((f.title||'').includes('components detected')) {
+        try { var ev = JSON.parse(f.evidence || '[]'); if (Array.isArray(ev)) ev.forEach(function (t) { var s = String(t).trim(); if (s && !techSeen[s]) { techSeen[s] = true; techItems.push(s); } }); }
+        catch (e) { var lines = (f.evidence || '').split('\n').filter(function (l) { return l.trim(); }); lines.forEach(function (l) { var s = l.trim(); if (s && !techSeen[s]) { techSeen[s] = true; techItems.push(s); } }); }
+      }
+    });
+    $('#ind-tech-body').innerHTML = techItems.length ? techItems.slice(0, 6).map(function (t) { var d = String(t).length > 32 ? String(t).substring(0, 29) + '...' : String(t); return '<div class="truncate" title="' + esc(String(t)) + '">' + esc(d) + '</div>'; }).join('') : '<div class="text-gray-600">No components detected</div>';
+    if (techItems.length > 0) setDot('tech', 'ok');
+
+    // ── Threat Index Calculation ──
+    var critical = findings.filter(function (f) { return f.severity === 'critical'; }).length;
+    var high = findings.filter(function (f) { return f.severity === 'high'; }).length;
+    var medium = findings.filter(function (f) { return f.severity === 'medium'; }).length;
+    var low = findings.filter(function (f) { return f.severity === 'low'; }).length;
+
+    var score = 0;
+    score += critical * 25;
+    score += high * 15;
+    score += medium * 5;
+    score += low * 2;
+    // Bonus: exposed subdomains and emails increase threat
+    if (subCount > 10) score += 10;
+    else if (subCount > 5) score += 5;
+    if (emailCount > 5) score += 5;
+    score = Math.min(100, score);
+
+    var riskLabel, riskColor;
+    if (findings.length === 0) { riskLabel = 'NO DATA'; riskColor = '#6b7280'; }
+    else if (score === 0) { riskLabel = 'CLEAN'; riskColor = '#22c55e'; }
+    else if (score < 15) { riskLabel = 'LOW'; riskColor = '#22c55e'; }
+    else if (score < 35) { riskLabel = 'ELEVATED'; riskColor = '#eab308'; }
+    else if (score < 65) { riskLabel = 'HIGH'; riskColor = '#f97316'; }
+    else { riskLabel = 'CRITICAL'; riskColor = '#ef4444'; }
+
+    D.riskValue.textContent = score;
+    D.riskLabel.textContent = riskLabel;
+    D.riskArc.setAttribute('stroke', riskColor);
+    D.riskArc.setAttribute('stroke-dashoffset', 201 - (score / 100) * 201);
+
+    D.threatBadge.classList.remove('hidden');
+    D.threatBadge.textContent = riskLabel;
+    var badgeMap = { 'CRITICAL':'bg-red-500/10 text-red-400 border-red-500/20', 'HIGH':'bg-orange-500/10 text-orange-400 border-orange-500/20', 'ELEVATED':'bg-yellow-500/10 text-yellow-400 border-yellow-500/20', 'LOW':'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', 'CLEAN':'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', 'NO DATA':'bg-gray-500/10 text-gray-400 border-gray-500/20' };
+    D.threatBadge.className = 'px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border intel-badge ' + (badgeMap[riskLabel] || badgeMap['NO DATA']);
+
+    $('#kpi-critical').textContent = critical;
+    $('#kpi-high').textContent = high;
+    $('#kpi-total').textContent = findings.length;
+  }
+
+  // ── Modal ──
+  function openModal(profile) {
+    S.editingPid = profile ? profile.profile_id : null;
+    var modal = $('#gt-modal');
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+    $('#gt-modal-title').textContent = profile ? 'EDIT TARGET PARAMETERS' : 'TARGET ACQUISITION';
+    if (profile) {
+      $('#gt-modal-name').value = profile.name || '';
+      $('#gt-modal-domain').value = profile.target_domain || '';
+      $('#gt-modal-desc').value = profile.description || '';
+      $('#gt-modal-rounds').value = profile.analysis_rounds || 5;
+      var cats = typeof profile.categories === 'string' ? JSON.parse(profile.categories || '[]') : (profile.categories || []);
+      document.querySelectorAll('.gt-cat-check').forEach(function (cb) { cb.checked = cats.length === 0 || cats.includes(cb.value); });
+    } else {
+      ['gt-modal-name','gt-modal-domain','gt-modal-desc'].forEach(function (id) { var el = $('#' + id); if (el) el.value = ''; });
+      $('#gt-modal-rounds').value = 5;
+      document.querySelectorAll('.gt-cat-check').forEach(function (cb) { cb.checked = true; });
     }
   }
-  const c = counts || {};
-  $('#stat-critical').textContent = c.critical || 0;
-  $('#stat-high').textContent = c.high || 0;
-  $('#stat-medium').textContent = c.medium || 0;
-  $('#stat-low').textContent = c.low || 0;
-  $('#stat-info').textContent = c.info || 0;
 
-  let det = 0, ai = 0;
-  for (const f of S.findings) {
-    if (f.source === 'deterministic') det++;
-    else if (f.ai_description) ai++;
-  }
-  $('#stat-det').textContent = det;
-  $('#stat-ai').textContent = ai;
+  window.openModal = openModal;
 
-  if (S.findings.length > 0) {
-    D.findingsEmpty.classList.add('hidden');
-    D.findingsList.classList.remove('hidden');
-    D.statsBar.classList.remove('hidden');
-  }
-}
-
-function renderFindings(findings) {
-  if (!D.findingsList) return;
-  const sev = $('#filter-severity')?.value || 'all';
-  const src = $('#filter-source')?.value || 'all';
-  const type = $('#filter-type')?.value || 'all';
-
-  let filtered = findings || S.findings;
-  if (sev !== 'all') filtered = filtered.filter(f => f.severity === sev);
-  if (src !== 'all') filtered = filtered.filter(f => {
-    if (src === 'ai') return !!f.ai_description;
-    if (src === 'deterministic') return !f.ai_description;
-    return true;
-  });
-  if (type !== 'all') filtered = filtered.filter(f => f.finding_type === type);
-
-  if (!filtered.length) {
-    D.findingsList.innerHTML = '<div class="text-gray-600 text-xs text-center py-8">No findings match the filter</div>';
-    return;
+  function saveProfile() {
+    var name = $('#gt-modal-name').value.trim();
+    var domain = $('#gt-modal-domain').value.trim();
+    if (!name) { alert('Operation name is required'); return; }
+    if (!domain && !S.editingPid) { alert('Target domain is required'); return; }
+    var body = {
+      name: name,
+      description: $('#gt-modal-desc').value.trim(),
+      target_domain: domain,
+      categories: [].map.call(document.querySelectorAll('.gt-cat-check:checked'), function (c) { return c.value; }),
+      analysis_rounds: parseInt($('#gt-modal-rounds').value) || 5,
+    };
+    var url = S.editingPid ? A.profile(S.editingPid) : A.profiles;
+    var method = S.editingPid ? 'PUT' : 'POST';
+    api(method, url, body).then(function () {
+      $('#gt-modal').classList.add('hidden');
+      loadProfiles();
+      if (S.editingPid) selectProfile(S.editingPid);
+    }).catch(function (e) { alert('Save failed: ' + e.message); });
   }
 
-  filtered.sort((a, b) => (SEV_ORDER[a.severity] ?? 4) - (SEV_ORDER[b.severity] ?? 4));
-
-  const SEV_COLORS = {
-    critical: 'border-l-critical bg-critical/5',
-    high:     'border-l-high bg-high/5',
-    medium:   'border-l-medium bg-medium/5',
-    low:      'border-l-low bg-low/5',
-    info:     'border-l-info bg-info/5',
-  };
-
-  D.findingsList.innerHTML = filtered.map(f => {
-    const sevClass = SEV_COLORS[f.severity] || 'border-l-medium';
-    const ft = f.finding_type || f.category || 'osint';
-    return `<div onclick="showDetail('${f.finding_id}')" class="finding-row cursor-pointer px-5 py-2.5 border-l-2 ${sevClass} transition-all">
-      <div class="flex items-start justify-between gap-3">
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2">
-            <span class="text-xs font-medium text-gray-200 truncate">${esc(f.title)}</span>
-            <span class="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold uppercase ${f.severity==='critical'?'text-critical bg-critical/10':f.severity==='high'?'text-high bg-high/10':f.severity==='low'?'text-low bg-low/10':f.severity==='info'?'text-info bg-info/10':'text-medium bg-medium/10'}">${f.severity}</span>
-            <span class="shrink-0 px-1 py-0.5 rounded text-[8px] font-mono text-gray-500 bg-base-700 uppercase">${esc(ft)}</span>
-          </div>
-          ${f.ai_description ? `<div class="text-[10px] text-amber-300/70 mt-0.5 italic line-clamp-2">${esc(f.ai_description)}</div>` : ''}
-          <div class="text-[10px] text-gray-500 mt-0.5 truncate">${esc((f.description || '').substring(0, 150))}</div>
-          <div class="flex items-center gap-2 mt-1">
-            <span class="text-[9px] text-gray-600 font-mono">${esc(f.category || '')}</span>
-            ${f.cwe_id ? `<span class="text-[9px] text-gray-700 font-mono">${esc(f.cwe_id)}</span>` : ''}
-            ${f.evidence && f.evidence !== 'Connection failed' ? `<span class="text-[9px] text-primary/50 font-mono truncate max-w-[200px]">${esc(f.evidence.substring(0, 60))}</span>` : ''}
-          </div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-// ── Finding detail ──
-function showDetail(fid) {
-  const f = S.findings.find(x => x.finding_id === fid);
-  if (!f) return;
-
-  D.detailPanel.classList.remove('hidden');
-  D.detailContent.innerHTML = `
-    <div>
-      <span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${f.severity==='critical'?'text-critical bg-critical/10 border border-critical/20':f.severity==='high'?'text-high bg-high/10 border border-high/20':f.severity==='low'?'text-low bg-low/10 border border-low/20':f.severity==='info'?'text-info bg-info/10 border border-info/20':'text-medium bg-medium/10 border border-medium/20'}">${f.severity}</span>
-      <span class="ml-1.5 text-[10px] text-gray-600 font-mono uppercase">${esc(f.finding_type || 'osint')}</span>
-    </div>
-    <h3 class="text-sm font-semibold text-gray-200">${esc(f.title)}</h3>
-    ${f.ai_description ? `<div class="text-[11px] text-amber-300/80 italic leading-relaxed p-2 bg-amber-500/5 rounded-lg border border-amber-500/10">${esc(f.ai_description)}</div>` : ''}
-    <div class="space-y-2">
-      <div><div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wide">Description</div><div class="text-[11px] text-gray-400 mt-0.5">${esc(f.description)}</div></div>
-      <div><div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wide">Category</div><div class="text-[11px] text-gray-400 mt-0.5">${esc(f.category)}</div></div>
-      ${f.cwe_id ? `<div><div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wide">CWE</div><div class="text-[11px] text-gray-400 mt-0.5 font-mono">${esc(f.cwe_id)}</div></div>` : ''}
-      ${f.evidence ? `<div><div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wide">Evidence</div><pre class="mt-1 p-2 rounded-md bg-base-900 border border-white/5 text-[10px] text-gray-400 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">${esc(f.evidence)}</pre></div>` : ''}
-      ${f.remediation ? `<div><div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wide">Remediation</div><div class="text-[11px] text-green-400/70 mt-0.5">${esc(f.remediation)}</div></div>` : ''}
-    </div>`;
-}
-
-function hideDetail() {
-  D.detailPanel.classList.add('hidden');
-}
-
-// ── Modal ──
-function setupModal() {
-  $('#btn-new-profile')?.addEventListener('click', () => openModal());
-  $('#btn-modal-cancel')?.addEventListener('click', closeModal);
-  $('#btn-modal-save')?.addEventListener('click', saveProfile);
-  $('#btn-close-detail')?.addEventListener('click', hideDetail);
-}
-
-function openModal(profile) {
-  S.editingPid = profile?.profile_id || null;
-  $('#modal-title').textContent = profile ? 'Edit OSINT Profile' : 'Add Domain for OSINT';
-  $('#modal-name').value = profile?.name || '';
-  $('#modal-desc').value = profile?.description || '';
-  $('#modal-domain').value = profile?.target_domain || '';
-  $('#modal-analysis').value = profile?.analysis_rounds || 5;
-  const cats = typeof profile?.categories === 'string' ? JSON.parse(profile.categories || '[]') : (profile?.categories || []);
-  document.querySelectorAll('.cat-check').forEach(cb => {
-    cb.checked = cats.length === 0 || cats.includes(cb.value);
-  });
-  $('#modal-profile').classList.remove('hidden');
-}
-
-function closeModal() {
-  $('#modal-profile').classList.add('hidden');
-  S.editingPid = null;
-}
-
-async function saveProfile() {
-  const name = $('#modal-name').value.trim();
-  const domain = $('#modal-domain').value.trim();
-  if (!name) { alert('Name is required'); return; }
-  if (!domain && !S.editingPid) { alert('Target domain is required'); return; }
-  const body = {
-    name,
-    description: $('#modal-desc').value.trim(),
-    target_domain: domain,
-    categories: [...document.querySelectorAll('.cat-check:checked')].map(c => c.value),
-    analysis_rounds: parseInt($('#modal-analysis').value) || 5,
-  };
-
-  try {
-    const url = S.editingPid ? A.profile(S.editingPid) : A.profiles();
-    const method = S.editingPid ? 'PUT' : 'POST';
-    await fetch(url, { method, headers: { ..._authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    closeModal();
-    loadProfiles();
-    if (S.editingPid) selectProfile(S.editingPid);
-  } catch (e) {
-    console.error('Failed to save profile', e);
-  }
-}
-
-function editActiveProfile() {
-  if (S.activePid) editProfile(S.activePid);
-}
-
-function deleteActiveProfile() {
-  if (S.activePid) deleteProfile(S.activePid);
-}
-
-async function editProfile(pid) {
-  try {
-    const r = await fetch(A.profile(pid), { headers: _authHeaders() });
-    const p = await r.json();
-    openModal(p);
-  } catch (e) { console.error(e); }
-}
-
-async function deleteProfile(pid) {
-  if (!confirm('Delete this domain profile and all its reports?')) return;
-  try {
-    await fetch(A.profile(pid), { method: 'DELETE', headers: _authHeaders() });
-    S.activePid = null;
-    S.activeRid = null;
-    S.findings = [];
-    loadProfiles();
-    D.placeholder.classList.remove('hidden');
-    D.dashboard.classList.add('hidden');
-    D.dashCards.classList.add('hidden');
-    D.dashIndicators.classList.add('hidden');
-    hideDetail();
-  } catch (e) { console.error(e); }
-}
-
-// ── Filters ──
-function setupFilters() {
-  $('#filter-severity')?.addEventListener('change', () => renderFindings(S.findings));
-  $('#filter-source')?.addEventListener('change', () => renderFindings(S.findings));
-  $('#filter-type')?.addEventListener('change', () => renderFindings(S.findings));
-}
-
-// ── Buttons ──
-function setupButtons() {
-  $('#btn-logout')?.addEventListener('click', logout);
-}
-
-// ── Auth helpers ──
-function _authHeaders() {
-  const t = localStorage.getItem('elyria_token');
-  return t ? { 'Authorization': `Bearer ${t}` } : {};
-}
-
-document.addEventListener('DOMContentLoaded', init);
-init();
+  document.addEventListener('DOMContentLoaded', init);
+})();

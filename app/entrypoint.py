@@ -232,42 +232,6 @@ async def serve_doc():
 async def serve_purpleteam():
     return _serve_html("purpleteam.html")
 
-# ── Enterprise & legal pages ──
-
-def _serve_enterprise(filename: str) -> HTMLResponse:
-    try:
-        with open(f"../enterprise/pages/{filename}", "r") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Page not found")
-
-@app.get("/enterprise")
-async def serve_enterprise():
-    return _serve_enterprise("enterprise.html")
-
-@app.get("/pricing")
-async def serve_pricing():
-    return _serve_enterprise("pricing.html")
-
-@app.get("/edu")
-async def serve_edu():
-    return _serve_enterprise("edu.html")
-
-@app.get("/legal")
-async def serve_legal():
-    return _serve_enterprise("legal.html")
-
-@app.get("/privacy")
-async def serve_privacy():
-    return _serve_enterprise("privacy.html")
-
-@app.get("/terms")
-async def serve_terms():
-    return _serve_enterprise("terms.html")
-
-@app.get("/license")
-async def serve_license():
-    return HTMLResponse(content='<html><head><meta charset="UTF-8"><title>Licence — Elyria</title></head><body style="font-family:monospace;max-width:800px;margin:2rem auto;padding:0 1rem;background:#0a0f1c;color:#94a3b8;"><h1 style="color:#e5e7eb">Licence AGPL-3.0</h1><p>Elyria est distribue sous <strong>GNU Affero General Public License v3</strong>.</p><p>Texte complet : <a href="https://www.gnu.org/licenses/agpl-3.0.html" style="color:#8b5cf6">gnu.org/licenses/agpl-3.0.html</a></p><p>Pour une licence commerciale (SaaS, usage proprietaire) : <a href="mailto:contact@elyria.pro" style="color:#8b5cf6">contact@elyria.pro</a></p></body></html>')
 
 @app.get("/api/doc")
 async def get_doc(lang: str = "fr"):
@@ -302,6 +266,8 @@ app.include_router(oidc_router)
 app.include_router(ely_router)
 app.include_router(ely_diary_router)
 app.include_router(purpleteam_router)
+from database.ctx_api import app as ctx_router
+app.include_router(ctx_router)
 
 if __name__ == "__main__":
     import os

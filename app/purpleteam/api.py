@@ -6,6 +6,7 @@ Purple Team API — FastAPI routes for IAST code security analysis.
 """
 
 import json
+import os
 import threading
 from core.logging import get_logger
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File
@@ -62,16 +63,17 @@ async def api_create_profile(request: Request):
 @app.get("/profiles")
 async def api_list_profiles(request: Request, team_id: str = ""):
     profiles = list_profiles(team_filter=team_id) if team_id else list_profiles(user_id=get_auth_user(request), team_ids=get_auth_user_teams(request))
-    # Attach finding counts per profile
+    # Attach finding counts from latest scan only (matches dashboard view)
     for p in profiles:
         scans = list_scans(profile_id=p["profile_id"])
-        total_counts = {}
-        for s in scans:
-            counts = get_finding_counts(s["scan_id"])
-            for sev, cnt in counts.items():
-                total_counts[sev] = total_counts.get(sev, 0) + cnt
-        p["finding_counts"] = total_counts
-        p["total_findings"] = sum(total_counts.values())
+        if scans:
+            latest = scans[0]  # most recent scan
+            counts = get_finding_counts(latest["scan_id"])
+            p["finding_counts"] = counts
+            p["total_findings"] = sum(counts.values())
+        else:
+            p["finding_counts"] = {}
+            p["total_findings"] = 0
     return profiles
 
 
@@ -156,7 +158,6 @@ async def api_start_scan(profile_id: str, request: Request):
                 if repo_url and repo_url.strip():
                     _progress_fn(2, "Using local repository...")
                     repo_path = repo_url.strip()
-                    import os
                     if not os.path.isdir(repo_path):
                         raise ValueError(f"Local directory not found: {repo_path}")
                 else:
@@ -191,7 +192,8 @@ async def api_start_scan(profile_id: str, request: Request):
                 auth_config = {}
                 if p.get("repo_auth_type") == "bearer" and p.get("repo_auth_key"):
                     auth_config["bearer_token"] = p["repo_auth_key"]
-                dynamic = DynamicScanner(target_endpoint, auth_config=auth_config)
+                static_findings = get_scan_findings(sid)
+                dynamic = DynamicScanner(target_endpoint, static_findings=static_findings, auth_config=auth_config)
                 dynamic_count = dynamic.run(sid, add_finding, _progress_fn)
                 _log.info(f"Dynamic testing: {dynamic_count} findings")
 
@@ -229,6 +231,13 @@ async def api_start_scan(profile_id: str, request: Request):
             _progress[profile_id] = {"pct": 0, "msg": "Failed", "status": "failed", "error": str(e)}
         finally:
             _running.discard(profile_id)
+            # Always purge the cloned repo to limit exposure
+            if repo_path and os.path.isdir(repo_path):
+                try:
+                    from purpleteam.repo_manager import cleanup_repo
+                    cleanup_repo(repo_path)
+                except Exception as e:
+                    _log.warning(f"Failed to cleanup repo {repo_path}: {e}")
 
     _log.info(f"Starting Purple Team scan thread for profile={profile_id}, scan={sid}")
     thread = threading.Thread(target=run_scan, daemon=True)
@@ -374,7 +383,6 @@ async def api_send_to_blueteam(scan_id: str, request: Request):
     # Build documentation from Purple Team report
     from purpleteam.report_generator import generate_report
     from purpleteam.repo_manager import detect_language
-    import os
     language, framework = "unknown", "unknown"
     repo_path = s.get("repo_path", "")
     if repo_path and os.path.isdir(repo_path):

@@ -85,6 +85,37 @@ def _get_tools():
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "submit_finding",
+                "description": "Report a confirmed security vulnerability. Use AFTER investigating with read_source_file, grep_codebase, or make_test_request. Call this for EACH vulnerability you confirm.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "findings": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "title": {"type": "string", "description": "Concise title describing the vulnerability"},
+                                    "severity": {"type": "string", "enum": ["critical", "high", "medium", "low", "info"]},
+                                    "description": {"type": "string", "description": "What is the bug, why is it exploitable, what is the concrete impact (max 500 chars)"},
+                                    "file_path": {"type": "string", "description": "Relative path to the affected file"},
+                                    "line_number": {"type": "integer", "description": "Line number where the vulnerability is"},
+                                    "remediation": {"type": "string", "description": "Specific fix recommendation"},
+                                    "cwe_id": {"type": "string", "description": "CWE identifier (e.g. CWE-89, CWE-79)"},
+                                    "cvss_score": {"type": "number", "description": "CVSS 3.1 base score (0.0-10.0)"},
+                                },
+                                "required": ["title", "severity", "description", "file_path"],
+                            },
+                            "minItems": 1,
+                        },
+                    },
+                    "required": ["findings"],
+                },
+            },
+        },
     ]
 
 
@@ -100,6 +131,7 @@ class AIPurpleScanner:
         self._flash_model = ""
         self._pro_model = ""
         self._tokens = {"prompt": 0, "completion": 0, "total": 0}
+        self._ai_findings = []
         self._session = requests.Session()
         self._session.timeout = 10
 
@@ -200,16 +232,97 @@ class AIPurpleScanner:
             files = [f for f in files if f.startswith(subdir)]
         return json.dumps({"files": files[:100], "total": len(files)})
 
+    def _handle_submit_finding(self, args):
+        """Handle the submit_finding tool — store findings directly."""
+        findings_list = args.get("findings", [])
+        _log.info(f"[AI:submit_finding] Called with {len(findings_list)} finding(s)")
+        reported = 0
+        for f in findings_list:
+            title = f.get("title", "")
+            if not title:
+                continue
+            _log.info(f"[AI:submit_finding] → [{f.get('severity','?')}] {title[:100]}")
+            self._ai_findings.append({
+                "title": f"[AI] {title}",
+                "description": f.get("description", ""),
+                "severity": f.get("severity", "medium"),
+                "category": "ai_discovered",
+                "file_path": f.get("file_path", ""),
+                "line_number": f.get("line_number", 0),
+                "evidence": f.get("evidence", {}),
+                "remediation": f.get("remediation", ""),
+                "cvss_score": f.get("cvss_score", 0.0),
+                "cwe_id": f.get("cwe_id", ""),
+            })
+            reported += 1
+        return json.dumps({"reported": reported})
+
     # ── Main scan loop ──
 
-    def run(self, scan_id, add_finding_fn, progress_cb=None, explore_rounds=3, analysis_rounds=2):
+    def _run_phase(self, model, model_name, msgs, tools, tool_map, scan_id, add_finding_fn, max_rounds, phase_name, progress_cb, pct_start, pct_end):
+        """Run a conversation phase: loop until model stops making tool calls."""
+        MAX_TOOL_TURNS = 50
+        turn = 0
+        while turn < MAX_TOOL_TURNS:
+            turn += 1
+            if progress_cb:
+                p = min(95, pct_start + int((turn / (max_rounds * 3)) * (pct_end - pct_start)))
+                progress_cb(p, f"AI {phase_name} turn {turn}")
+
+            _log.info(f"[AI:{phase_name}] Turn {turn} — sending {len(msgs)} msgs to {model_name}")
+            resp = model.chat(msgs, tools=tools)
+            self._tokens["prompt"] += (resp.get("usage") or {}).get("prompt_tokens", 0)
+            self._tokens["completion"] += (resp.get("usage") or {}).get("completion_tokens", 0)
+            self._tokens["total"] += (resp.get("usage") or {}).get("total_tokens", 0)
+
+            content = resp.get("content", "") or ""
+            reasoning = resp.get("reasoning_content", "") or ""
+            tool_calls = resp.get("tool_calls")
+            _log.info(f"[AI:{phase_name}] Turn {turn} response: content={len(content)}chars, reasoning={len(reasoning)}chars, tool_calls={len(tool_calls or [])}")
+            if reasoning:
+                _log.info(f"[AI:{phase_name}] Reasoning: {reasoning[:300]}")
+            if content:
+                _log.info(f"[AI:{phase_name}] Content: {content[:300]}")
+
+            if not tool_calls:
+                _log.info(f"[AI:{phase_name}] Model stopped making tool calls — phase complete")
+                if content:
+                    _log.info(f"[AI:{phase_name}] Final content: {content[:500]}")
+                break
+
+            if turn == 12:
+                _log.info(f"[AI:{phase_name}] Nudging model to report findings after {turn} turns")
+                msgs.append({"role": "user", "content": "You have gathered enough information. Now call submit_finding for each confirmed vulnerability you discovered. If you found none, state that explicitly."})
+
+            normalized = _normalize_tool_calls(tool_calls)
+            msgs.append({"role": "assistant", "content": content, "tool_calls": normalized})
+
+            for tc in tool_calls:
+                tc_id, tc_name, tc_args = _extract_tc_info(tc)
+                _log.info(f"[AI:{phase_name}] Tool call: {tc_name}({tc_args[:200]})")
+                handler = tool_map.get(tc_name)
+                try:
+                    args = json.loads(tc_args)
+                    result = handler(args)
+                    _log.info(f"[AI:{phase_name}] Tool result: {tc_name} → {len(result)} chars")
+                except Exception as e:
+                    result = json.dumps({"error": f"invalid arguments: {e}"})
+                    _log.error(f"[AI:{phase_name}] Tool {tc_name} failed: {e}")
+                msgs.append({"role": "tool", "tool_call_id": tc_id, "content": result})
+
+    def run(self, scan_id, add_finding_fn, progress_cb=None, explore_rounds=15, analysis_rounds=5):
         self._setup_providers()
+        self._ai_findings = []
+        _log.info(f"[AI] Starting — flash={self._flash_model}, pro={self._pro_model}, "
+                  f"repo={self.repo_path}, target={self.target_endpoint or 'none'}, "
+                  f"files={len(self._files)}, static_findings={len(self.static_findings)}")
         tools = _get_tools()
         tool_map = {
             "read_source_file": self._handle_read_source_file,
             "grep_codebase": self._handle_grep_codebase,
             "make_test_request": self._handle_make_test_request,
             "list_source_files": self._handle_list_source_files,
+            "submit_finding": self._handle_submit_finding,
         }
 
         deps = parse_dependencies(self.repo_path, self.language)
@@ -219,167 +332,97 @@ class AIPurpleScanner:
             for f in self.static_findings[:30]
         ) or "(none)"
 
-        system_prompt = f"""You are an expert application security engineer performing a Purple Team code review.
+        system_prompt = f"""You are an expert application security engineer performing a Purple Team deep code review on a {self.language}/{self.framework} codebase.
 
-**Repository:** {self.language}/{self.framework} project at {self.repo_path}
-**Target endpoint:** {self.target_endpoint or '(not configured)'}
-
-**Dependencies found:**
-{dep_text}
-
-**Static analysis findings (to validate/expand):**
+**Static analysis already found:**
 {static_text}
 
-YOUR TASK:
-1. Review source code for security vulnerabilities not caught by static analysis
-2. Trace data flows from user input to sensitive sinks (auth, DB, file I/O, commands, HTTP calls)
-3. If a target endpoint is available, craft requests to validate suspected vulnerabilities
-4. Find business logic flaws, authorization bypasses, and chained exploit paths
-5. For each finding, include: title, severity (critical/high/medium/low/info), description, file location, remediation
+**Dependencies:** {len(deps)} packages detected.
 
-Focus on what static analysis MISSES: business logic, authorization chains, race conditions, input validation edge cases, insecure defaults, framework-specific misconfigurations.
+**Your mission:** Find vulnerabilities the static scanner MISSED:
+- Business logic flaws (auth bypass, privilege escalation, workflow abuse, race conditions)
+- Injection points missed by regex (NoSQL injection, template injection, XPath, LDAP)
+- Insecure framework defaults and misconfigurations
+- Cryptographic weaknesses (weak keys, predictable RNG for security tokens)
+- Authorization flaws (missing ownership checks, BOLA/IDOR, function-level auth gaps)
+- Chained vulnerabilities (combine low-severity issues into high-impact exploits)
+- Sensitive data leaks in logs, error messages, or debug output
 
-Always use tools to investigate — read files, grep for patterns, make test requests. Be thorough but prioritize real exploitable issues over theoretical ones."""
+**Method:** Use grep_codebase to find patterns, read_source_file to analyze suspicious code, make_test_request to validate exploitable endpoints, then call submit_finding for EACH vulnerability you confirm.
 
-        exploration_prompt = f"""Phase 1 - Exploration:
+**IMPORTANT:** Call submit_finding EVERY TIME you find a real vulnerability. One call per finding. Be specific: include the exact file path, line number, CWE ID, and a CVSS score."""
 
-Explore the {self.language}/{self.framework} codebase systematically:
-1. List source files to understand project structure
-2. Read key entry points (main app, routes, controllers, middleware)
-3. Grep for security-sensitive patterns (auth, crypto, file ops, SQL, shell exec, deserialize, redirect, CORS, CSP)
-4. If target endpoint is available, make baseline requests to understand the API
+        exploration_prompt = f"""Explore this {self.language}/{self.framework} codebase for security vulnerabilities:
 
-Report what you find — infrastructure, auth model, input handling, interesting endpoints."""
+1. List source files to map the project structure
+2. Grep for high-risk patterns: exec(, eval(, os.system(, subprocess, pickle.load, yaml.load, requests.get(.*format, innerHTML, dangerouslySetInnerHTML, raw SQL with f-strings, hardcoded keys/secrets
+3. Read key files: auth modules, database handlers, API routes, middleware, configuration
+4. Trace data flow from user input to dangerous sinks
+5. For every confirmed vulnerability, call submit_finding immediately"""
+
+        analysis_prompt = f"""Deep-dive into the most critical areas:
+
+1. **Authentication flow**: Read the auth module, check token validation, session management, password handling
+2. **Authorization**: Check every endpoint for ownership verification — are users isolated? Can user A access user B's data?
+3. **Input validation**: For every POST/PUT endpoint found, verify input is validated before reaching DB queries, file operations, or command execution
+4. **Cryptography**: How are secrets stored? What RNG is used for tokens? What hash algorithm for passwords?
+5. **Error handling**: Do error responses leak stack traces, SQL errors, or internal paths?
+6. **Configuration**: Is DEBUG enabled? Are there default admin credentials? Exposed management endpoints?
+
+For each confirmed vulnerability, call submit_finding with full details."""
 
         total_findings = 0
 
         # ── Phase 1: Flash exploration ──
         if self._flash_model and explore_rounds > 0:
             if progress_cb:
-                progress_cb(10, "AI Phase 1: Flash model exploring codebase...")
+                progress_cb(10, "AI Phase 1: Exploring codebase...")
             try:
-                for round_idx in range(explore_rounds):
-                    if progress_cb:
-                        progress_cb(10 + int(round_idx / explore_rounds * 30),
-                                   f"AI explore round {round_idx + 1}/{explore_rounds}")
-                    msgs = [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": exploration_prompt if round_idx == 0 else "Continue exploring. Use tools to investigate the next area of concern. Focus on finding real vulnerabilities."},
-                    ]
-                    resp = self._flash.chat(msgs, tools=tools)
-                    self._tokens["prompt"] += (resp.get("usage") or {}).get("prompt_tokens", 0)
-                    self._tokens["completion"] += (resp.get("usage") or {}).get("completion_tokens", 0)
-                    self._tokens["total"] += (resp.get("usage") or {}).get("total_tokens", 0)
-
-                    tool_calls = resp.get("tool_calls")
-                    if tool_calls:
-                        normalized = _normalize_tool_calls(tool_calls)
-                        assistant_msg = {"role": "assistant", "content": resp.get("content", ""), "tool_calls": normalized}
-                        msgs.append(assistant_msg)
-                        for tc in tool_calls:
-                            tc_id, tc_name, tc_args = _extract_tc_info(tc)
-                            handler = tool_map.get(tc_name)
-                            try:
-                                args = json.loads(tc_args)
-                                result = handler(args)
-                            except Exception:
-                                result = json.dumps({"error": "invalid arguments"})
-                            msgs.append({
-                                "role": "tool",
-                                "tool_call_id": tc_id,
-                                "content": result,
-                            })
-                        # Get tool response
-                        resp2 = self._flash.chat(msgs, tools=tools)
-                        self._tokens["prompt"] += (resp2.get("usage") or {}).get("prompt_tokens", 0)
-                        self._tokens["completion"] += (resp2.get("usage") or {}).get("completion_tokens", 0)
-                        self._tokens["total"] += (resp2.get("usage") or {}).get("total_tokens", 0)
+                msgs = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": exploration_prompt},
+                ]
+                self._run_phase(self._flash, self._flash_model, msgs, tools, tool_map,
+                               scan_id, add_finding_fn, explore_rounds, "explore",
+                               progress_cb, 10, 40)
             except Exception as e:
                 _log.warning(f"Flash exploration failed: {e}")
 
-        # ── Phase 2: Pro analysis ──
+        # ── Phase 2: Pro deep analysis ──
         if self._pro_model and analysis_rounds > 0:
             if progress_cb:
-                progress_cb(45, "AI Phase 2: Pro model deep analysis...")
+                progress_cb(45, "AI Phase 2: Deep analysis...")
             try:
-                analysis_prompt = f"""Phase 2 - Deep Analysis:
-
-Now analyze the {self.language}/{self.framework} codebase for security vulnerabilities:
-
-1. **Authentication & Authorization**: Session management, token handling, role checks, privilege escalation paths
-2. **Input Validation**: Injection points (SQL, NoSQL, command, LDAP, XPath), type confusion, mass assignment
-3. **Cryptography**: Key management, algorithm choices, RNG usage, certificate validation
-4. **Data Protection**: Sensitive data exposure, logging of secrets, encryption at rest/transit
-5. **Business Logic**: Order manipulation, payment bypass, race conditions, workflow abuse
-6. **Configuration**: Debug endpoints, default credentials, exposed management interfaces
-7. **API Security**: Rate limiting, BOLA/IDOR, function-level auth, excessive data exposure
-
-For each vulnerability found:
-- Title with [AI] prefix
-- Severity (critical/high/medium/low/info)
-- Description with root cause and impact
-- File path and line number
-- Remediation steps
-- CVSS estimate
-- CWE mapping if applicable
-
-Use tools to validate: read suspicious files, grep for related patterns, make test requests to confirm exploitability."""
-
-                for round_idx in range(analysis_rounds):
-                    if progress_cb:
-                        progress_cb(45 + int(round_idx / analysis_rounds * 40),
-                                   f"AI analysis round {round_idx + 1}/{analysis_rounds}")
-                    msgs = [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": analysis_prompt if round_idx == 0 else "Continue the deep analysis. Use tools to investigate and validate vulnerabilities. Report any confirmed findings."},
-                    ]
-                    resp = self._pro.chat(msgs, tools=tools)
-                    self._tokens["prompt"] += (resp.get("usage") or {}).get("prompt_tokens", 0)
-                    self._tokens["completion"] += (resp.get("usage") or {}).get("completion_tokens", 0)
-                    self._tokens["total"] += (resp.get("usage") or {}).get("total_tokens", 0)
-
-                    content = resp.get("content", "")
-                    if content:
-                        # Parse findings from AI response
-                        parsed = self._parse_ai_findings(content)
-                        for finding in parsed:
-                            add_finding_fn(
-                                scan_id=scan_id,
-                                title=finding["title"],
-                                description=finding["description"],
-                                severity=finding["severity"],
-                                category=finding.get("category", "ai_discovered"),
-                                file_path=finding.get("file_path", ""),
-                                line_number=finding.get("line_number", 0),
-                                evidence=finding.get("evidence", {}),
-                                remediation=finding.get("remediation", ""),
-                                cvss_score=finding.get("cvss_score", 0.0),
-                                cwe_id=finding.get("cwe_id", ""),
-                                ai_analysis=finding.get("description", ""),
-                                finding_part="practices",
-                            )
-                            total_findings += 1
-
-                    tool_calls = resp.get("tool_calls")
-                    if tool_calls:
-                        normalized = _normalize_tool_calls(tool_calls)
-                        assistant_msg = {"role": "assistant", "content": content, "tool_calls": normalized}
-                        msgs.append(assistant_msg)
-                        for tc in tool_calls:
-                            tc_id, tc_name, tc_args = _extract_tc_info(tc)
-                            handler = tool_map.get(tc_name)
-                            try:
-                                args = json.loads(tc_args)
-                                result = handler(args)
-                            except Exception:
-                                result = json.dumps({"error": "invalid arguments"})
-                            msgs.append({
-                                "role": "tool",
-                                "tool_call_id": tc_id,
-                                "content": result,
-                            })
+                msgs = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": analysis_prompt},
+                ]
+                self._run_phase(self._pro, self._pro_model, msgs, tools, tool_map,
+                               scan_id, add_finding_fn, analysis_rounds, "analysis",
+                               progress_cb, 45, 85)
             except Exception as e:
                 _log.warning(f"Pro analysis failed: {e}")
+
+        # ── Save all AI findings to DB ──
+        _log.info(f"[AI] Collected {len(self._ai_findings)} findings via submit_finding: "
+                  f"{[f['title'][:60] for f in self._ai_findings]}")
+        for f in self._ai_findings:
+            add_finding_fn(
+                scan_id=scan_id,
+                title=f["title"],
+                description=f["description"],
+                severity=f["severity"],
+                category=f.get("category", "ai_discovered"),
+                file_path=f.get("file_path", ""),
+                line_number=f.get("line_number", 0),
+                evidence=f.get("evidence", {}),
+                remediation=f.get("remediation", ""),
+                cvss_score=f.get("cvss_score", 0.0),
+                cwe_id=f.get("cwe_id", ""),
+                ai_analysis=f.get("description", ""),
+                finding_part="practices",
+            )
+            total_findings += 1
 
         if progress_cb:
             progress_cb(90, f"AI analysis complete ({total_findings} findings)")

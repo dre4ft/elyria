@@ -7,7 +7,6 @@
   <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg" />
   <link rel="alternate icon" type="image/x-icon" href="/static/icons/favicon.ico" />
 
-  <!-- Shared UI lib + theme -->
   <script src="static/elyria-ui.js"></script>
   <script>
     window.tailwind = { config: ElyriaUI.tailwindConfig({
@@ -15,25 +14,35 @@
     }) };
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
-
   <link rel="stylesheet" href="static/styles.css" />
   <style>
-    .indicator-card { border: 1px solid rgba(255,255,255,0.06); transition: all 0.2s; }
-    .indicator-card:hover { border-color: rgba(226,160,63,0.2); background: rgba(226,160,63,0.02); }
-    .finding-row:hover { background: rgba(226,160,63,0.04); }
-    .risk-gauge { transition: stroke-dashoffset 1s ease-out; }
-    @keyframes pulse-scan { 0%,100%{opacity:1} 50%{opacity:0.6} }
-    .scanning-pulse { animation: pulse-scan 1.5s ease-in-out infinite; }
-    .indicator-good { color: #4ade80; }
-    .indicator-warn { color: #9ca3af; }
-    .indicator-bad { color: #f87171; }
-    .tab-active { border-bottom: 2px solid #9ca3af; color: #d1d5db; }
+    body { background: #0a0e14; }
+    .intel-card { background: rgba(13,17,23,0.95); border: 1px solid rgba(255,255,255,0.06); transition: all 0.2s; }
+    .intel-card:hover { border-color: rgba(156,163,175,0.15); background: rgba(156,163,175,0.02); }
+    .intel-card.active { border-color: rgba(156,163,175,0.2); background: rgba(156,163,175,0.04); }
+    .kpi-value { font-family: 'JetBrains Mono', monospace; font-size: 1.5rem; font-weight: 700; }
+    .kpi-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: #6b7280; font-weight: 600; }
+    .threat-critical { color: #ef4444; text-shadow: 0 0 8px rgba(239,68,68,0.3); }
+    .threat-high { color: #f97316; text-shadow: 0 0 6px rgba(249,115,22,0.2); }
+    .threat-medium { color: #eab308; }
+    .threat-low { color: #22c55e; }
+    .intel-badge { font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em; }
+    .finding-row { transition: all 0.15s; }
+    .finding-row:hover { background: rgba(255,255,255,0.02); }
+    @keyframes pulse-intel { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    .scanning-pulse { animation: pulse-intel 1.5s ease-in-out infinite; }
+    @keyframes shimmer { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+    .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+    .profile-item:hover { background: rgba(255,255,255,.03); border-color: rgba(255,255,255,.05); }
+    .profile-item.active { background: rgba(107,114,128,.08); border-color: rgba(107,114,128,.2); }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 </head>
-<body class="h-full bg-base-900 text-gray-200 font-['Inter',sans-serif] overflow-hidden">
+<body class="h-full text-gray-200 font-['Inter',sans-serif] overflow-hidden">
 
   <header id="elyria-header"></header>
   <script>
@@ -43,274 +52,306 @@
     })();
   </script>
 
-  <!-- ═══ MAIN LAYOUT ═══ -->
-  <div class="flex h-[calc(100%-3rem)]">
+  <div class="flex h-[calc(100vh-3rem)]">
 
-    <!-- LEFT SIDEBAR — Profiles -->
-    <aside class="w-56 bg-base-800 border-r border-white/5 flex flex-col shrink-0">
-      <div class="p-3 border-b border-white/5 flex items-center justify-between">
-        <span class="text-[11px] uppercase tracking-widest text-gray-500 font-semibold">Domains</span>
-        <button id="btn-new-profile" class="w-6 h-6 rounded-md hover:bg-primary/15 flex items-center justify-center text-gray-500 hover:text-primary-light transition-colors" title="Add domain">+</button>
+    <!-- LEFT SIDEBAR -->
+    <aside class="w-64 min-w-[256px] bg-[#0d1117] border-r border-white/5 flex flex-col shrink-0 overflow-hidden">
+      <div class="p-3 pb-2 border-b border-white/5 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] uppercase tracking-[0.15em] text-gray-500 font-semibold">Targets</span>
+          <button id="btn-new-profile" class="h-7 w-7 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors" title="Add target">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+          </button>
+        </div>
       </div>
-      <div id="profile-list" class="flex-1 overflow-y-auto px-2 py-1 space-y-0.5"></div>
+      <div id="gt-profile-list" class="p-2 space-y-0.5 scrollbar-thin flex-1 overflow-y-auto"></div>
+      <div class="p-2 border-t border-white/5">
+        <div class="text-[9px] text-gray-700 text-center tracking-[0.2em]">GREY TEAM</div>
+      </div>
     </aside>
 
     <!-- MAIN CONTENT -->
-    <main class="flex-1 flex flex-col overflow-hidden">
+    <main class="flex-1 flex flex-col overflow-hidden bg-[#0a0e14]">
 
-      <!-- PLACEHOLDER — no domain selected -->
-      <div id="main-placeholder" class="flex flex-col items-center justify-center h-full text-gray-600">
-        <svg class="w-16 h-16 mb-4 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
-        <p class="text-sm font-medium mb-1">Grey Team — OSINT Reconnaissance</p>
-        <p class="text-xs">Add a domain to start passive intelligence gathering</p>
-        <button onclick="openModal()" class="mt-4 h-8 px-4 rounded-lg bg-gray-500/10 hover:bg-gray-500/20 border border-gray-500/25 text-[11px] text-gray-300 font-medium transition-all">Add Domain</button>
+      <!-- EMPTY STATE -->
+      <div id="gt-empty" class="flex flex-col items-center justify-center h-full text-center">
+        <div class="w-16 h-16 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center mb-4">
+          <svg class="w-8 h-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2">
+            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+            <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+          </svg>
+        </div>
+        <h3 class="text-sm font-semibold text-white mb-2">Grey Team — OSINT Reconnaissance</h3>
+        <p class="text-xs text-gray-500 max-w-md mb-4 font-['JetBrains_Mono']">Passive intelligence gathering &amp; threat surface mapping.<br/>Add a target domain to begin reconnaissance.</p>
+        <button id="btn-create-first" class="h-8 px-4 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-xs text-gray-300 font-medium transition-all">Add Target</button>
       </div>
 
-      <!-- DASHBOARD — hidden until domain selected -->
-      <div id="main-dashboard" class="hidden flex-1 flex flex-col overflow-hidden">
+      <!-- DASHBOARD -->
+      <div id="gt-content" class="hidden flex-1 flex flex-col overflow-hidden">
 
-        <!-- DOMAIN HEADER -->
-        <div id="dashboard-header" class="px-5 py-3 border-b border-white/5 shrink-0">
-          <div class="flex items-start justify-between">
-            <div class="flex-1">
-              <div class="flex items-center gap-3">
-                <h2 id="dash-domain" class="text-lg font-semibold text-gray-200 font-mono"></h2>
-                <div id="dash-risk-badge" class="hidden px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide"></div>
-              </div>
-              <div id="dash-meta" class="flex items-center gap-3 mt-1 text-[11px] text-gray-500 font-mono"></div>
+        <!-- HEADER BAR -->
+        <div class="px-5 py-3 border-b border-white/5 bg-[#0d1117]/80 flex items-center justify-between shrink-0">
+          <div>
+            <div class="flex items-center gap-3">
+              <h2 id="gt-domain" class="text-sm font-semibold text-white font-['JetBrains_Mono']">—</h2>
+              <span id="gt-threat-badge" class="hidden px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border intel-badge"></span>
             </div>
-            <div class="flex items-center gap-2">
-              <button id="btn-edit-profile" onclick="editActiveProfile()" class="h-7 px-2.5 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-gray-500 hover:text-gray-300 text-xs transition-all flex items-center gap-1" title="Modifier le profil">
+            <p id="gt-meta" class="text-[10px] text-gray-500 font-mono mt-0.5">—</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <div id="gt-progress-container" class="hidden flex items-center gap-3">
+              <div class="flex items-center gap-2">
+                <div class="h-1.5 w-28 bg-[#0a0e14] rounded-full overflow-hidden"><div id="gt-progress-bar" class="h-full rounded-full transition-all duration-700" style="width:0%;background:linear-gradient(90deg,#6b7280,#9ca3af)"></div></div>
+                <span id="gt-progress-pct" class="text-[10px] font-mono text-gray-400 font-semibold">0%</span>
+              </div>
+              <span id="gt-progress-msg" class="text-[10px] text-gray-500 truncate max-w-[250px]"></span>
+            </div>
+            <span id="gt-status-badge" class="px-2 py-0.5 rounded-full text-[9px] font-bold border hidden">—</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btn-edit-profile" class="h-7 px-2.5 rounded-lg bg-[#0d1117] hover:bg-white/5 border border-white/5 text-gray-500 hover:text-gray-300 text-xs transition-all flex items-center gap-1">
               <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/></svg>
             </button>
-            <button id="btn-delete-profile" onclick="deleteActiveProfile()" class="h-7 px-2.5 rounded-lg bg-base-700 hover:bg-red-500/10 border border-white/5 hover:border-red-500/30 text-gray-500 hover:text-red-400 text-xs transition-all flex items-center gap-1" title="Supprimer le profil">
+            <button id="btn-delete-profile" class="h-7 px-2.5 rounded-lg bg-[#0d1117] hover:bg-red-500/10 border border-white/5 hover:border-red-500/30 text-gray-500 hover:text-red-400 text-xs transition-all flex items-center gap-1">
               <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
             </button>
-              <button id="btn-run-scan" onclick="runScan()" class="h-8 px-4 rounded-lg bg-gray-500/10 hover:bg-gray-500/20 border border-gray-500/25 text-[11px] text-gray-300 font-medium transition-all flex items-center gap-1.5">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                Run OSINT Scan
-              </button>
-            </div>
+            <button id="btn-run-scan" class="h-8 px-4 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-gray-300 font-medium transition-all flex items-center gap-1.5 active:scale-[0.97]">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
+              Run OSINT Scan
+            </button>
+            <button id="btn-stop-scan" class="hidden h-8 px-4 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/20 hover:border-red-500/40 text-red-400 text-xs font-semibold transition-all flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z"/></svg>
+              Stop
+            </button>
           </div>
-          <!-- Scan progress -->
-          <div id="scan-progress-container" class="hidden mt-2">
-            <div class="flex items-center justify-between mb-1">
-              <span id="scan-progress-label" class="text-[11px] text-gray-400 font-medium scanning-pulse">Collecting...</span>
-              <span id="scan-progress-pct" class="text-[11px] text-primary-light font-mono">0%</span>
+        </div>
+
+        <!-- LIVE PROGRESS -->
+        <div id="gt-live-progress" class="hidden px-6 py-4 border-b border-white/5 bg-gradient-to-r from-white/5 via-transparent to-transparent">
+          <div class="flex items-center gap-4">
+            <div class="w-8 h-8 rounded-full bg-white/10 border border-white/10 flex items-center justify-center flex-shrink-0">
+              <div class="w-3 h-3 rounded-full bg-gray-400 animate-pulse"></div>
             </div>
-            <div class="w-full h-1.5 rounded-full bg-base-700 overflow-hidden">
-              <div id="scan-progress-bar" class="h-full bg-gradient-to-r from-primary to-accent transition-all duration-300 rounded-full" style="width:0%"></div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between mb-1.5">
+                <span id="gt-live-msg" class="text-xs text-gray-300 font-medium truncate">Collection in progress...</span>
+                <span id="gt-live-pct" class="text-xs font-mono text-gray-400 font-bold ml-3 flex-shrink-0">0%</span>
+              </div>
+              <div class="h-1.5 bg-[#0a0e14] rounded-full overflow-hidden">
+                <div id="gt-live-bar" class="h-full rounded-full transition-all duration-1000 ease-out" style="width:0%;background:linear-gradient(90deg,#6b7280,#9ca3af,#6b7280);background-size:200% 100%;animation:shimmer 2s ease-in-out infinite"></div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- RISK SCORE + SUMMARY CARDS ROW -->
-        <div id="dashboard-cards" class="hidden px-5 py-3 border-b border-white/5 shrink-0">
-          <div class="flex items-start gap-4">
-
+        <!-- KPI ROW -->
+        <div id="gt-kpi-row" class="hidden px-5 py-3 border-b border-white/5 shrink-0">
+          <div class="flex items-stretch gap-3">
             <!-- Risk Gauge -->
-            <div class="indicator-card rounded-xl bg-base-800 p-3 flex flex-col items-center shrink-0" style="width:130px">
-              <span class="text-[9px] uppercase tracking-widest text-gray-500 font-semibold mb-2">Risk Score</span>
+            <div class="intel-card rounded-xl p-3 flex flex-col items-center shrink-0" style="width:120px">
+              <span class="kpi-label mb-1">Risk Score</span>
               <div class="relative w-20 h-20">
                 <svg class="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
-                  <circle cx="40" cy="40" r="32" fill="none" stroke="#1a2340" stroke-width="6"/>
-                  <circle id="risk-gauge-arc" cx="40" cy="40" r="32" fill="none" stroke="#6b7280" stroke-width="6" stroke-linecap="round" stroke-dasharray="201" stroke-dashoffset="201" class="risk-gauge"/>
+                  <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="5"/>
+                  <circle id="gt-risk-arc" cx="40" cy="40" r="32" fill="none" stroke="#6b7280" stroke-width="5" stroke-linecap="round" stroke-dasharray="201" stroke-dashoffset="201" style="transition: all 1s ease-out"/>
                 </svg>
                 <div class="absolute inset-0 flex items-center justify-center">
-                  <span id="risk-gauge-value" class="text-xl font-bold text-gray-200 font-mono">--</span>
+                  <span id="gt-risk-value" class="text-xl font-bold text-gray-200 font-mono">--</span>
                 </div>
               </div>
-              <span id="risk-gauge-label" class="text-[10px] text-gray-500 font-medium mt-1">No data</span>
+              <span id="gt-risk-label" class="text-[10px] text-gray-500 font-medium mt-1">No data</span>
             </div>
-
-            <!-- Summary Cards -->
+            <!-- KPI Cards -->
             <div class="flex-1 grid grid-cols-3 gap-2">
-              <div id="card-critical" class="indicator-card rounded-xl bg-base-800 p-3 border-l-2 border-l-critical">
-                <div class="text-[9px] uppercase tracking-widest text-gray-500 font-semibold">Critical</div>
-                <div class="text-2xl font-bold text-critical-light font-mono mt-1">0</div>
+              <div class="intel-card rounded-xl p-3 border-l-2 border-l-red-500">
+                <div class="kpi-label">Critical</div>
+                <div id="kpi-critical" class="kpi-value threat-critical">0</div>
               </div>
-              <div id="card-high" class="indicator-card rounded-xl bg-base-800 p-3 border-l-2 border-l-high">
-                <div class="text-[9px] uppercase tracking-widest text-gray-500 font-semibold">High</div>
-                <div class="text-2xl font-bold text-high-light font-mono mt-1">0</div>
+              <div class="intel-card rounded-xl p-3 border-l-2 border-l-orange-500">
+                <div class="kpi-label">High</div>
+                <div id="kpi-high" class="kpi-value threat-high">0</div>
               </div>
-              <div id="card-total" class="indicator-card rounded-xl bg-base-800 p-3 border-l-2 border-l-accent">
-                <div class="text-[9px] uppercase tracking-widest text-gray-500 font-semibold">Total Findings</div>
-                <div class="text-2xl font-bold text-accent-light font-mono mt-1">0</div>
+              <div class="intel-card rounded-xl p-3 border-l-2 border-l-gray-500">
+                <div class="kpi-label">Total Findings</div>
+                <div id="kpi-total" class="kpi-value text-gray-300">0</div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- INDICATOR CARDS GRID 2x3 -->
-        <div id="dashboard-indicators" class="hidden px-5 py-3 border-b border-white/5 shrink-0">
+        <!-- INDICATORS — 2x3 grid -->
+        <div id="gt-indicators" class="hidden px-5 py-3 border-b border-white/5 shrink-0">
           <div class="grid grid-cols-3 gap-3">
             <!-- DNS -->
-            <div id="ind-dns" class="indicator-card rounded-xl bg-base-800 p-3">
+            <div class="intel-card rounded-xl p-3">
               <div class="flex items-center justify-between mb-2">
-                <span class="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">DNS Health</span>
-                <span id="ind-dns-status" class="w-2 h-2 rounded-full bg-info"></span>
+                <span class="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-semibold">DNS</span>
+                <span id="ind-dns-dot" class="w-2 h-2 rounded-full bg-gray-600"></span>
               </div>
-              <div id="ind-dns-body" class="text-[10px] text-gray-500 font-mono space-y-0.5">
-                <div>A: <span id="ind-dns-a">--</span></div>
-                <div>MX: <span id="ind-dns-mx">--</span></div>
-                <div>SPF: <span id="ind-dns-spf">--</span></div>
-                <div>DMARC: <span id="ind-dns-dmarc">--</span></div>
+              <div class="text-[10px] text-gray-500 font-mono space-y-1">
+                <div class="flex justify-between"><span>A</span><span id="ind-dns-a" class="text-gray-400">--</span></div>
+                <div class="flex justify-between"><span>MX</span><span id="ind-dns-mx" class="text-gray-400">--</span></div>
+                <div class="flex justify-between"><span>SPF</span><span id="ind-dns-spf" class="text-gray-400">--</span></div>
+                <div class="flex justify-between"><span>DMARC</span><span id="ind-dns-dmarc" class="text-gray-400">--</span></div>
               </div>
             </div>
             <!-- SSL/TLS -->
-            <div id="ind-ssl" class="indicator-card rounded-xl bg-base-800 p-3">
+            <div class="intel-card rounded-xl p-3">
               <div class="flex items-center justify-between mb-2">
-                <span class="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">SSL/TLS</span>
-                <span id="ind-ssl-status" class="w-2 h-2 rounded-full bg-info"></span>
+                <span class="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-semibold">SSL/TLS</span>
+                <span id="ind-ssl-dot" class="w-2 h-2 rounded-full bg-gray-600"></span>
               </div>
-              <div id="ind-ssl-body" class="text-[10px] text-gray-500 font-mono space-y-0.5">
-                <div>Issuer: <span id="ind-ssl-issuer">--</span></div>
-                <div>Expires: <span id="ind-ssl-expiry">--</span></div>
-                <div>SANs: <span id="ind-ssl-sans">--</span></div>
-                <div>TLS 1.0/1.1: <span id="ind-ssl-oldtls">--</span></div>
+              <div class="text-[10px] text-gray-500 font-mono space-y-1">
+                <div class="flex justify-between"><span>Issuer</span><span id="ind-ssl-issuer" class="text-gray-400">--</span></div>
+                <div class="flex justify-between"><span>Expiry</span><span id="ind-ssl-expiry" class="text-gray-400">--</span></div>
+                <div class="flex justify-between"><span>SANs</span><span id="ind-ssl-sans" class="text-gray-400">--</span></div>
+                <div class="flex justify-between"><span>Old TLS</span><span id="ind-ssl-oldtls" class="text-gray-400">--</span></div>
               </div>
             </div>
             <!-- HTTP -->
-            <div id="ind-http" class="indicator-card rounded-xl bg-base-800 p-3">
+            <div class="intel-card rounded-xl p-3">
               <div class="flex items-center justify-between mb-2">
-                <span class="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">HTTP Security</span>
-                <span id="ind-http-status" class="w-2 h-2 rounded-full bg-info"></span>
+                <span class="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-semibold">HTTP</span>
+                <span id="ind-http-dot" class="w-2 h-2 rounded-full bg-gray-600"></span>
               </div>
-              <div id="ind-http-body" class="text-[10px] text-gray-500 font-mono space-y-0.5">
-                <div>HSTS: <span id="ind-http-hsts">--</span></div>
-                <div>CSP: <span id="ind-http-csp">--</span></div>
-                <div>XFO: <span id="ind-http-xfo">--</span></div>
-                <div>Server: <span id="ind-http-server">--</span></div>
+              <div class="text-[10px] text-gray-500 font-mono space-y-1">
+                <div class="flex justify-between"><span>HSTS</span><span id="ind-http-hsts" class="text-gray-400">--</span></div>
+                <div class="flex justify-between"><span>CSP</span><span id="ind-http-csp" class="text-gray-400">--</span></div>
+                <div class="flex justify-between"><span>X-Frame</span><span id="ind-http-xfo" class="text-gray-400">--</span></div>
+                <div class="flex justify-between"><span>Server</span><span id="ind-http-server" class="text-gray-400">--</span></div>
               </div>
             </div>
             <!-- Subdomains -->
-            <div id="ind-subs" class="indicator-card rounded-xl bg-base-800 p-3">
+            <div class="intel-card rounded-xl p-3">
               <div class="flex items-center justify-between mb-2">
-                <span class="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">Subdomains</span>
-                <span id="ind-subs-status" class="w-2 h-2 rounded-full bg-info"></span>
+                <span class="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-semibold">Subdomains</span>
+                <span id="ind-subs-dot" class="w-2 h-2 rounded-full bg-gray-600"></span>
               </div>
               <div class="text-xl font-bold text-gray-200 font-mono"><span id="ind-subs-count">--</span></div>
-              <div id="ind-subs-list" class="text-[10px] text-gray-500 font-mono mt-1 space-y-0.5 max-h-16 overflow-hidden"></div>
+              <div id="ind-subs-list" class="text-[10px] text-gray-500 font-mono mt-1 space-y-0.5 max-h-16 overflow-y-auto"></div>
             </div>
             <!-- Emails -->
-            <div id="ind-emails" class="indicator-card rounded-xl bg-base-800 p-3">
+            <div class="intel-card rounded-xl p-3">
               <div class="flex items-center justify-between mb-2">
-                <span class="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">Email Exposure</span>
-                <span id="ind-emails-status" class="w-2 h-2 rounded-full bg-info"></span>
+                <span class="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-semibold">Emails</span>
+                <span id="ind-emails-dot" class="w-2 h-2 rounded-full bg-gray-600"></span>
               </div>
               <div class="text-xl font-bold text-gray-200 font-mono"><span id="ind-emails-count">--</span></div>
-              <div id="ind-emails-list" class="text-[10px] text-gray-500 font-mono mt-1 space-y-0.5 max-h-16 overflow-hidden"></div>
+              <div id="ind-emails-list" class="text-[10px] text-gray-500 font-mono mt-1 space-y-0.5 max-h-16 overflow-y-auto"></div>
             </div>
             <!-- Tech Stack -->
-            <div id="ind-tech" class="indicator-card rounded-xl bg-base-800 p-3">
+            <div class="intel-card rounded-xl p-3">
               <div class="flex items-center justify-between mb-2">
-                <span class="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">Tech Stack</span>
-                <span id="ind-tech-status" class="w-2 h-2 rounded-full bg-info"></span>
+                <span class="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-semibold">Tech Stack</span>
+                <span id="ind-tech-dot" class="w-2 h-2 rounded-full bg-gray-600"></span>
               </div>
-              <div id="ind-tech-body" class="text-[10px] text-gray-500 font-mono space-y-0.5 max-h-16 overflow-hidden"></div>
+              <div id="ind-tech-body" class="text-[10px] text-gray-400 font-mono space-y-1 max-h-20 overflow-y-auto">
+                <div class="text-gray-600">No components detected</div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- STATS BAR + FILTERS -->
-        <div id="stats-bar" class="hidden px-5 py-2 flex items-center gap-4 border-b border-white/5 text-[11px] shrink-0">
-          <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-critical"></div><span class="text-gray-400">Critical</span><span id="stat-critical" class="font-mono text-critical-light font-semibold">0</span></div>
-          <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-high"></div><span class="text-gray-400">High</span><span id="stat-high" class="font-mono text-high-light font-semibold">0</span></div>
-          <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-medium"></div><span class="text-gray-400">Medium</span><span id="stat-medium" class="font-mono text-medium-light font-semibold">0</span></div>
-          <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-low"></div><span class="text-gray-400">Low</span><span id="stat-low" class="font-mono text-low-light font-semibold">0</span></div>
-          <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-info"></div><span class="text-gray-400">Info</span><span id="stat-info" class="font-mono text-info-light font-semibold">0</span></div>
-          <div class="w-px h-3 bg-white/10 mx-1"></div>
-          <span class="text-gray-500">Det: <span id="stat-det" class="font-mono">0</span></span>
-          <span class="text-gray-500">AI: <span id="stat-ai" class="font-mono">0</span></span>
+        <!-- STATS + FILTERS -->
+        <div id="gt-stats-bar" class="hidden px-5 py-2 flex items-center gap-4 border-b border-white/5 text-[11px] shrink-0">
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-red-500"></div><span class="text-gray-500">Critical</span><span id="stat-critical" class="font-mono text-red-400 font-semibold">0</span></div>
+            <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-orange-500"></div><span class="text-gray-500">High</span><span id="stat-high" class="font-mono text-orange-400 font-semibold">0</span></div>
+            <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-yellow-500"></div><span class="text-gray-500">Medium</span><span id="stat-medium" class="font-mono text-yellow-400 font-semibold">0</span></div>
+            <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-green-500"></div><span class="text-gray-500">Low</span><span id="stat-low" class="font-mono text-green-400 font-semibold">0</span></div>
+            <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-gray-500"></div><span class="text-gray-500">Info</span><span id="stat-info" class="font-mono text-gray-400 font-semibold">0</span></div>
+            <div class="w-px h-3 bg-white/10"></div>
+            <span class="text-gray-500">Sys: <span id="stat-det" class="font-mono text-gray-400">0</span></span>
+            <span class="text-gray-500">AI: <span id="stat-ai" class="font-mono text-amber-400">0</span></span>
+          </div>
           <div class="flex-1"></div>
-          <select id="filter-severity" class="h-6 px-1.5 rounded-md bg-base-700 border border-white/5 text-[10px] text-gray-400 focus:outline-none focus:border-primary/30">
+          <select id="filter-severity" class="h-6 px-2 rounded-md bg-[#0d1117] border border-white/5 text-[10px] text-gray-400 focus:outline-none focus:border-gray-500/30">
             <option value="all">All severities</option>
             <option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option>
           </select>
-          <select id="filter-type" class="h-6 px-1.5 rounded-md bg-base-700 border border-white/5 text-[10px] text-gray-400 focus:outline-none focus:border-primary/30">
+          <select id="filter-type" class="h-6 px-2 rounded-md bg-[#0d1117] border border-white/5 text-[10px] text-gray-400 focus:outline-none focus:border-gray-500/30">
             <option value="all">All types</option>
-            <option value="dns">DNS</option><option value="whois">WHOIS</option><option value="ssl">SSL/TLS</option><option value="ct">Cert Transparency</option><option value="http">HTTP</option><option value="tech">Tech Fingerprint</option><option value="email">Email</option><option value="wayback">Wayback</option><option value="github">GitHub</option><option value="google">Google Dorks</option><option value="frontend">Frontend Code</option>
+            <option value="dns">DNS</option><option value="whois">WHOIS</option><option value="ssl">SSL/TLS</option><option value="ct">Cert Transparency</option><option value="http">HTTP</option><option value="tech">Tech</option><option value="email">Email</option><option value="wayback">Wayback</option><option value="github">GitHub</option><option value="google">Google Dorks</option><option value="frontend">Frontend</option>
           </select>
-          <select id="filter-source" class="h-6 px-1.5 rounded-md bg-base-700 border border-white/5 text-[10px] text-gray-400 focus:outline-none focus:border-primary/30">
+          <select id="filter-source" class="h-6 px-2 rounded-md bg-[#0d1117] border border-white/5 text-[10px] text-gray-400 focus:outline-none focus:border-gray-500/30">
             <option value="all">All sources</option>
-            <option value="deterministic">Deterministic</option>
+            <option value="deterministic">System</option>
             <option value="ai">AI Refined</option>
           </select>
         </div>
 
-        <!-- FINDINGS TABLE -->
-        <div id="findings-container" class="flex-1 overflow-y-auto">
-          <div id="findings-empty" class="flex flex-col items-center justify-center h-full text-gray-600">
-            <svg class="w-12 h-12 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
-            <p class="text-xs">Run an OSINT scan to populate the threat dashboard</p>
+        <!-- FINDINGS LIST -->
+        <div id="gt-findings-zone" class="flex-1 overflow-y-auto scrollbar-thin">
+          <div id="gt-findings-empty" class="flex flex-col items-center justify-center h-full text-center">
+            <svg class="w-12 h-12 mb-3 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+            <p class="text-xs text-gray-600">Run an OSINT scan to populate the threat dashboard</p>
           </div>
-          <div id="findings-list" class="hidden divide-y divide-white/5"></div>
+          <div id="gt-findings-list" class="hidden divide-y divide-white/[0.03]"></div>
         </div>
-
-      </div><!-- /dashboard -->
+      </div>
     </main>
 
-    <!-- RIGHT PANEL — Finding detail -->
-    <aside id="detail-panel" class="hidden w-80 bg-base-800 border-l border-white/5 flex flex-col shrink-0 overflow-y-auto">
+    <!-- RIGHT DETAIL PANEL -->
+    <aside id="gt-detail-panel" class="hidden w-80 bg-[#0d1117] border-l border-white/5 flex flex-col shrink-0 overflow-y-auto scrollbar-thin">
       <div class="p-3 border-b border-white/5 flex items-center justify-between shrink-0">
-        <span class="text-[11px] uppercase tracking-widest text-gray-500 font-semibold">Detail</span>
-        <button id="btn-close-detail" class="w-5 h-5 rounded text-gray-500 hover:text-gray-300 text-sm">&times;</button>
+        <span class="text-[10px] uppercase tracking-[0.12em] text-gray-500 font-semibold">Finding Detail</span>
+        <button onclick="window.gtCloseDetail()" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
       </div>
-      <div id="detail-content" class="p-3 space-y-3 text-xs"></div>
+      <div id="gt-detail-content" class="p-4 space-y-3 text-xs"></div>
     </aside>
   </div>
 
-  <!-- ═══ MODAL: New/Edit Profile ═══ -->
-  <div id="modal-profile" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-    <div class="bg-base-800 border border-white/10 rounded-xl w-[500px] max-h-[80vh] overflow-y-auto shadow-2xl">
-      <div class="p-4 border-b border-white/5">
-        <h3 id="modal-title" class="text-sm font-semibold text-gray-200">Add Domain for OSINT</h3>
+  <!-- PROFILE MODAL -->
+  <div id="gt-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] hidden flex items-center justify-center">
+    <div class="bg-[#0d1117] border border-white/5 rounded-2xl shadow-2xl w-[560px] max-h-[85vh] overflow-y-auto scrollbar-thin">
+      <div class="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+        <h3 id="gt-modal-title" class="text-sm font-semibold text-white">Add Domain for OSINT</h3>
+        <button onclick="document.getElementById('gt-modal').classList.add('hidden')" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
       </div>
-      <div class="p-4 space-y-3">
+      <div class="p-6 space-y-4">
+        <input id="gt-modal-name" type="text" class="w-full h-10 px-3 rounded-lg bg-[#0a0e14] border border-white/8 text-sm text-gray-200 focus:outline-none focus:border-gray-500/40" placeholder="Profile name (ex: Production Recon)" />
+        <input id="gt-modal-domain" type="text" class="w-full h-10 px-3 rounded-lg bg-[#0a0e14] border border-white/8 text-sm font-mono text-gray-200 focus:outline-none focus:border-gray-500/40" placeholder="target-domain.com" />
+        <textarea id="gt-modal-desc" rows="2" class="w-full px-3 py-2 rounded-lg bg-[#0a0e14] border border-white/8 text-xs text-gray-200 focus:outline-none focus:border-gray-500/40 resize-none" placeholder="Description (optional)"></textarea>
         <div>
-          <label class="text-[11px] text-gray-500 block mb-1">Name</label>
-          <input id="modal-name" class="w-full h-8 px-2.5 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-primary/40" placeholder="e.g., Production Domain Assessment" />
-        </div>
-        <div>
-          <label class="text-[11px] text-gray-500 block mb-1">Target Domain</label>
-          <input id="modal-domain" class="w-full h-8 px-2.5 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-primary/40 font-mono" placeholder="e.g., example.com" />
-        </div>
-        <div>
-          <label class="text-[11px] text-gray-500 block mb-1">Description</label>
-          <textarea id="modal-desc" rows="2" class="w-full px-2.5 py-1.5 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-primary/40 resize-none" placeholder="What are you assessing?"></textarea>
-        </div>
-        <div>
-          <label class="text-[11px] text-gray-500 block mb-1">OSINT Modules</label>
-          <div class="grid grid-cols-2 gap-1.5">
-            <label class="flex items-center gap-1.5 text-[11px] text-gray-400"><input type="checkbox" class="cat-check" value="dns" checked /> DNS Records</label>
-            <label class="flex items-center gap-1.5 text-[11px] text-gray-400"><input type="checkbox" class="cat-check" value="whois" checked /> WHOIS</label>
-            <label class="flex items-center gap-1.5 text-[11px] text-gray-400"><input type="checkbox" class="cat-check" value="ssl" checked /> SSL/TLS</label>
-            <label class="flex items-center gap-1.5 text-[11px] text-gray-400"><input type="checkbox" class="cat-check" value="ct" checked /> Cert Transparency</label>
-            <label class="flex items-center gap-1.5 text-[11px] text-gray-400"><input type="checkbox" class="cat-check" value="http" checked /> HTTP Headers</label>
-            <label class="flex items-center gap-1.5 text-[11px] text-gray-400"><input type="checkbox" class="cat-check" value="paths" checked /> Web Paths</label>
-            <label class="flex items-center gap-1.5 text-[11px] text-gray-400"><input type="checkbox" class="cat-check" value="tech" checked /> Tech Fingerprint</label>
-            <label class="flex items-center gap-1.5 text-[11px] text-gray-400"><input type="checkbox" class="cat-check" value="email" checked /> Email Enum</label>
-            <label class="flex items-center gap-1.5 text-[11px] text-gray-400"><input type="checkbox" class="cat-check" value="frontend" checked /> Frontend Code</label>
-            <label class="flex items-center gap-1.5 text-[11px] text-gray-400"><input type="checkbox" class="cat-check" value="wayback" checked /> Wayback Machine</label>
-            <label class="flex items-center gap-1.5 text-[11px] text-gray-400"><input type="checkbox" class="cat-check" value="github" checked /> GitHub Dorks</label>
-            <label class="flex items-center gap-1.5 text-[11px] text-gray-400"><input type="checkbox" class="cat-check" value="google" checked /> Google Dorks</label>
+          <label class="text-[10px] uppercase tracking-[0.12em] text-gray-500 font-semibold mb-2 block">OSINT Modules</label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" class="gt-cat-check" value="dns" checked /> DNS Records</label>
+            <label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" class="gt-cat-check" value="whois" checked /> WHOIS</label>
+            <label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" class="gt-cat-check" value="ssl" checked /> SSL/TLS</label>
+            <label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" class="gt-cat-check" value="ct" checked /> Cert Transparency</label>
+            <label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" class="gt-cat-check" value="http" checked /> HTTP Headers</label>
+            <label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" class="gt-cat-check" value="paths" checked /> Web Paths</label>
+            <label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" class="gt-cat-check" value="tech" checked /> Tech Fingerprint</label>
+            <label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" class="gt-cat-check" value="email" checked /> Email Enum</label>
+            <label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" class="gt-cat-check" value="frontend" checked /> Frontend Code</label>
+            <label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" class="gt-cat-check" value="wayback" checked /> Wayback Machine</label>
+            <label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" class="gt-cat-check" value="github" checked /> GitHub Dorks</label>
+            <label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" class="gt-cat-check" value="google" checked /> Google Dorks</label>
           </div>
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="text-[11px] text-gray-500 block mb-1">AI Refinement Rounds</label>
-            <input id="modal-analysis" type="number" min="1" max="10" value="5" class="w-full h-8 px-2.5 rounded-lg bg-base-700 border border-white/5 text-xs text-gray-300 focus:outline-none focus:border-primary/40" />
-          </div>
+        <div>
+          <label class="text-[10px] uppercase tracking-[0.12em] text-gray-500 font-semibold mb-2 block">AI Refinement Rounds</label>
+          <input id="gt-modal-rounds" type="number" min="1" max="10" value="5" class="w-full h-10 px-3 rounded-lg bg-[#0a0e14] border border-white/8 text-sm font-mono text-gray-200 focus:outline-none focus:border-gray-500/40" />
         </div>
       </div>
-      <div class="p-3 border-t border-white/5 flex justify-end gap-2">
-        <button id="btn-modal-cancel" class="h-7 px-3 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-[11px] text-gray-400 transition-all">Cancel</button>
-        <button id="btn-modal-save" class="h-7 px-3 rounded-lg bg-primary/80 hover:bg-primary border border-primary/30 text-[11px] text-white font-medium transition-all">Save</button>
+      <div class="px-6 py-3 border-t border-white/5 flex items-center justify-between bg-[#0a0e14]/50">
+        <span class="text-[10px] text-gray-600">OSINT Reconnaissance</span>
+        <div class="flex gap-2">
+          <button onclick="document.getElementById('gt-modal').classList.add('hidden')" class="h-8 px-4 rounded-lg bg-[#0d1117] hover:bg-[#1a1f2e] text-xs font-medium text-gray-300 transition-all">Cancel</button>
+          <button id="btn-gt-modal-save" class="h-8 px-5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-xs font-semibold text-white transition-all active:scale-[0.97] flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
+            Create Profile
+          </button>
+        </div>
       </div>
     </div>
   </div>
 
   <script src="static/auth.js"></script>
-  <script src="static/greyteam.js?v=3"></script>
+  <script src="static/greyteam.js"></script>
 </body>
 </html>

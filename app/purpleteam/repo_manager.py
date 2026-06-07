@@ -7,6 +7,7 @@ manage local repos, enforce 200 MB per user storage limit.
 """
 
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -68,31 +69,90 @@ def _build_auth_url(repo_url, auth_type, auth_key):
     return repo_url
 
 
+def _docker_available():
+    try:
+        result = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
 def clone_repo(repo_url, user_id, auth_type="", auth_key="", branch="main"):
-    """Clone a remote repository. Returns the local path."""
+    """Clone a remote repository. Uses Docker sandbox if available, else direct clone.
+    In both cases the .git directory is removed after clone and files are purged after scan."""
     user_dir = _ensure_storage_dir(user_id)
-    repo_name = repo_url.rstrip("/").split("/")[-1].replace(".git", "")
-    if not repo_name:
-        repo_name = "repo"
+    repo_name = repo_url.rstrip("/").split("/")[-1].replace(".git", "") or "repo"
     dest = os.path.join(user_dir, repo_name)
 
-    # Remove existing if present
     if os.path.exists(dest):
         shutil.rmtree(dest)
 
     auth_url = _build_auth_url(repo_url, auth_type, auth_key)
+
+    if _docker_available():
+        return _clone_via_sandbox(auth_url, repo_url, auth_key, branch, user_id, dest)
+    return _clone_direct(auth_url, repo_url, auth_key, branch, user_id, dest)
+
+
+def _clone_via_sandbox(auth_url, repo_url, auth_key, branch, user_id, dest):
+    """Clone inside a Docker sandbox, extract sources, destroy container."""
+    from sandbox.manager import SandboxManager
+
+    branch_flag = f"--branch {shlex.quote(branch)}" if branch else ""
+    _log.info(f"Cloning {repo_url} inside sandbox for user {user_id}")
+
+    mgr = SandboxManager()
+    sandbox = mgr.spawn()
+    sandbox_id = sandbox.container_id
+
+    try:
+        clone_cmd = f"git clone --depth 1 {branch_flag} {shlex.quote(auth_url)} /tmp/repo 2>&1"
+        result = sandbox.exec(clone_cmd, timeout_ms=120_000)
+        if result["exit_code"] != 0:
+            err = result.get("stderr", "") or result.get("stdout", "")
+            if auth_key:
+                err = err.replace(auth_key, "***")
+            raise CloneFailed(f"Clone failed: {err[:500]}")
+
+        sandbox.exec("rm -rf /tmp/repo/.git", timeout_ms=10_000)
+
+        subprocess.run(
+            ["docker", "cp", f"{sandbox_id}:/tmp/repo/.", dest],
+            capture_output=True, timeout=30,
+        )
+    finally:
+        sandbox.destroy()
+        _log.info(f"Sandbox {sandbox_id} destroyed")
+
+    return _finalize_clone(dest, repo_url, user_id)
+
+
+def _clone_direct(auth_url, repo_url, auth_key, branch, user_id, dest):
+    """Direct git clone — used when Docker is unavailable."""
     branch_flag = ["--branch", branch] if branch else []
 
-    _log.info(f"Cloning {repo_url} (branch={branch}) for user {user_id}")
+    _log.info(f"Cloning {repo_url} (branch={branch}) directly for user {user_id}")
     result = subprocess.run(
         ["git", "clone", "--depth", "1"] + branch_flag + [auth_url, dest],
         capture_output=True, text=True, timeout=120,
     )
 
     if result.returncode != 0:
-        # Strip auth from error message
         err = result.stderr.replace(auth_key, "***") if auth_key else result.stderr
         raise CloneFailed(f"Clone failed: {err[:500]}")
+
+    # Remove .git to avoid leaking credentials/history
+    git_dir = os.path.join(dest, ".git")
+    if os.path.exists(git_dir):
+        shutil.rmtree(git_dir)
+
+    return _finalize_clone(dest, repo_url, user_id)
+
+
+def _finalize_clone(dest, repo_url, user_id):
+    """Common post-clone steps."""
+    if not os.path.isdir(dest) or not os.listdir(dest):
+        raise CloneFailed("Clone produced empty directory")
 
     size = _get_dir_size(dest)
     try:

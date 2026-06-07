@@ -21,6 +21,7 @@ const API = {
   uploadPostman: 'api/document/postman',         // POST multipart file upload
   uploadBruno:   'api/document/bruno',           // POST multipart file upload
   proxyToggle:   'api/proxies/toggle',          // GET/PUT proxy enabled state
+  ctx:           'api/ctx',                     // GET/PUT user context
 };
 
 // ─────────────────────────────────────────────
@@ -33,6 +34,7 @@ const state = {
   collections: [],
   activeCollectionId: null,
   proxyEnabled: false,
+  ctx: {},
 };
 
 // ─────────────────────────────────────────────
@@ -226,6 +228,7 @@ function init() {
   setupResizeHandle();
   setupDocModal();
   setupJWTPanel();
+  setupCtxPanel();
   setupJsonEditors();
   setupKeyboardShortcuts();
 
@@ -258,6 +261,9 @@ function init() {
 
   // Load user's past requests from backend
   loadHistory();
+
+  // Load user context
+  loadCtx();
 }
 
 // ─────────────────────────────────────────────
@@ -669,16 +675,21 @@ async function sendStructured() {
     return;
   }
 
-  // Build final URL with query params already baked in via sync
-  const url = baseUrl;
-
-  const headers = getHeaders();
-  const body = dom.reqBody.value.trim();
+  // Resolve ctx templates
+  var userCtx = state.ctx || {};
+  var url = interpolateCtx(baseUrl, userCtx);
+  var headers = getHeaders();
+  var resolvedHeaders = {};
+  Object.keys(headers).forEach(function (k) {
+    resolvedHeaders[interpolateCtx(k, userCtx)] = interpolateCtx(headers[k], userCtx);
+  });
+  var body = dom.reqBody.value.trim();
+  var resolvedBody = interpolateCtx(body, userCtx);
 
   const verifySsl = document.getElementById('chk-verify-ssl')?.checked ?? true;
   const payload = { url, method, verify_ssl: verifySsl };
-  if (Object.keys(headers).length > 0) payload.headers = headers;
-  if (body) payload.body = body;
+  if (Object.keys(resolvedHeaders).length > 0) payload.headers = resolvedHeaders;
+  if (resolvedBody) payload.body = resolvedBody;
 
   showLoading();
   const startTime = performance.now();
@@ -694,7 +705,7 @@ async function sendStructured() {
 
     const responseData = data.response || data;
 
-    // Store in history
+    // Store in history (with resolved values)
     const entry = {
       id: data.request_uuid || generateId(),
       method,
@@ -703,8 +714,8 @@ async function sendStructured() {
       headers: responseData.headers || {},
       body: responseData.body || '',
       type: 'structured',
-      reqHeaders: headers,
-      reqBody: body,
+      reqHeaders: resolvedHeaders,
+      reqBody: resolvedBody,
       reqParams: getParams(),
       timestamp: Date.now(),
     };
@@ -721,10 +732,15 @@ async function sendStructured() {
 }
 
 async function sendRaw() {
-  const url = dom.rawUrl.value.trim();
-  const request = dom.rawRequest.value.trim();
-  if (!url) { shakeElement(dom.rawUrl); return; }
-  if (!request) { shakeElement(dom.rawRequest); return; }
+  const rawUrl = dom.rawUrl.value.trim();
+  const rawRequest = dom.rawRequest.value.trim();
+  if (!rawUrl) { shakeElement(dom.rawUrl); return; }
+  if (!rawRequest) { shakeElement(dom.rawRequest); return; }
+
+  // Resolve ctx templates
+  var userCtx = state.ctx || {};
+  var url = interpolateCtx(rawUrl, userCtx);
+  var request = interpolateCtx(rawRequest, userCtx);
 
   const payload = { url, request };
 
@@ -836,6 +852,21 @@ function displayResponse(entry, elapsed) {
       row.innerHTML = `<span class="key">${escapeHtml(k)}</span><span class="val">${escapeHtml(String(v))}</span>`;
       dom.respHeadersContent.appendChild(row);
     });
+  }
+
+  // Save-to-ctx button in response header
+  var existingCtxBtn = document.getElementById('btn-save-to-ctx');
+  if (existingCtxBtn) existingCtxBtn.remove();
+  var ctxBtn = document.createElement('button');
+  ctxBtn.id = 'btn-save-to-ctx';
+  ctxBtn.className = 'h-7 px-3 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/40 text-[10px] font-medium text-emerald-400 transition-all flex items-center gap-1.5';
+  ctxBtn.innerHTML = '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125v-3.75"/></svg>Ctx';
+  ctxBtn.title = 'Sauvegarder la réponse dans le contexte';
+  ctxBtn.addEventListener('click', function () { promptSaveToCtx(entry); });
+  // Insert after response status badge, before the time display
+  var statusEl = dom.respStatus;
+  if (statusEl && statusEl.parentElement) {
+    statusEl.parentElement.insertBefore(ctxBtn, dom.respTime);
   }
 }
 
@@ -2096,6 +2127,239 @@ function setupJWTPanel() {
         btnCopy.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>';
         setTimeout(() => { btnCopy.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg>'; }, 1500);
       }).catch(() => {});
+    });
+  }
+}
+
+// ─────────────────────────────────────────────
+// CONTEXT PANEL ({{ctx.xxx}})
+// ─────────────────────────────────────────────
+
+function interpolateCtx(str, ctx) {
+  if (!str || typeof str !== 'string' || str.indexOf('{{') === -1) return str;
+  return str.replace(/\{\{(ctx\.)?(\w+(?:\.\w+)*)\}\}/g, function(_, ctxPrefix, path) {
+    var val = ctx;
+    var parts = path.split('.');
+    for (var i = 0; i < parts.length; i++) {
+      if (val == null) return '';
+      val = val[parts[i]];
+    }
+    return val != null ? String(val) : '';
+  });
+}
+
+function toggleCtxPanel(show) {
+  var panel = $('#ctx-panel');
+  if (!panel) return;
+  var open = typeof show === 'boolean' ? show : panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !open);
+  panel.classList.toggle('flex', open);
+  if (open) {
+    loadCtx();
+    // Wrap textarea with JSON editor on first open
+    var ta = $('#ctx-editor');
+    if (ta && !ta._jsonEditorWrapped && typeof ElyriaUI !== 'undefined' && ElyriaUI.createJsonEditor) {
+      ElyriaUI.createJsonEditor(ta, { minHeight: 200 });
+      ta._jsonEditorWrapped = true;
+      // Re-attach input listener to the visible clone (typing in the clone
+      // syncs to the hidden original via _desc.set which does NOT fire 'input')
+      var vis = ta._jsonEditorProxy;
+      if (vis) vis.addEventListener('input', function () { scheduleCtxSave(); });
+    }
+  }
+}
+
+async function loadCtx() {
+  try {
+    var res = await fetch(API.ctx, { headers: getAuthHeader() });
+    if (!res.ok) return;
+    state.ctx = await res.json();
+    updateCtxEditor();
+    updateCtxKeyList();
+  } catch (e) {
+    console.error('[ctx] load error:', e);
+  }
+}
+
+function getCtxTextarea() {
+  // Returns the visible textarea, handling JSON editor wrapping
+  var ta = $('#ctx-editor');
+  if (ta && ta._jsonEditorProxy) return ta._jsonEditorProxy;
+  return ta;
+}
+
+function updateCtxEditor() {
+  // Always set via the original #ctx-editor (it has a proxy setter that refreshes highlight)
+  var ta = $('#ctx-editor');
+  if (!ta) return;
+  var json = JSON.stringify(state.ctx, null, 2);
+  // Use the proxy if available, otherwise set directly
+  if (ta.value !== json) {
+    ta.value = json;
+  }
+}
+
+function updateCtxKeyList() {
+  var list = $('#ctx-key-list');
+  if (!list) return;
+  var keys = collectCtxKeys(state.ctx);
+  var count = $('#ctx-var-count');
+  if (count) count.textContent = keys.length;
+  if (!keys.length) {
+    list.innerHTML = '<span class="text-[10px] text-gray-600 p-4">Aucune variable — sauvegardez une reponse avec le bouton Ctx</span>';
+    return;
+  }
+  list.innerHTML = buildCtxTree(state.ctx, '');
+}
+
+function buildCtxTree(obj, prefix, depth) {
+  depth = depth || 0;
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '';
+  var html = '';
+  Object.keys(obj).forEach(function(k) {
+    var fullKey = prefix ? prefix + '.' + k : k;
+    var val = obj[k];
+    var isExpandable = val && typeof val === 'object' && !Array.isArray(val) && Object.keys(val).length > 0;
+    var expr = '{{ctx.' + fullKey + '}}';
+    var padLeft = depth * 14;
+    html += '<div class="ctx-tree-row flex items-center gap-1.5 hover:bg-white/[0.03] rounded px-2 py-1.5 group" style="padding-left:' + (8 + padLeft) + 'px">';
+    if (isExpandable) {
+      html += '<span class="ctx-chevron w-3.5 h-3.5 flex items-center justify-center text-gray-600 hover:text-gray-300 transition-all flex-shrink-0 cursor-pointer" data-key="' + fullKey + '"><svg class="w-3 h-3 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></span>';
+    } else {
+      html += '<span class="w-3.5 h-3.5 flex-shrink-0"></span>';
+    }
+    html += '<span class="text-[11px] font-mono text-emerald-300/80 group-hover:text-emerald-300 transition-colors truncate cursor-pointer flex-1" onclick="navigator.clipboard.writeText(\'' + expr + '\').then(function(){var e=this;e.classList.add(\'text-white\');setTimeout(function(){e.classList.remove(\'text-white\')},400)}.bind(this))" title="Copier ' + escapeHtml(expr) + '">' + escapeHtml(k) + '</span>';
+    if (!isExpandable) {
+      var preview = '';
+      if (typeof val === 'string') preview = val.length > 30 ? val.substring(0, 30) + '…' : val;
+      else if (typeof val === 'number' || typeof val === 'boolean') preview = String(val);
+      else if (val === null) preview = 'null';
+      else if (Array.isArray(val)) preview = '[' + val.length + ']';
+      if (preview) {
+        html += '<span class="text-[9px] text-gray-600 font-mono truncate text-right opacity-0 group-hover:opacity-100 transition-opacity">' + escapeHtml(preview) + '</span>';
+      }
+    } else {
+      html += '<span class="text-[9px] text-gray-600 font-mono">{' + Object.keys(val).length + '}</span>';
+    }
+    html += '</div>';
+    if (isExpandable) {
+      html += '<div class="ctx-tree-children hidden">' + buildCtxTree(val, fullKey, depth + 1) + '</div>';
+    }
+  });
+  return html;
+}
+
+function collectCtxKeys(obj, prefix) {
+  prefix = prefix || '';
+  var keys = [];
+  if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+    Object.keys(obj).forEach(function(k) {
+      var fullKey = prefix ? prefix + '.' + k : k;
+      keys.push(fullKey);
+      var val = obj[k];
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
+        keys = keys.concat(collectCtxKeys(val, fullKey));
+      }
+    });
+  }
+  return keys;
+}
+
+var _ctxSaveTimer = null;
+function scheduleCtxSave() {
+  if (_ctxSaveTimer) clearTimeout(_ctxSaveTimer);
+  _ctxSaveTimer = setTimeout(saveCtx, 1500);
+  var ind = $('#ctx-save-indicator');
+  if (ind) ind.classList.remove('hidden');
+}
+
+async function saveCtx() {
+  // Read from visible textarea (handle JSON editor proxy)
+  var ta = getCtxTextarea();
+  if (!ta) return;
+  try {
+    var parsed = JSON.parse(ta.value);
+    state.ctx = parsed;
+  } catch (e) {
+    console.error('[ctx] invalid JSON, not saving:', e.message);
+    return;
+  }
+  try {
+    var res = await fetch(API.ctx, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ ctx: state.ctx }),
+    });
+    if (res.ok) {
+      updateCtxKeyList();
+      var ind = $('#ctx-save-indicator');
+      if (ind) {
+        setTimeout(function () { if (ind) ind.classList.add('hidden'); }, 1500);
+      }
+    }
+  } catch (e) {
+    console.error('[ctx] save error:', e);
+  }
+}
+
+function promptSaveToCtx(entry) {
+  var keyName = prompt(
+    'Nom de la variable contexte (ex: "loginResponse") :',
+    'response_' + (entry.statusCode || 'unknown')
+  );
+  if (!keyName || !keyName.trim()) return;
+  keyName = keyName.trim().replace(/[^a-zA-Z0-9_]/g, '_');
+
+  var body = entry.body || '';
+  try { body = JSON.parse(body); } catch (e) {}
+
+  state.ctx[keyName] = {
+    status_code: entry.statusCode,
+    url: entry.url,
+    method: entry.method,
+    headers: entry.headers || {},
+    body: body,
+  };
+  updateCtxEditor();
+  updateCtxKeyList();
+  saveCtx();
+  showCtxToast('ctx.' + keyName + ' enregistre');
+}
+
+function showCtxToast(msg) {
+  var existing = document.getElementById('ctx-toast');
+  if (existing) existing.remove();
+  var toast = document.createElement('div');
+  toast.id = 'ctx-toast';
+  toast.className = 'fixed bottom-4 right-4 bg-emerald-500/90 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-2';
+  toast.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg> ' + escapeHtml(msg);
+  document.body.appendChild(toast);
+  setTimeout(function () { toast.remove(); }, 3000);
+}
+
+function setupCtxPanel() {
+  var btnToggle = $('#btn-toggle-ctx');
+  var btnClose = $('#btn-close-ctx');
+  var btnRefresh = $('#btn-refresh-ctx');
+  if (btnToggle) btnToggle.addEventListener('click', function () { toggleCtxPanel(); });
+  if (btnClose) btnClose.addEventListener('click', function () { toggleCtxPanel(false); });
+  if (btnRefresh) btnRefresh.addEventListener('click', function () { loadCtx(); });
+  var ta = $('#ctx-editor');
+  if (ta) ta.addEventListener('input', function () { scheduleCtxSave(); });
+  // Delegated click for tree expand/collapse
+  var keyList = $('#ctx-key-list');
+  if (keyList) {
+    keyList.addEventListener('click', function (e) {
+      var chevron = e.target.closest('.ctx-chevron');
+      if (!chevron) return;
+      var row = chevron.parentElement;
+      var children = row.nextElementSibling;
+      if (children && children.classList.contains('ctx-tree-children')) {
+        var open = !children.classList.contains('hidden');
+        children.classList.toggle('hidden', open);
+        var svg = chevron.querySelector('svg');
+        if (svg) svg.style.transform = open ? '' : 'rotate(90deg)';
+      }
     });
   }
 }
