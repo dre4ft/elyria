@@ -13,6 +13,25 @@ from core.logging import get_logger
 
 _log = get_logger("ely.actions")
 
+import os
+import re
+
+# Docker host replacement: only active when ELYRIA_DOCKER_HOST is set.
+# When set (e.g. ELYRIA_DOCKER_HOST=host.docker.internal), localhost/127.0.0.1
+# in tool URLs/commands are replaced so Ely can reach host services from sandbox.
+_DOCKER_HOST = os.getenv("ELYRIA_DOCKER_HOST", "")
+
+
+def _sanitize_url(url: str) -> str:
+    if not _DOCKER_HOST or not url or not isinstance(url, str):
+        return url
+    return re.sub(
+        r'(https?://)(localhost|127\.0\.0\.1|0\.0\.0\.0)([:/?#]|$)',
+        r'\1' + _DOCKER_HOST + r'\3',
+        url,
+        flags=re.IGNORECASE
+    )
+
 ACTIONS = {}
 
 
@@ -60,7 +79,7 @@ async def send_request(args, request):
         user_id = get_user_id(request)
         uid, resp = handle_request(
             user_id=user_id,
-            url=args["url"],
+            url=_sanitize_url(args["url"]),
             method=args["method"],
             headers=hdrs,
             body=args.get("body", ""),
@@ -92,7 +111,7 @@ async def send_raw_request(args, request):
     from core.auth import get_user as get_user_id
     try:
         user_id = get_user_id(request)
-        req_id, resp = handle_raw(user_id=user_id, url=args["url"], request=args["request"], is_done_by_ai=True)
+        req_id, resp = handle_raw(user_id=user_id, url=_sanitize_url(args["url"]), request=args["request"], is_done_by_ai=True)
         return {"status": resp.get("status_code", 0), "data": resp, "request_id": req_id}
     except Exception as e:
         return {"error": str(e)[:200]}
@@ -108,14 +127,17 @@ async def send_raw_request(args, request):
             }},
           "payloads": {"type": "array", "items": {"type": "string"}},
           "fuzzing_type": {"type": "string", "enum": ["sniper"]}})
-def fuzz(args, request):
+async def fuzz(args, request):
     from ely.superfuzzer3000 import fuzz_and_send
     from core.auth import get_user as get_user_id
     user_id = get_user_id(request)
     try:
-        _log.info(f"User {user_id} is fuzzing request: {args['request']} with payloads: {args['payloads']}")
+        req = args["request"]
+        if isinstance(req, dict) and req.get("url"):
+            req["url"] = _sanitize_url(req["url"])
+        _log.info(f"User {user_id} is fuzzing request: {req} with payloads: {args['payloads']}")
         fuzzing_type = args.get("fuzzing_type", "sniper")
-        responses = fuzz_and_send(args["request"], args["payloads"], fuzzing_type=fuzzing_type)
+        responses = fuzz_and_send(req, args["payloads"], fuzzing_type=fuzzing_type)
         return {"status": 200, "data": responses}
     except Exception as e:
         return {"error": str(e)[:200]}
@@ -151,6 +173,15 @@ async def create_request(args, request):
 
     except Exception as e:
         return {"error": str(e)[:200]}
+@_action("ely_request_ctx", "Get the user context dictionary. Returns all keys available for use with {{ctx.xxx}} syntax in request tools.",
+         {})
+async def get_ctx(args, request):
+    from request_manager.request_api import _resolve_request_ctx
+    result = _resolve_request_ctx(request)
+    if not result:
+        return {"error": "User context not found"}
+    return {"status": 200, "data": result}
+
 
 
 @_action("ely_create_collection", "Create a new collection/folder to organize requests",
@@ -202,6 +233,11 @@ async def run_scan(args,  request):
 async def osint_scan(args,request):
     from greyteam.database import create_report as _create, get_profile, add_finding, update_report
     import threading, json as _json
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+    if not user_id:
+        return {"error": "User not authenticated"}
+    
     profile = get_profile(args["profile_id"])
     if not profile:
         return {"error": "Profile not found"}
@@ -385,7 +421,8 @@ async def bash_tool(args, request):
     if not bash:
         return {"error": "Failed to initialize sandbox"}
     try:
-        output = bash.handle(params={"command": args["command"], "timeout_ms": 60_000})
+        cmd = _sanitize_url(args["command"])
+        output = bash.handle(params={"command": cmd, "timeout_ms": 60_000})
         return {"status": 200, "data": {"output": output}}
     except Exception as e:
         return {"error": str(e)[:200]}
@@ -398,7 +435,7 @@ async def browser_query_tool(args, request):
     from core.auth import get_user as get_user_id
     user_id = get_user_id(request)
     try:
-        result = await basic_handler(user_id=user_id, url=args["url"], selector=args.get("selector", "body"), action="query")
+        result = await basic_handler(user_id=user_id, url=_sanitize_url(args["url"]), selector=args.get("selector", "body"), action="query")
         return {"status": 200, "data": {"result": result}}
     except Exception as e:
         return {"error": str(e)[:200]}
@@ -410,7 +447,7 @@ async def browser_click_tool(args, request):
     from core.auth import get_user as get_user_id
     user_id = get_user_id(request)
     try:
-        result = await basic_handler(user_id=user_id, url=args["url"], selector=args.get("selector", "body"), action="click")
+        result = await basic_handler(user_id=user_id, url=_sanitize_url(args["url"]), selector=args.get("selector", "body"), action="click")
         return {"status": 200, "data": {"result": result}}
     except Exception as e:
         return {"error": str(e)[:200]}
@@ -486,6 +523,105 @@ async def diary_delete_tool(args, request):
 
 
 # ═══════════════════════════════════════════════════════════════
+# Purple Team tools
+# ═══════════════════════════════════════════════════════════════
+
+@_action("ely_purpleteam_scan", "Start a Purple Team IAST scan on a repository. Combines static analysis (CVE/CWE/bad practices) with dynamic testing and AI-powered code review.",
+         {"profile_name": {"type": "string", "description": "Name for this scan profile"},
+          "repo_url": {"type": "string", "description": "Git repository URL (GitHub/GitLab/Bitbucket) or local path"},
+          "repo_source": {"type": "string", "description": "Repository source: github, gitlab, bitbucket, or local"},
+          "repo_branch": {"type": "string", "description": "Git branch to scan (default: main)"},
+          "target_endpoint": {"type": "string", "description": "Live API endpoint for dynamic IAST testing (optional)"},
+          "scan_depth": {"type": "string", "description": "Scan depth: quick (static only), full (static+AI), iast (static+dynamic)"}})
+async def purpleteam_scan_tool(args, request):
+    from core.auth import get_user as get_user_id
+    from database.auth_utils import get_auth_user_teams
+    from purpleteam.database import create_profile, create_scan, add_finding
+    from purpleteam.repo_manager import clone_repo, detect_language
+    from purpleteam.static_scanner import StaticScanner
+
+    user_id = get_user_id(request)
+    team_ids = get_auth_user_teams(request)
+
+    name = args.get("profile_name", "AI-Initiated Scan")
+    repo_url = args.get("repo_url", "")
+    repo_source = args.get("repo_source", "github")
+    repo_branch = args.get("repo_branch", "main")
+    target_endpoint = args.get("target_endpoint", "")
+    scan_depth = args.get("scan_depth", "full")
+
+    if not repo_url:
+        return {"error": "repo_url is required"}
+
+    pid = create_profile(
+        name=name, repo_source=repo_source, repo_url=repo_url,
+        repo_branch=repo_branch, target_endpoint=target_endpoint,
+        user_id=user_id, team_ids=team_ids, scan_depth=scan_depth,
+    )
+    sid = create_scan(
+        profile_id=pid, name=f"AI Scan — {name}",
+        repo_source=repo_source, repo_url=repo_url,
+        repo_branch=repo_branch, target_endpoint=target_endpoint,
+        user_id=user_id, team_ids=team_ids, scan_depth=scan_depth,
+    )
+
+    try:
+        repo_path = clone_repo(repo_url, user_id, "", "", repo_branch)
+        language, framework = detect_language(repo_path)
+        static = StaticScanner(repo_path, user_id)
+        count = static.run(sid, add_finding)
+        return {
+            "status": "completed", "scan_id": sid, "profile_id": pid,
+            "findings_count": count, "language": language, "framework": framework,
+            "message": f"Static scan complete: {count} findings in {language}/{framework} project",
+        }
+    except Exception as e:
+        return {"status": "failed", "scan_id": sid, "profile_id": pid, "error": str(e)}
+
+
+@_action("ely_purpleteam_get_findings", "Get findings from a Purple Team scan, with optional filters.",
+         {"scan_id": {"type": "string", "description": "Scan ID to get findings for"},
+          "severity": {"type": "string", "description": "Filter by severity: critical, high, medium, low, info (optional)"},
+          "finding_part": {"type": "string", "description": "Filter by part: cves, cwes, practices (optional)"}})
+async def purpleteam_get_findings_tool(args, request):
+    from purpleteam.database import get_scan, get_scan_findings
+    from core.auth import verify_ownership
+    from database.auth_utils import get_auth_user, get_auth_user_teams
+
+    scan_id = args.get("scan_id", "")
+    if not scan_id:
+        return {"error": "scan_id is required"}
+
+    s = get_scan(scan_id)
+    if not s:
+        return {"error": "Scan not found"}
+    if not verify_ownership(request, s.get("user_id"), s.get("team_ids", [])):
+        return {"error": "Access denied"}
+    findings = get_scan_findings(scan_id)
+    severity = args.get("severity", "")
+    part = args.get("finding_part", "")
+
+    if severity:
+        findings = [f for f in findings if f.get("severity") == severity]
+    if part:
+        findings = [f for f in findings if f.get("finding_part") == part]
+
+    return {
+        "scan_id": scan_id,
+        "total": len(findings),
+        "findings": [
+            {
+                "title": f["title"], "severity": f["severity"],
+                "category": f.get("category", ""), "file_path": f.get("file_path", ""),
+                "cve_id": f.get("cve_id", ""), "cwe_id": f.get("cwe_id", ""),
+                "remediation": f.get("remediation", ""),
+            }
+            for f in findings[:20]
+        ],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
 # Registry
 # ═══════════════════════════════════════════════════════════════
 
@@ -494,13 +630,14 @@ def get_action_definitions(page=None):
     if not page:
         return all_defs
     page_actions = {
-        "app":      ["ely_create_request", "ely_create_collection", "ely_get_request_result", "ely_send_raw_request", "ely_send_request", "ely_list_resources", "ely_bash", "ely_fuzz","ely_browser_query", "ely_browser_click"],
+        "app":      ["ely_create_request", "ely_create_collection", "ely_get_request_result", "ely_request_ctx", "ely_send_raw_request", "ely_send_request", "ely_list_resources", "ely_bash", "ely_fuzz","ely_browser_query", "ely_browser_click"],
         "workflow": ["ely_create_workflow", "ely_list_resources","ely_bash", "ely_fuzz"],
         "pentest":  ["ely_run_scan", "ely_get_findings", "ely_list_resources", "ely_bash", "ely_fuzz","ely_browser_query", "ely_browser_click"],
         "greyteam": ["ely_osint_scan", "ely_get_findings", "ely_list_resources", "ely_bash","ely_browser_query", "ely_browser_click"],
         "blueteam": ["ely_blueteam_analyze", "ely_get_findings", "ely_list_resources", "ely_bash"],
         "hub":      ["ely_list_resources", "ely_create_collection"],
-        "doc":      ["ely_get_doc", "ely_list_doc_pages"],
+        "doc":        ["ely_get_doc", "ely_list_doc_pages"],
+        "purpleteam": ["ely_purpleteam_scan", "ely_purpleteam_get_findings", "ely_list_resources", "ely_bash"],
     }
     diary_tools = ["ely_diary_add", "ely_diary_query", "ely_diary_list", "ely_diary_get", "ely_diary_delete"]
     allowed = set(page_actions.get(page, [])) | set(diary_tools)

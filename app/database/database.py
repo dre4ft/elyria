@@ -249,6 +249,8 @@ def init_db():
         c.execute(INIT_KEYS)
         c.execute(INIT_VERIFICATION_TOKENS)
         c.execute(INIT_COLLECTION_KEYS)
+        from database.ctx_mgmt import INIT_USER_CTX
+        c.execute(INIT_USER_CTX)
         conn.commit()
         # ── Migrations: add columns that didn't exist in older schemas ──
         _migrate_oidc_columns(c, conn)

@@ -108,7 +108,7 @@
     // Header
     + '<div class="h-12 px-4 border-b border-white/5 flex items-center justify-between shrink-0">'
     + '<div class="flex items-center gap-3">'
-    + '<svg class="w-7 h-7 text-primary-light shrink-0 mt-0.5" viewBox="0 0 400 400" fill="currentColor"><ellipse stroke="currentColor" stroke-width="18" ry="72" rx="48" cy="195" cx="200"/><ellipse stroke="currentColor" stroke-width="16" ry="29" rx="36" cy="125" cx="200"/><circle class="ely-eye" r="10" cy="122" cx="175"/><circle class="ely-eye" r="10" cy="122" cx="225"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M150 165 L85 70 L65 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M145 185 L75 130 L55 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M145 220 L80 235 L65 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M155 245 L95 285 L105 335"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M250 165 L315 70 L335 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M255 185 L325 130 L345 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M255 220 L320 235 L335 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M245 245 L305 285 L295 335"/></svg>'
+    + '<img src="/static/icons/new_logo_blanc.png" class="w-7 h-7 shrink-0 mt-0.5 ely-logo" alt="" />'
     + '<span class="text-xs font-semibold text-white">ELY Copilot</span>'
     // Model toggle
     + '<div class="flex items-center rounded-lg bg-base-700 border border-white/5 overflow-hidden">'
@@ -132,7 +132,7 @@
     // Messages
     + '<div id="ely-copilot-messages" class="flex-1 overflow-y-auto p-3 space-y-4 scrollbar-thin">'
     + '<div class="flex gap-3">'
-    + '<svg class="w-7 h-7 text-primary-light shrink-0 mt-0.5" viewBox="0 0 400 400" fill="currentColor"><ellipse stroke="currentColor" stroke-width="18" ry="72" rx="48" cy="195" cx="200"/><ellipse stroke="currentColor" stroke-width="16" ry="29" rx="36" cy="125" cx="200"/><circle class="ely-eye" r="10" cy="122" cx="175"/><circle class="ely-eye" r="10" cy="122" cx="225"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M150 165 L85 70 L65 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M145 185 L75 130 L55 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M145 220 L80 235 L65 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M155 245 L95 285 L105 335"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M250 165 L315 70 L335 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M255 185 L325 130 L345 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M255 220 L320 235 L335 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M245 245 L305 285 L295 335"/></svg>'
+    + '<img src="/static/icons/new_logo_blanc.png" class="w-7 h-7 shrink-0 mt-0.5 ely-logo" alt="" />'
     + '<div class="bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed" style="max-width:90%">Bonjour ! Je suis Ely, votre assistant IA contextuel. Je connais la page sur laquelle vous etes et je peux vous aider a utiliser Elyria. Tapez <b>/</b> pour voir les commandes disponibles.</div>'
     + '</div>'
     + '</div>'
@@ -236,6 +236,18 @@
         + '.ely-tool-ok{background:rgba(34,197,94,.1);color:#4ade80;border:1px solid rgba(34,197,94,.15);}'
         + '.ely-tool-err{background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.15);}';
         + '.diary-entry .line-clamp-2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}'
+        + '[data-theme="light"] .ely-logo{filter:invert(1);}'
+        + '[data-theme="light"] .ely-msg-body strong{color:#1e293b;}'
+        + '[data-theme="light"] .ely-msg-body h1,[data-theme="light"] .ely-msg-body h2,[data-theme="light"] .ely-msg-body h3{color:#1e293b;}'
+        + '[data-theme="light"] .ely-msg-body p{color:#334155;}'
+        + '[data-theme="light"] .ely-msg-body li{color:#334155;}'
+        + '[data-theme="light"] .ely-msg-body code{background:rgba(124,58,237,.1);color:#5b21b6;}'
+        + '[data-theme="light"] .ely-msg-body pre{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.1);}'
+        + '[data-theme="light"] .ely-msg-body pre code{color:#1e293b;}'
+        + '[data-theme="light"] .ely-msg-body blockquote{color:#475569;border-left-color:#7c3aed;}'
+        + '[data-theme="light"] .ely-msg-body a{color:#6d28d9;}'
+        + '[data-theme="light"] .ely-msg-body th{background:rgba(124,58,237,.08);color:#5b21b6;}'
+        + '[data-theme="light"] .ely-msg-body td{color:#334155;}'
         + '.ely-eye{fill:#06b6d4;}'
         + '[data-theme="dark"] .ely-eye{fill:#7c3aed;}';
       document.head.appendChild(style);
@@ -291,7 +303,7 @@
     if (!msgs.length) {
       // Show default greeting
       container.innerHTML = '<div class="flex gap-3">'
-        + '<svg class="w-7 h-7 text-primary-light shrink-0 mt-0.5" viewBox="0 0 400 400" fill="currentColor"><ellipse stroke="currentColor" stroke-width="18" ry="72" rx="48" cy="195" cx="200"/><ellipse stroke="currentColor" stroke-width="16" ry="29" rx="36" cy="125" cx="200"/><circle class="ely-eye" r="10" cy="122" cx="175"/><circle class="ely-eye" r="10" cy="122" cx="225"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M150 165 L85 70 L65 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M145 185 L75 130 L55 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M145 220 L80 235 L65 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M155 245 L95 285 L105 335"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M250 165 L315 70 L335 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M255 185 L325 130 L345 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M255 220 L320 235 L335 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M245 245 L305 285 L295 335"/></svg>'
+        + '<img src="/static/icons/new_logo_blanc.png" class="w-7 h-7 shrink-0 mt-0.5 ely-logo" alt="" />'
         + '<div class="bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed" style="max-width:90%">Bonjour ! Je suis Ely, votre assistant IA contextuel. Tapez <b>/</b> pour voir les commandes disponibles.</div>'
         + '</div>';
       return;
@@ -558,7 +570,7 @@
     } else {
       var isHtml = content.indexOf('<') === 0;
       var body = isHtml ? content : _renderMarkdown(content);
-      div.innerHTML = '<svg class="w-7 h-7 text-primary-light shrink-0 mt-0.5" viewBox="0 0 400 400" fill="currentColor"><ellipse stroke="currentColor" stroke-width="18" ry="72" rx="48" cy="195" cx="200"/><ellipse stroke="currentColor" stroke-width="16" ry="29" rx="36" cy="125" cx="200"/><circle class="ely-eye" r="10" cy="122" cx="175"/><circle class="ely-eye" r="10" cy="122" cx="225"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M150 165 L85 70 L65 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M145 185 L75 130 L55 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M145 220 L80 235 L65 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M155 245 L95 285 L105 335"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M250 165 L315 70 L335 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M255 185 L325 130 L345 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M255 220 L320 235 L335 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M245 245 L305 285 L295 335"/></svg>'
+      div.innerHTML = '<img src="/static/icons/new_logo_blanc.png" class="w-7 h-7 shrink-0 mt-0.5 ely-logo" alt="" />'
         + '<div class="ely-msg-body bg-base-700/50 rounded-xl rounded-tl-md px-4 py-3 text-xs text-gray-300 leading-relaxed" style="max-width:90%">' + body + '</div>';
     }
     container.appendChild(div);

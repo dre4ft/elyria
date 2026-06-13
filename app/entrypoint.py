@@ -22,6 +22,7 @@ from ai_core.ai_config_api import app as ai_config_router
 from auth_users.oidc_api import app as oidc_router
 from ely.api import app as ely_router
 from ely.api import diary_app as ely_diary_router
+from purpleteam.api import app as purpleteam_router
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -94,7 +95,7 @@ async def check_authorization(request: Request, call_next):
     # HTML shells (/app, /workflow, etc.) are served without auth so the SPA
     # can load auth.js — client-side auth handles the rest.
     PUBLIC_ROUTES = {
-        "/", "/login", "/app", "/workflow", "/pentest", "/greyteam", "/hub", "/doc", "/blueteam", "/m", "/gate",
+        "/", "/login", "/app", "/workflow", "/pentest", "/greyteam", "/hub", "/doc", "/blueteam", "/purpleteam", "/m", "/gate",
         "/api/user/login", "/api/user/create", "/api/user/refresh",
         "/api/user/verify-email", "/api/user/resend-code",
         "/api/user/reset-password", "/api/user/reset-password/confirm",
@@ -109,7 +110,7 @@ async def check_authorization(request: Request, call_next):
         return await call_next(request)
 
     # SSE streams: EventSource can't send custom headers → bypass middleware
-    if path.endswith("/events") and ("/api/blueteam/" in path or "/api/pentest/" in path or "/api/greyteam/" in path):
+    if path.endswith("/events") and ("/api/blueteam/" in path or "/api/pentest/" in path or "/api/greyteam/" in path or "/api/purpleteam/" in path):
         return await call_next(request)
 
     auth = request.headers.get("authorization")
@@ -227,42 +228,10 @@ async def serve_mobile():
 async def serve_doc():
     return _serve_html("doc.html")
 
-# ── Enterprise & legal pages ──
+@app.get("/purpleteam")
+async def serve_purpleteam():
+    return _serve_html("purpleteam.html")
 
-def _serve_enterprise(filename: str) -> HTMLResponse:
-    try:
-        with open(f"../enterprise/pages/{filename}", "r") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Page not found")
-
-@app.get("/enterprise")
-async def serve_enterprise():
-    return _serve_enterprise("enterprise.html")
-
-@app.get("/pricing")
-async def serve_pricing():
-    return _serve_enterprise("pricing.html")
-
-@app.get("/edu")
-async def serve_edu():
-    return _serve_enterprise("edu.html")
-
-@app.get("/legal")
-async def serve_legal():
-    return _serve_enterprise("legal.html")
-
-@app.get("/privacy")
-async def serve_privacy():
-    return _serve_enterprise("privacy.html")
-
-@app.get("/terms")
-async def serve_terms():
-    return _serve_enterprise("terms.html")
-
-@app.get("/license")
-async def serve_license():
-    return HTMLResponse(content='<html><head><meta charset="UTF-8"><title>Licence — Elyria</title></head><body style="font-family:monospace;max-width:800px;margin:2rem auto;padding:0 1rem;background:#0a0f1c;color:#94a3b8;"><h1 style="color:#e5e7eb">Licence AGPL-3.0</h1><p>Elyria est distribue sous <strong>GNU Affero General Public License v3</strong>.</p><p>Texte complet : <a href="https://www.gnu.org/licenses/agpl-3.0.html" style="color:#8b5cf6">gnu.org/licenses/agpl-3.0.html</a></p><p>Pour une licence commerciale (SaaS, usage proprietaire) : <a href="mailto:contact@elyria.pro" style="color:#8b5cf6">contact@elyria.pro</a></p></body></html>')
 
 @app.get("/api/doc")
 async def get_doc(lang: str = "fr"):
@@ -296,6 +265,9 @@ app.include_router(ai_config_router)
 app.include_router(oidc_router)
 app.include_router(ely_router)
 app.include_router(ely_diary_router)
+app.include_router(purpleteam_router)
+from database.ctx_api import app as ctx_router
+app.include_router(ctx_router)
 
 if __name__ == "__main__":
     import os

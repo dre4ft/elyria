@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Elyria
 
-from fastapi import APIRouter, Request, HTTPException, File, UploadFile
+from fastapi import APIRouter, Request, HTTPException, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import json
@@ -27,8 +27,18 @@ class UploadReq(BaseModel):
     target_url: str = "http://localhost:9000"
     team_id: str = ""
 
+
+
+class OpenapiUploadReq(BaseModel):
+    target_url: str = "http://localhost:9000"
+    team_id: str = ""
+    inputs_values: str = ""
+    openapi_url: str = ""
+
 @app.post("/openapi")
-async def upload(request : Request, target_url: str="http://localhost:9000", team_id: str = "", inputs_values: str = "", openapi_url: str = "", file: UploadFile = None, openapi_file: UploadFile = None):
+async def upload(request: Request, target_url: str = Form("http://localhost:9000"), team_id: str = Form(""), inputs_values: str = Form(""), openapi_url: str = Form(""), file: UploadFile = None, openapi_file: UploadFile = None):
+    # Validate with Pydantic model
+    params = OpenapiUploadReq(target_url=target_url, team_id=team_id, inputs_values=inputs_values, openapi_url=openapi_url)
     user_id = request.state.token
 
     # If no file but a URL is provided, fetch it
@@ -118,7 +128,7 @@ async def upload(request : Request, target_url: str="http://localhost:9000", tea
         return JSONResponse(status_code=400, content={"detail": "Unrecognized format — not OpenAPI or Arazzo"})
     except Exception as e:
         _log.exception(f"document creation error")
-        raise HTTPException(status_code=500, detail="Import failed")
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)[:200]}")
 
 
 # ── Postman / Bruno import ──────────────────────────────────────────────

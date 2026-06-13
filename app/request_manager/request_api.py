@@ -19,6 +19,43 @@ from typing import Literal, List,Optional
 from database.request_mgmt import add_request
 import ssl
 import socket
+import re
+
+# ── ctx template resolution ──
+_CTX_RE = re.compile(r'\{\{(ctx\.)?(\w+(?:\.\w+)*)\}\}')
+
+
+def resolve_ctx_templates(value: str, ctx: dict) -> str:
+    """Replace {{ctx.xxx.yyy}} references with values from ctx dict."""
+    if not value or not isinstance(value, str) or '{{' not in value:
+        return value
+
+    def _replacer(m):
+        path = m.group(2)
+        val = ctx
+        for key in path.split('.'):
+            if val is None or not isinstance(val, dict):
+                return m.group(0)
+            val = val.get(key)
+            if val is None:
+                return m.group(0)
+        return str(val)
+    return _CTX_RE.sub(_replacer, value)
+
+
+def _resolve_request_ctx(request: Request) -> dict:
+    """Load user context from DB for the current request."""
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+
+    try:
+        from database.ctx_mgmt import get_ctx
+        if user_id:
+            return get_ctx(user_id)
+    except Exception:
+        pass
+    return {}
+
 
 def _get_proxy_from_request(request: Request) -> dict:
     """Look up user's favorite proxy from DB. Returns None if disabled or not set."""
@@ -383,40 +420,54 @@ class RawRequest(BaseModel):
 
 @app.post("/x-www-form-urlencoded")
 def x_www_form_urlencoded_request(request:WWWFormRequest,_request:Request):
-    
+
     token = _request.state.token
-    
+    ctx = _resolve_request_ctx(_request)
+
     if not request.headers:
         request.headers = {}
     if "content-type" not in {k.lower() for k in (request.headers or {})}:
         request.headers["Content-Type"] = "application/x-www-form-urlencoded"
+    rc = resolve_ctx_templates
+    resolved_headers = {rc(k, ctx): rc(v, ctx) for k, v in (request.headers or {}).items()}
+    resolved_qp = [(rc(k, ctx), rc(v, ctx)) for k, v in (request.query_params or [])]
     proxies = _get_proxy_from_request(_request)
-    req_uuid, resp =  handle_request(user_id=token,url=request.url,method=request.method,headers= request.headers,query_params=request.query_params,proxies=proxies)
-    return _handle_response(req_uuid,resp,dict)
-    
+    req_uuid, resp = handle_request(user_id=token, url=rc(request.url, ctx), method=request.method,
+                                     headers=resolved_headers, query_params=resolved_qp, proxies=proxies)
+    return _handle_response(req_uuid, resp, dict)
+
 
 @app.post("")
 def rest_request(request : RESTRequest, _request:Request):
+    # Resolve ctx templates
+    ctx = _resolve_request_ctx(_request)
+    rc = resolve_ctx_templates
+    resolved_url = rc(request.url, ctx)
+    resolved_headers = {}
+    if request.headers:
+        for k, v in request.headers.items():
+            resolved_headers[rc(k, ctx)] = rc(v, ctx)
+    resolved_body = rc(request.body or "", ctx) if request.body else request.body
+
     # Smart body parsing: try JSON, fallback to raw string
-    raw_body = (request.body or "").strip()
+    raw_body = (resolved_body or "").strip()
     body = None
     _json = None
     if raw_body:
         try:
             _json = json.loads(raw_body)
             if not isinstance(_json, (dict, list)):
-                # Parsed JSON but not an object/array — treat as raw
                 body = raw_body
                 _json = None
         except (json.JSONDecodeError, ValueError):
             body = raw_body
-    headers = request.headers or {}
+    headers = resolved_headers
     # Strip Content-Type if no body
     if not raw_body:
         headers = {k: v for k, v in headers.items() if k.lower() != 'content-type'}
     token = _request.state.token
     proxies = _get_proxy_from_request(_request)
-    req_uuid, resp = handle_request(user_id=token, method=request.method, url=request.url,
+    req_uuid, resp = handle_request(user_id=token, method=request.method, url=resolved_url,
                                      body=body, _json=_json, headers=headers, proxies=proxies,
                                      verify_ssl=request.verify_ssl)
     return _handle_response(req_uuid, resp, dict)
@@ -425,8 +476,10 @@ def rest_request(request : RESTRequest, _request:Request):
 @app.post("/raw")
 def send_raw_request(request : RawRequest,_request:Request):
     token = _request.state.token
-    req_uuid, resp = handle_raw(user_id=token,url=request.url,request=request.request)                                          
-    return _handle_response(req_uuid,resp,dict)
+    ctx = _resolve_request_ctx(_request)
+    rc = resolve_ctx_templates
+    req_uuid, resp = handle_raw(user_id=token, url=rc(request.url, ctx), request=rc(request.request, ctx))
+    return _handle_response(req_uuid, resp, dict)
     
 
 """

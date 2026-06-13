@@ -182,7 +182,8 @@
     { id: 'workflow', label: 'Workflows',  path: '/workflow', color: 'green' },
     { id: 'pentest',  label: 'Red Team',   path: '/pentest',  color: 'red' },
     { id: 'greyteam', label: 'Grey Team',  path: '/greyteam', color: 'gray' },
-    { id: 'blueteam', label: 'Blue Team',  path: '/blueteam', color: 'blue' },
+    { id: 'blueteam',   label: 'Blue Team',   path: '/blueteam',   color: 'blue' },
+    { id: 'purpleteam', label: 'Purple Team', path: '/purpleteam', color: 'purple' },
   ];
 
   // ── DOM helpers ──
@@ -316,7 +317,7 @@
       rightHTML += '<button onclick="navigateTo(\'/doc\')" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-purple-500/10 border border-white/5 hover:border-purple-500/30 text-xs font-medium text-gray-400 hover:text-purple-400 transition-all">Docs</button>';
     }
     rightHTML += '<button id="btn-toggle-copilot" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-primary/20 border border-white/5 hover:border-primary/40 text-xs font-medium text-gray-400 hover:text-primary-light transition-all flex items-center gap-1.5" title="Ely Copilot">'
-      + '<svg class="w-3.5 h-3.5" viewBox="0 0 400 400" fill="currentColor"><ellipse stroke="currentColor" stroke-width="18" ry="72" rx="48" cy="195" cx="200"/><ellipse stroke="currentColor" stroke-width="16" ry="29" rx="36" cy="125" cx="200"/><circle class="ely-eye" r="10" cy="122" cx="175"/><circle class="ely-eye" r="10" cy="122" cx="225"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M150 165 L85 70 L65 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M145 185 L75 130 L55 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M145 220 L80 235 L65 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M155 245 L95 285 L105 335"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M250 165 L315 70 L335 95"/><path stroke="currentColor" stroke-linecap="round" stroke-width="16" fill="none" d="M255 185 L325 130 L345 165"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M255 220 L320 235 L335 280"/><path stroke="currentColor" stroke-linecap="round" stroke-width="15" fill="none" d="M245 245 L305 285 L295 335"/></svg>'
+      + '<img src="/static/icons/new-icon.png" class="w-3.5 h-3.5 ely-logo" alt="" />'
       + 'ELY</button>';
     rightHTML += '<span id="header-username" class="text-[10px] text-gray-500 font-medium hidden"></span>';
     if (logoutBtn) {
@@ -561,9 +562,9 @@
         // Check if followed by :
         var after = text.substring(i).trimStart();
         if (after.startsWith(':')) {
-          out += '<span class="json-key">' + _esc(str) + '</span>';
+          out += '<span class="json-key">' + esc(str) + '</span>';
         } else {
-          out += '<span class="json-string">' + _esc(str) + '</span>';
+          out += '<span class="json-string">' + esc(str) + '</span>';
         }
         continue;
       }
@@ -575,7 +576,7 @@
           if ((text[i] === '+' || text[i] === '-') && numStart !== i-1 && text[i-1] !== 'e' && text[i-1] !== 'E') break;
           i++;
         }
-        out += '<span class="json-number">' + _esc(text.substring(numStart, i)) + '</span>';
+        out += '<span class="json-number">' + esc(text.substring(numStart, i)) + '</span>';
         continue;
       }
       // true / false / null
@@ -584,11 +585,11 @@
       if (text.substring(i, i+4) === 'null') { out += '<span class="json-null">null</span>'; i += 4; continue; }
       // Punctuation
       if ('{}[]:,'.indexOf(ch) !== -1) {
-        out += '<span class="json-punct">' + _esc(ch) + '</span>';
+        out += '<span class="json-punct">' + esc(ch) + '</span>';
         i++;
         continue;
       }
-      out += _esc(ch);
+      out += esc(ch);
       i++;
     }
     return out;

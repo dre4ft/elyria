@@ -17,6 +17,7 @@ import requests
 
 from core.logging import get_logger
 from ely.sandbox_spawn import get_bash_tool, destroy_bash_tool
+from ely.browser import basic_handler
 
 _log = get_logger("redteam.scanner")
 
@@ -178,6 +179,22 @@ def _get_tools():
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "pentest_browse",
+                "description": "Browse a URL and return the content — useful for manual exploration.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "URL to browse"},
+                        "selector": {"type": "string", "description": "CSS selector to extract specific content (default: 'body')"},
+                        "action": {"type": "string", "enum": ["query", "click"], "description": "Action to perform: 'query' to get content, 'click' to click an element (default: 'query')"},
+                    },
+                    "required": ["url"],
+                },
+            },
+        }
     ]
 
 
@@ -616,6 +633,7 @@ TOOLS:
   pentest_quick_sqli    — Quick SQL injection scan (single URL, low intensity)
   pentest_quick_ffuf    — Fast API path fuzzing (api-endpoints wordlist)
   bash                  — 2-5 shell commands in batch. Use for: curl, python3 JWT, jq, dig, custom scripts
+  browse                — Browse a URL and return content (manual exploration)
   pentest_add_findings  — Report confirmed vulnerabilities
 
 50/50 RULE:
@@ -852,6 +870,7 @@ For every question above where the answer is NO or UNCERTAIN: call pentest_make_
         "pentest_make_requests": "_handle_make_requests",
         "pentest_add_findings": "_handle_add_findings",
         "bash": "_handle_bash",
+        "browse": "_handle_browse",
         "pentest_quick_nuclei": "_handle_quick_nuclei",
         "pentest_quick_nmap": "_handle_quick_nmap",
         "pentest_quick_sqli": "_handle_quick_sqli",
@@ -923,6 +942,13 @@ For every question above where the answer is NO or UNCERTAIN: call pentest_make_
         except Exception:
             pass
         return result_str
+    
+    def _handle_browse(self, args):
+        try:
+            output = basic_handler(self.user_id, url=args.get("url", self.target), selector=args.get("selector"), action=args.get("action"))
+            return {"status": 200, "data": {"output": output}}
+        except Exception as e:
+            return {"error": str(e)[:200]}
 
 
 def _format_tool_calls(raw):

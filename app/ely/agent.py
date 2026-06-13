@@ -254,14 +254,79 @@ async def chat(page, messages, request, stream_cb=None, slot="flash"):
                 "content": json.dumps(result, default=str)[:2000],
             })
     
-    try:
-        resp = provider.chat(full_messages, tools=tools if tools else None)
-    except Exception as e:
-        _log.error(f"LLM call failed: {e}")
-        msg = str(e)
-        if len(msg) > 200:
-            msg = msg[:200] + "..."
-        final_reply = f"Desole, erreur de communication avec l'IA : {msg}"
+    # ── Final call + force text if needed ──
+    force_count = 0
+    while force_count < 3:
+        try:
+            resp = provider.chat(full_messages, tools=tools if tools else None)
+        except Exception as e:
+            _log.error(f"LLM final call failed: {e}")
+            final_reply = f"Desole, erreur de communication avec l'IA : {str(e)[:200]}"
+            resp = None
+            break
+
+        content = resp.get("content", "") or ""
+        tc = resp.get("tool_calls", [])
+        reasoning = resp.get("reasoning_content", "") or ""
+
+        # Has content → done
+        if content:
+            final_reply = content
+            break
+
+        # Has tool calls → process them
+        if tc:
+            assistant_msg = {"role": "assistant", "content": content, "tool_calls": [
+                {"id": t.id if hasattr(t, 'id') else t.get("id", f"tc_{force_count}"), "type": "function",
+                 "function": {"name": t.function.name if hasattr(t, 'function') else t["function"]["name"],
+                              "arguments": t.function.arguments if hasattr(t, 'function') else t["function"]["arguments"]}}
+                for t in tc
+            ]}
+            full_messages.append(assistant_msg)
+            for t in tc:
+                func = t.function if hasattr(t, 'function') else t["function"]
+                name = func.name if hasattr(func, 'name') else func["name"]
+                args_str = func.arguments if hasattr(func, 'arguments') else func["arguments"]
+                try:
+                    args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                except (json.JSONDecodeError, TypeError):
+                    args = {}
+                try:
+                    result = await execute_action(name, args, request, page=page)
+                except Exception:
+                    result = {"error": "action failed"}
+                actions_executed.append({"name": name, "args": args, "result": result})
+                t_id = t.id if hasattr(t, 'id') else t.get("id", f"tc_{force_count}")
+                full_messages.append({"role": "tool", "tool_call_id": t_id, "content": json.dumps(result, default=str)[:2000]})
+            force_count += 1
+            continue
+
+        # No content, no tool calls but has reasoning → use reasoning as reply
+        if reasoning:
+            final_reply = reasoning[:2000]
+            break
+
+        # Empty response — force it
+        full_messages.append({"role": "user", "content": "Reponds maintenant avec ton analyse finale."})
+        force_count += 1
+
+    reply = (resp.get("content", "") if resp else "") or final_reply
+
+    # ── Fallback: if still no reply, force one last call WITHOUT tools ──
+    if not reply:
+        fallback_prompt = "Resume en 1-2 phrases ce que tu viens de faire et les resultats obtenus." if actions_executed else "Reponds a la question de l'utilisateur en 1-2 phrases."
+        try:
+            full_messages.append({"role": "user", "content": fallback_prompt})
+            fallback_resp = provider.chat(full_messages, tools=[])  # no tools → forces text response
+            reply = fallback_resp.get("content", "") or ""
+            if reply:
+                tokens_used += fallback_resp.get("usage", {}).get("total_tokens", 0) if isinstance(fallback_resp.get("usage"), dict) else 0
+        except Exception:
+            pass
+
+    # ── Ultimate safety net ──
+    if not reply:
+        reply = "Action terminee" if actions_executed else "Je n'ai pas pu traiter ta demande. Peux-tu reformuler ?"
 
     # ── Memory compaction (fire and forget, errors are non-fatal) ──
     try:
@@ -271,7 +336,7 @@ async def chat(page, messages, request, stream_cb=None, slot="flash"):
         pass
 
     return {
-        "reply": resp.get("content", "") or final_reply,
+        "reply": reply,
         "actions": actions_executed,
         "tokens": {"total": tokens_used},
     }

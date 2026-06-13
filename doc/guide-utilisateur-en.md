@@ -16,6 +16,7 @@ Elyria is a complete API client combining:
 - **Red Team / Pentest** — scan your APIs with the OWASP API Top 10 engine + AI deep scan
 - **Blue Team / SSDLC** — security-by-design analysis of your specs producing security requirements reports
 - **Grey Team / OSINT** — passive domain reconnaissance (DNS, WHOIS, SSL, subdomains, tech stack, emails, GitHub, Google)
+- **Purple Team / IAST** — source code analysis (SAST + SCA) combined with dynamic testing (IAST), with CVE, CWE, bad practice scanning, and AI deep code review
 - **OpenAPI / Arazzo import** — import your specs to auto-generate collections
 
 ---
@@ -679,7 +680,65 @@ The AI agent (Flash + Pro models) enriches findings:
 
 ---
 
-## 15. Keyboard Shortcuts
+## 15. Purple Team / IAST
+
+The Purple Team module (accessible via the header or `/purpleteam`) combines **SAST** (Static Application Security Testing), **SCA** (Software Composition Analysis), and **IAST** (Interactive Application Security Testing) to analyze your source code.
+
+### 15.1. Scan Profiles
+
+- **Create a profile**: "+" button in the "Repositories" sidebar
+- **Configure**:
+  - **Repo Source**: GitHub, GitLab, Bitbucket, or local (zip upload)
+  - **Repository URL**: Git repository URL (e.g. `https://github.com/user/repo.git`)
+  - **Auth**: Bearer Token or API Key (optional, for private repos)
+  - **Target Endpoint**: Live API URL for dynamic IAST testing (optional)
+  - **OpenAPI Spec URL**: OpenAPI specification to guide testing
+  - **Scan Depth**: Quick (static only), Full (static + AI), IAST (static + dynamic)
+- **Edit**: Edit button in the header
+- **Delete**: Delete button in the header
+
+### 15.2. Scan Phases
+
+The Purple Team scan runs in three phases:
+
+| Phase | Description |
+|-------|-------------|
+| **Phase 1 — Static Analysis** | Language/framework detection, dependency parsing, CVE scanning (NIST NVD), CWE pattern matching (25+ patterns), bad practice detection (30+ patterns) |
+| **Phase 2 — Dynamic IAST** | If a target endpoint is provided: validation of static findings against the live API, configuration tests (headers, CORS, HTTP methods, error disclosure, auth bypass) |
+| **Phase 3 — AI Deep Code Review** | The AI agent reads source code, greps for patterns, makes HTTP requests to the target API, and reports confirmed vulnerabilities (business logic, auth flaws, crypto weaknesses, race conditions) |
+
+### 15.3. Three-Part Report
+
+The Purple Team report is structured in three sections:
+
+1. **Known CVEs** — CVE vulnerabilities found in dependencies (via NIST NVD), with CVSS scores
+2. **CWE (Common Weakness Enumeration)** — Code weaknesses classified by CWE ID (CWE-79 XSS, CWE-89 SQLi, CWE-78 CMDi, CWE-798 Hardcoded Credentials, etc.)
+3. **Bad Practices & Exploitations** — Debug mode, hardcoded secrets, permissive CORS, disabled auth, weak crypto, + AI-discovered findings (business logic, IDOR, race conditions)
+
+### 15.4. Findings and Filters
+
+- **Dashboard**: CVE, CWE, Practices, Critical, High counters
+- **Filters**: by part (CVE, CWE, Practices, AI Discovered) and by severity
+- **AI Badge**: AI-discovered findings are marked with a purple `AI` badge
+- **Detail panel**: severity, title, category, CVE/CWE, location (file:line), CVSS, description, remediation, AI analysis
+- **Report**: full markdown view in the interface, .md download
+
+### 15.5. Send to Blue Team
+
+Like Red Team, you can send a Purple Team report to Blue Team for remediation:
+- **Send to Blue Team** button after a completed scan
+- Automatically creates a Blue Team profile with a Purple Team-specific prompt
+- Blue Team analysis starts automatically
+
+### 15.6. Clone Security
+
+- **Docker Sandbox**: if Docker is available, repo cloning happens inside an isolated container — auth tokens never touch the host filesystem
+- **Direct fallback**: if Docker is unavailable, direct clone with `--depth 1` and immediate `.git` removal
+- **Auto-purge**: cloned files are automatically deleted after the scan
+
+---
+
+## 16. Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|

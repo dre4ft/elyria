@@ -16,6 +16,7 @@ Elyria est un client API complet qui combine :
 - **Red Team / Pentest** — scannez vos APIs avec le moteur OWASP API Top 10 + AI deep scan
 - **Blue Team / SSDLC** — analyse security-by-design de vos specs pour produire des rapports d'exigences de sécurité
 - **Grey Team / OSINT** — reconnaissance passive de domaine (DNS, WHOIS, SSL, sous-domaines, technologies, emails, GitHub, Google)
+- **Purple Team / IAST** — analyse de code source (SAST + SCA) couplée à des tests dynamiques (IAST), avec scan CVE, CWE, mauvaises pratiques et deep code review IA
 - **Import OpenAPI / Arazzo** — importez vos specs pour générer automatiquement des collections
 
 ---
@@ -87,6 +88,41 @@ Après envoi, le panneau de réponse affiche :
 - **Headers** de réponse
 
 Le panneau est **redimensionnable** — tirez la poignée entre le builder et la réponse.
+
+### 3.4. Contexte utilisateur (`{{ctx.xxx}}`)
+
+Le **contexte utilisateur** est un dictionnaire JSON persistant qui permet de stocker des données extraites des réponses HTTP et de les réutiliser dans vos requêtes suivantes via la syntaxe `{{ctx.xxx}}`.
+
+**Ouvrir le panneau** : bouton **Ctx** dans la barre du haut.
+
+Le panneau est divisé en deux zones :
+
+| Zone | Description |
+|------|-------------|
+| **Éditeur JSON** (haut) | Éditeur avec coloration syntaxique. Toute modification est sauvegardée automatiquement. |
+| **Variables disponibles** (bas) | Arborescence des clés disponibles. Cliquer sur une clé copie `{{ctx.xxx.yyy}}` dans le presse-papier. |
+
+**Sauvegarder une réponse dans le contexte** :
+
+1. Envoyez une requête
+2. Dans la barre de réponse, cliquez sur **Ctx**
+3. Donnez un nom à la variable (ex: `loginResponse`)
+4. Les champs `status_code`, `url`, `method`, `headers` et `body` sont stockés
+
+**Utiliser le contexte dans une requête** :
+
+Dans n'importe quel champ (URL, headers, body, query params), utilisez la syntaxe `{{ctx.xxx}}` :
+
+```
+URL      : https://api.example.com/users/{{ctx.loginResponse.body.user.id}}
+Header   : Authorization: Bearer {{ctx.loginResponse.body.token}}
+Body     : {"userId": "{{ctx.loginResponse.body.id}}"}
+Query    : token={{ctx.loginResponse.body.access_token}}
+```
+
+Les templates `{{ctx.xxx}}` sont résolus **avant l'envoi** de la requête, à la fois côté client (navigateur) et côté serveur (proxy).
+
+**Arborescence** : les clés imbriquées sont affichées sous forme d'arbre avec connecteurs `├` et `└`. Les branches (objets) ont un chevron ▶ pour les déplier, les feuilles (strings, nombres, booléens) affichent un aperçu de leur valeur.
 
 ---
 
@@ -160,6 +196,7 @@ ELY sait sur quelle page vous êtes et adapte ses capacités :
 | **Red Team** | Profil de scan, campagne active | Lancer un scan, analyser les findings, générer un rapport |
 | **Grey Team** | Domaine cible, findings OSINT | Lancer un scan OSINT, explorer les résultats |
 | **Blue Team** | Spécification chargée, rapport en cours | Auditer une spec, générer des exigences |
+| **Purple Team** | Profil de scan, scan actif | Lancer un scan IAST, analyser les findings, générer un rapport |
 | **Hub** | Configuration courante | Gérer les teams, configurer les providers IA |
 | **Docs** | Page de documentation affichée | Expliquer des concepts, guider l'utilisateur |
 
@@ -175,7 +212,9 @@ ELY peut **agir** directement sur la plateforme via des fonctions internes :
 | `ely_osint_scan` | Lancer un scan OSINT | Grey Team |
 | `ely_blueteam_analyze` | Lancer une analyse Blue Team | Blue Team |
 | `ely_create_workflow` | Créer un workflow no-code | Workflows |
-| `ely_get_findings` | Récupérer les findings d'un rapport | Red/Grey/Blue Team |
+| `ely_get_findings` | Récupérer les findings d'un rapport | Red/Grey/Blue/Purple Team |
+| `ely_purpleteam_scan` | Lancer un scan IAST sur un dépôt de code | Purple Team |
+| `ely_purpleteam_get_findings` | Récupérer les findings Purple Team | Purple Team |
 | `ely_list_resources` | Lister profils, collections, workflows | Toutes |
 
 Chaque action est :
@@ -602,7 +641,11 @@ Le mot-clé `TARGET` dans les commandes est automatiquement remplacé par la cib
 
 #### Résolution de localhost
 
-Les adresses `127.0.0.1` et `localhost` dans les commandes ou la target sont automatiquement converties en **`host.docker.internal`** pour que le conteneur puisse atteindre l'hôte (le conteneur est sur un réseau Docker isolé, donc `localhost` pointerait vers lui-même).
+Les adresses `127.0.0.1` et `localhost` dans les commandes ou URLs peuvent être converties en un host Docker personnalisé pour que le conteneur puisse atteindre l'hôte (le conteneur est sur un réseau Docker isolé, donc `localhost` pointerait vers lui-même). Cette fonctionnalité est **opt-in** :
+
+- Définissez `ELYRIA_DOCKER_HOST=host.docker.internal` pour activer le remplacement automatique
+- Sans cette variable, les URLs passent inchangées (comportement par défaut)
+- S'applique à tous les tools : `ely_send_request`, `ely_bash`, `ely_fuzz`, `ely_browser_query`
 
 #### Sanitization
 
@@ -715,14 +758,74 @@ L'agent IA (modèles Flash + Pro) enrichit les findings :
 
 ### 14.5. Findings et filtres
 
-- Tableau trié par sévérité avec titre, catégorie, description
-- **Filtres** : sévérité, type de module, source (Deterministic / AI Refined)
-- **Panneau de détail** : description, évidence, remédiation, analyse IA
+- Tableau trié par sévérité avec titre, catégorie, description, et badge `AI` pour les findings enrichis
+- **Filtres** : sévérité, type de module, source (System / AI Refined)
+- **Panneau de détail** : sévérité, description, catégorie, évidence formatée, remédiation, analyse IA
 - **Rafraîchissement** automatique pendant le scan
+- **KPIs** : jauge de score de risque (0-100), compteurs Critical/High/Total, indicateurs DNS/SSL/HTTP/Subdomains/Emails/Tech Stack avec dots de statut (vert/orange/rouge)
 
 ---
 
-## 15. Raccourcis clavier
+## 15. Purple Team / IAST
+
+Le module Purple Team (accessible via le header ou `/purpleteam`) combine **SAST** (Static Application Security Testing), **SCA** (Software Composition Analysis) et **IAST** (Interactive Application Security Testing) pour analyser votre code source.
+
+### 15.1. Profils de scan
+
+- **Créer un profil** : bouton "+" dans la sidebar "Repositories"
+- **Configurer** :
+  - **Repo Source** : GitHub, GitLab, Bitbucket, ou local (upload zip)
+  - **Repository URL** : URL du dépôt Git (ex: `https://github.com/user/repo.git`)
+  - **Auth** : Token Bearer ou API Key (optionnel, pour dépôts privés)
+  - **Target Endpoint** : URL de l'API cible pour les tests IAST dynamiques (optionnel)
+  - **OpenAPI Spec URL** : spécification OpenAPI pour guider les tests
+  - **Scan Depth** : Quick (statique uniquement), Full (statique + IA), IAST (statique + dynamique)
+- **Modifier** : bouton Edit dans le header
+- **Supprimer** : bouton Delete dans le header
+
+### 15.2. Phases de scan
+
+Le scan Purple Team s'exécute en trois phases :
+
+| Phase | Description |
+|-------|-------------|
+| **Phase 1 — Analyse statique** | Détection du langage/framework, parsing des dépendances, scan CVE (NIST NVD), pattern matching CWE (25+ patterns), détection de mauvaises pratiques (30+ patterns) |
+| **Phase 2 — IAST dynamique** | Si un endpoint cible est fourni : validation des findings statiques contre l'API live, tests de configuration (headers, CORS, HTTP methods, error disclosure, auth bypass) |
+| **Phase 3 — Deep Code Review IA** | L'agent IA lit le code source, grep les patterns, fait des requêtes HTTP vers l'API cible, et reporte les vulnérabilités confirmées (business logic, auth flaws, crypto weaknesses, race conditions) |
+
+### 15.3. Rapport en 3 parties
+
+Le rapport Purple Team est structuré en trois sections :
+
+1. **CVE Connues** — Vulnérabilités CVE trouvées dans les dépendances (via NIST NVD), avec score CVSS
+2. **CWE (Common Weakness Enumeration)** — Faiblesses de code classifiées par CWE ID (CWE-79 XSS, CWE-89 SQLi, CWE-78 CMDi, CWE-798 Hardcoded Credentials, etc.)
+3. **Mauvaises Pratiques & Exploitations Réelles** — Debug mode, secrets hardcodés, CORS permissif, auth désactivée, crypto faible, + findings IA (business logic, IDOR, race conditions)
+
+### 15.4. Findings et filtres
+
+- **Dashboard** : compteurs CVE, CWE, Practices, Critical, High
+- **Filtres** : par partie (CVE, CWE, Practices, AI Discovered), par sévérité, **par CWE/CVE ID** (ex: `CWE-578`), et **par fichier** (filtre textuel sur le chemin du fichier contenant le finding)
+- **Badge AI** : les findings découverts par l'IA sont marqués d'un badge violet `AI`
+- **Panneau de détail** : sévérité, titre, catégorie, CVE/CWE, localisation (fichier:ligne), CVSS, description, remédiation, analyse IA
+- **Rapport** : visualisation markdown avec **table des matières** et rendu Mermaid dans l'interface, téléchargement .md
+- **Toggle View Report / View Findings** : le bouton View Report permet de basculer entre la vue rapport et la liste des findings
+
+### 15.5. Envoi vers Blue Team
+
+Comme pour Red Team, vous pouvez envoyer un rapport Purple Team vers Blue Team pour obtenir un plan de remédiation :
+- Bouton **Send to Blue Team** après un scan terminé
+- Crée automatiquement un profil Blue Team avec un prompt spécial Purple Team
+- L'analyse Blue Team démarre automatiquement
+
+### 15.6. Sécurité du clonage
+
+- **Sandbox Docker** : si Docker est disponible, le clonage du dépôt s'effectue dans un conteneur isolé — le token d'auth ne touche jamais le filesystem host
+- **Fallback direct** : si Docker n'est pas disponible, clonage direct avec `--depth 1` et suppression immédiate du `.git`
+- **Purge automatique** : les fichiers clonés sont supprimés automatiquement après le scan
+
+---
+
+## 16. Raccourcis clavier
 
 | Raccourci | Action |
 |-----------|--------|

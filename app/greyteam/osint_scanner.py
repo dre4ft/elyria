@@ -399,148 +399,133 @@ def _collect_whois(domain: str) -> list[dict]:
 def _collect_ssl(domain: str) -> list[dict]:
     findings = []
     ftype = "ssl"
-    cert_text = ""
 
-    # Try openssl s_client for detailed cert info (merge stdout+stderr)
-    stdout, stderr, rc = _run([
-        "openssl", "s_client", "-connect", f"{domain}:443",
-        "-servername", domain, "-showcerts",
-    ], timeout=15)
-    if rc == 0 and (stdout or stderr):
-        cert_text = stdout + stderr
-    else:
-        # Fallback: Python ssl module
-        try:
-            ctx = ssl.create_default_context()
-            with socket.create_connection((domain, 443), timeout=10) as sock:
-                with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
-                    cert = ssock.getpeercert()
-                    cert_text = json.dumps(cert, indent=2, default=str)
-        except Exception as e:
-            findings.append({
-                "title": f"SSL connection failed for {domain}:443",
-                "severity": "medium", "category": "SSL/TLS",
-                "finding_type": ftype,
-                "description": f"Could not establish TLS connection: {e}",
-                "file_path": "N/A", "line_number": 0,
-                "evidence": str(e)[:300],
-                "remediation": "Verify port 443 is open and TLS is properly configured.",
-                "cwe_id": "", "source": "deterministic",
-            })
+    # Primary: Python ssl module (cross-platform, always available)
+    cert = None
+    cert_der = None
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with socket.create_connection((domain, 443), timeout=10) as sock:
+            with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
+                cert = ssock.getpeercert()
+                cert_der = ssock.getpeercert(binary_form=True)
+                tls_ver = ssock.version()
+    except Exception as e:
+        findings.append({
+            "title": f"SSL connection failed for {domain}:443",
+            "severity": "medium", "category": "SSL/TLS",
+            "finding_type": ftype,
+            "description": f"Could not establish TLS connection: {e}",
+            "file_path": "N/A", "line_number": 0,
+            "evidence": str(e)[:300],
+            "remediation": "Verify port 443 is open and TLS is properly configured.",
+            "cwe_id": "", "source": "deterministic",
+        })
+        return findings
 
-    if cert_text:
-        # Parse with openssl x509
-        stdout2, _, rc2 = _run([
-            "openssl", "s_client", "-connect", f"{domain}:443",
-            "-servername", domain,
-        ], timeout=15)
-        if rc2 == 0 and stdout2:
-            # Pipe through x509
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False) as tf:
-                tf.write(stdout2)
-                temp_path = tf.name
-            try:
-                x509_out, _, rc3 = _run([
-                    "openssl", "x509", "-in", temp_path, "-text", "-noout",
-                    "-dates", "-subject", "-issuer",
-                ], timeout=10)
-                if rc3 == 0 and x509_out:
-                    cert_text = x509_out
-            finally:
-                os.unlink(temp_path)
+    if cert:
+        # ── Issuer ──
+        issuer_info = cert.get("issuer", ())
+        issuer_parts = []
+        for item in issuer_info:
+            for k, v in item:
+                if k == "commonName":
+                    issuer_parts.append(v)
+                elif k == "organizationName":
+                    issuer_parts.append(v)
+        issuer_str = ", ".join(issuer_parts) if issuer_parts else "unknown"
+        findings.append({
+            "title": f"SSL Certificate issued by: {issuer_str[:80]}",
+            "severity": "info", "category": "SSL/TLS",
+            "finding_type": ftype,
+            "description": f"Certificate issuer identified as {issuer_str}.",
+            "file_path": "N/A", "line_number": 0,
+            "evidence": f"Issuer: {issuer_str}",
+            "remediation": "",
+            "cwe_id": "", "source": "deterministic",
+        })
 
-        # Parse key fields from cert text
-        issuer = re.search(r'(?:issuer|Issuer)\s*[=:]\s*(.+)', cert_text, re.IGNORECASE)
-        subject = re.search(r'(?:subject|Subject)\s*[=:]\s*(.+)', cert_text, re.IGNORECASE)
-        not_before = re.search(r'(?:notBefore|Not Before)\s*[=:]\s*(.+)', cert_text, re.IGNORECASE)
-        not_after = re.search(r'(?:notAfter|Not After)\s*[=:]\s*(.+)', cert_text, re.IGNORECASE)
-        sans = re.findall(r'DNS:([\w.\-*]+)', cert_text)
+        # ── Subject / SANs ──
+        subject_info = cert.get("subject", ())
+        subject_cn = ""
+        for item in subject_info:
+            for k, v in item:
+                if k == "commonName":
+                    subject_cn = v
+                    break
 
-        # SANs are highly valuable for subdomain enum
+        san_list = cert.get("subjectAltName", [])
+        sans = [s[1] for s in san_list if s[0] == "DNS"]
         if sans:
             unique_sans = sorted(set(s.strip() for s in sans if s.strip()))
             findings.append({
                 "title": f"SSL Certificate SANs: {len(unique_sans)} subdomains",
                 "severity": "info", "category": "SSL/TLS",
                 "finding_type": ftype,
-                "description": f"Subject Alternative Names reveal {len(unique_sans)} subdomains/domains covered by the certificate.",
+                "description": f"Subject Alternative Names reveal {len(unique_sans)} subdomains/domains.",
                 "file_path": "N/A", "line_number": 0,
                 "evidence": "\n".join(unique_sans[:20]),
-                "remediation": "Review SAN list. Remove any domains no longer owned or used.",
+                "remediation": "Review SAN list. Remove domains no longer owned or used.",
                 "cwe_id": "CWE-200", "source": "deterministic",
             })
 
-        # Expiry
+        # ── Expiry ──
+        not_after = cert.get("notAfter", "")
         if not_after:
-            exp_str = not_after.group(1).strip()
-            # strip leading dot+whitespace (common in x509 output indentation)
-            exp_str = re.sub(r'^\.\s*', '', exp_str)
-            for fmt in ["%b %d %H:%M:%S %Y %Z", "%b  %d %H:%M:%S %Y %Z", "%Y-%m-%d %H:%M:%S",
-                        "%b %d %H:%M:%S %Y", "%b  %d %H:%M:%S %Y"]:
-                try:
-                    exp_date = datetime.strptime(exp_str, fmt)
-                    days = (exp_date - datetime.now()).days
-                    sev = "critical" if days < 7 else "high" if days < 30 else "medium" if days < 90 else "info"
-                    findings.append({
-                        "title": f"SSL Certificate expires in {days} days ({exp_str})",
-                        "severity": sev, "category": "SSL/TLS",
-                        "finding_type": ftype,
-                        "description": f"Certificate expires on {exp_str}. Service outage risk if not renewed.",
-                        "file_path": "N/A", "line_number": 0,
-                        "evidence": f"Not After: {exp_str}",
-                        "remediation": "Renew certificate before expiry. Set up auto-renewal (Let's Encrypt / ACME).",
-                        "cwe_id": "", "source": "deterministic",
-                    })
-                    break
-                except ValueError:
-                    continue
-
-        issuer_str = re.sub(r'^\s*\.?\s*', '', issuer.group(1).strip()) if issuer else "unknown"
-        findings.append({
-            "title": f"SSL Certificate issued by: {issuer_str[:80]}",
-            "severity": "info", "category": "SSL/TLS",
-            "finding_type": ftype,
-            "description": f"Certificate issuer identified.",
-            "file_path": "N/A", "line_number": 0,
-            "evidence": f"Issuer: {issuer_str}"[:300],
-            "remediation": "",
-            "cwe_id": "", "source": "deterministic",
-        })
-
-        # Weak TLS versions — merge stdout+stderr because openssl s_client
-        # writes handshake/cert data to stderr
-        old_tls_enabled = []
-        for tls_ver, tls_name in [("tls1", "TLS 1.0"), ("tls1_1", "TLS 1.1")]:
-            tls_out, tls_err, _ = _run([
-                "openssl", "s_client", f"-{tls_ver}", "-connect", f"{domain}:443",
-                "-servername", domain,
-            ], timeout=10)
-            combined = (tls_out + tls_err).lower()
-            if combined and ("begin certificate" in combined or "server certificate" in combined):
-                old_tls_enabled.append(tls_name)
+            try:
+                exp_date = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z")
+                days = (exp_date - datetime.now()).days
+                sev = "critical" if days < 7 else "high" if days < 30 else "medium" if days < 90 else "info"
                 findings.append({
-                    "title": f"{tls_name} enabled on {domain}",
-                    "severity": "high", "category": "SSL/TLS",
+                    "title": f"SSL Certificate expires in {days} days ({not_after})",
+                    "severity": sev, "category": "SSL/TLS",
                     "finding_type": ftype,
-                    "description": f"{tls_name} is deprecated and vulnerable to attacks (POODLE, BEAST). Should be disabled.",
+                    "description": f"Certificate expires on {not_after}. Service outage risk if not renewed.",
                     "file_path": "N/A", "line_number": 0,
-                    "evidence": f"{tls_name} connection succeeded",
-                    "remediation": f"Disable {tls_name}. Only allow TLS 1.2 and TLS 1.3.",
-                    "cwe_id": "CWE-327", "source": "deterministic",
+                    "evidence": f"Not After: {not_after}",
+                    "remediation": "Renew certificate before expiry. Set up auto-renewal (Let's Encrypt / ACME).",
+                    "cwe_id": "", "source": "deterministic",
+                })
+            except ValueError:
+                findings.append({
+                    "title": f"SSL Certificate expires: {not_after[:60]}",
+                    "severity": "info", "category": "SSL/TLS",
+                    "finding_type": ftype,
+                    "description": f"Certificate notAfter: {not_after}",
+                    "file_path": "N/A", "line_number": 0,
+                    "evidence": f"Not After: {not_after}",
+                    "remediation": "Verify expiration date.",
+                    "cwe_id": "", "source": "deterministic",
                 })
 
-        # Positive confirmation when both are disabled
-        if not old_tls_enabled:
+        # ── TLS version ──
+        findings.append({
+            "title": f"TLS version: {tls_ver or 'unknown'}",
+            "severity": "info", "category": "SSL/TLS",
+            "finding_type": ftype,
+            "description": f"Server negotiated {tls_ver or 'unknown TLS version'}.",
+            "file_path": "N/A", "line_number": 0,
+            "evidence": f"TLS Version: {tls_ver or 'unknown'}",
+            "remediation": "" if tls_ver and "1.3" in tls_ver else "Upgrade to TLS 1.3.",
+            "cwe_id": "CWE-327" if tls_ver and ("1.0" in tls_ver or "1.1" in tls_ver) else "",
+            "source": "deterministic",
+        })
+
+        # ── TLS version from Python ssl module ──
+        if tls_ver:
             findings.append({
-                "title": "TLS 1.0/1.1 disabled",
+                "title": f"TLS version negotiated: {tls_ver}",
                 "severity": "info", "category": "SSL/TLS",
                 "finding_type": ftype,
-                "description": "TLS 1.0 and TLS 1.1 are not enabled. Only TLS 1.2+ accepted.",
+                "description": f"Server negotiated {tls_ver}. "
+                               + ("OK." if "1.3" in tls_ver or "1.2" in tls_ver else "Consider upgrading."),
                 "file_path": "N/A", "line_number": 0,
-                "evidence": "Neither TLS 1.0 nor TLS 1.1 connection succeeded",
-                "remediation": "",
-                "cwe_id": "", "source": "deterministic",
+                "evidence": f"TLS: {tls_ver}",
+                "remediation": "Ensure TLS 1.2 or 1.3 is the minimum.",
+                "cwe_id": "CWE-327" if "1.0" in tls_ver or "1.1" in tls_ver else "",
+                "source": "deterministic",
             })
 
     return findings
@@ -747,6 +732,19 @@ def _collect_http_headers(domain: str) -> list[dict]:
             })
         else:
             present_headers.append(name)
+
+    # Server header disclosure
+    if "server" in h:
+        findings.append({
+            "title": f"Server header: {h['server'][:60]}",
+            "severity": "low", "category": "HTTP Headers",
+            "finding_type": ftype,
+            "description": f"Server header reveals technology: {h['server'][:80]}. Remove to prevent targeted attacks.",
+            "file_path": "N/A", "line_number": 0,
+            "evidence": f"Server: {h['server']}",
+            "remediation": "Remove or obfuscate the Server header (e.g., 'Server: webserver').",
+            "cwe_id": "CWE-200", "source": "deterministic",
+        })
 
     # Summary finding — confirms which headers were checked
     findings.append({
