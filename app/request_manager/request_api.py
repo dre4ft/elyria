@@ -45,9 +45,11 @@ def resolve_ctx_templates(value: str, ctx: dict) -> str:
 
 def _resolve_request_ctx(request: Request) -> dict:
     """Load user context from DB for the current request."""
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+
     try:
         from database.ctx_mgmt import get_ctx
-        user_id = getattr(request.state, "token", None)
         if user_id:
             return get_ctx(user_id)
     except Exception:

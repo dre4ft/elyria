@@ -63,6 +63,8 @@
   function init() {
     if (window.__ptInit) return;
     window.__ptInit = true;
+    initAuth();
+    initHeaderUser();
 
     dom.btnNewProfile.addEventListener('click', function () { openProfileModal(); });
     if (dom.btnCreateFirst) dom.btnCreateFirst.addEventListener('click', function () { openProfileModal(); });
@@ -87,6 +89,12 @@
 
     document.getElementById('filter-part').onchange = renderFindings;
     document.getElementById('filter-severity').onchange = renderFindings;
+    document.getElementById('filter-cwe').addEventListener('input', function () {
+      _filterDebounce = setTimeout(renderFindings, 300);
+    });
+    document.getElementById('filter-file').addEventListener('input', function () {
+      _filterDebounce = setTimeout(renderFindings, 300);
+    });
 
     setupUploadZone();
     setupRepoSourceToggle();
@@ -374,12 +382,20 @@
 
   function selectScan(scanId) {
     state.activeScanId = scanId;
+    _resetFilters();
     api('GET', '/api/purpleteam/scans/' + scanId).then(function (s) {
       state.findings = s.findings || [];
       updateCards(s);
       renderFindings();
       _syncSidebarCount(s.findings.length);
     }).catch(function () {});
+  }
+
+  function _resetFilters() {
+    var cwe = document.getElementById('filter-cwe');
+    var file = document.getElementById('filter-file');
+    if (cwe) cwe.value = '';
+    if (file) file.value = '';
   }
 
   function _syncSidebarCount(total) {
@@ -407,6 +423,8 @@
   }
 
   // ── Findings ──
+  var _filterDebounce = null;
+
   function renderFindings() {
     // Switch to findings view
     state._viewMode = 'findings';
@@ -417,6 +435,8 @@
 
     var partFilter = document.getElementById('filter-part').value;
     var sevFilter = document.getElementById('filter-severity').value;
+    var cweFilter = (document.getElementById('filter-cwe').value || '').toLowerCase().trim();
+    var fileFilter = (document.getElementById('filter-file').value || '').toLowerCase().trim();
     var filtered = state.findings.filter(function (f) {
       if (partFilter === 'ai') {
         if (f.category !== 'ai_discovered') return false;
@@ -424,6 +444,9 @@
         return false;
       }
       if (sevFilter !== 'all' && f.severity !== sevFilter) return false;
+      if (cweFilter && (!f.cwe_id && !f.cve_id)) return false;
+      if (cweFilter && f.cwe_id && f.cwe_id.toLowerCase().indexOf(cweFilter) === -1 && (!f.cve_id || f.cve_id.toLowerCase().indexOf(cweFilter) === -1)) return false;
+      if (fileFilter && (!f.file_path || f.file_path.toLowerCase().indexOf(fileFilter) === -1)) return false;
       return true;
     });
 

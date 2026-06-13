@@ -21,7 +21,7 @@ const API = {
   uploadPostman: 'api/document/postman',         // POST multipart file upload
   uploadBruno:   'api/document/bruno',           // POST multipart file upload
   proxyToggle:   'api/proxies/toggle',          // GET/PUT proxy enabled state
-  ctx:           'api/ctx',                     // GET/PUT user context
+  ctx:           '/api/ctx',                    // GET/PUT user context
 };
 
 // ─────────────────────────────────────────────
@@ -995,7 +995,7 @@ function setupCollections() {
         if (!res.ok) { curlError.textContent = data.detail || 'Erreur de compilation'; curlError.classList.remove('hidden'); return; }
         // Show preview
         curlPreview.classList.remove('hidden');
-        $('#curl-preview-method').innerHTML = `<span class="text-gray-300 font-bold">${esc(data.parsed.method)}</span>`;
+        $('#curl-preview-method').innerHTML = `<span class="text-gray-300 font-bold">${escapeHtml(data.parsed.method)}</span>`;
         $('#curl-preview-url').textContent = data.parsed.url;
         $('#curl-preview-headers').textContent = data.parsed.headers && Object.keys(data.parsed.headers).length ? 'Headers: ' + JSON.stringify(data.parsed.headers) : '';
         $('#curl-preview-body').textContent = data.parsed.body ? 'Body: ' + data.parsed.body.substring(0, 200) : '';
@@ -1878,23 +1878,26 @@ async function uploadDocument() {
   `;
 
   try {
-    const targetUrl = specUrl || 'http://localhost:9000';
+    let targetUrl = 'http://localhost:9000';
+    try { targetUrl = new URL(specUrl).origin; } catch { targetUrl = dom.docTargetServer.value.trim() || 'http://localhost:9000'; }
     let res;
     if (selectedDocFile) {
       const formData = new FormData();
       formData.append('file', selectedDocFile);
-      const qs = `?target_url=${encodeURIComponent(targetUrl)}`;
-      res = await fetch(API.uploadOpenAPI + qs, {
+      formData.append('target_url', targetUrl);
+      res = await fetch(API.uploadOpenAPI, {
         method: 'POST',
         headers: { ...getAuthHeader() },
         body: formData,
       });
     } else {
-      // Backend fetches the spec from URL directly
-      res = await fetch(API.uploadOpenAPI + `?openapi_url=${encodeURIComponent(specUrl)}&target_url=${encodeURIComponent(targetUrl)}`, {
+      const formData = new FormData();
+      formData.append('openapi_url', specUrl);
+      formData.append('target_url', targetUrl);
+      res = await fetch(API.uploadOpenAPI, {
         method: 'POST',
         headers: { ...getAuthHeader() },
-        body: new FormData(),
+        body: formData,
       });
     }
 
@@ -2215,33 +2218,46 @@ function updateCtxKeyList() {
 function buildCtxTree(obj, prefix, depth) {
   depth = depth || 0;
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '';
+  var keys = Object.keys(obj);
   var html = '';
-  Object.keys(obj).forEach(function(k) {
+  keys.forEach(function(k, i) {
+    var isLastSibling = i === keys.length - 1;
     var fullKey = prefix ? prefix + '.' + k : k;
     var val = obj[k];
     var isExpandable = val && typeof val === 'object' && !Array.isArray(val) && Object.keys(val).length > 0;
     var expr = '{{ctx.' + fullKey + '}}';
-    var padLeft = depth * 14;
-    html += '<div class="ctx-tree-row flex items-center gap-1.5 hover:bg-white/[0.03] rounded px-2 py-1.5 group" style="padding-left:' + (8 + padLeft) + 'px">';
-    if (isExpandable) {
-      html += '<span class="ctx-chevron w-3.5 h-3.5 flex items-center justify-center text-gray-600 hover:text-gray-300 transition-all flex-shrink-0 cursor-pointer" data-key="' + fullKey + '"><svg class="w-3 h-3 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></span>';
-    } else {
-      html += '<span class="w-3.5 h-3.5 flex-shrink-0"></span>';
+    var pad = depth * 16;
+    html += '<div class="ctx-tree-node" style="padding-left:' + pad + 'px">';
+    html += '<div class="ctx-tree-row flex items-center gap-1 py-1 pr-2 rounded-r hover:bg-white/[0.03] group min-w-0">';
+    // Tree connector ──┬ or └──
+    html += '<span class="ctx-tree-branch flex-shrink-0 w-5 text-gray-600/40 text-[10px] font-mono leading-none select-none text-center">';
+    if (depth > 0) {
+      html += isLastSibling ? ' └' : ' ├';
     }
-    html += '<span class="text-[11px] font-mono text-emerald-300/80 group-hover:text-emerald-300 transition-colors truncate cursor-pointer flex-1" onclick="navigator.clipboard.writeText(\'' + expr + '\').then(function(){var e=this;e.classList.add(\'text-white\');setTimeout(function(){e.classList.remove(\'text-white\')},400)}.bind(this))" title="Copier ' + escapeHtml(expr) + '">' + escapeHtml(k) + '</span>';
+    html += '</span>';
+    // Toggle chevron or leaf dot
+    if (isExpandable) {
+      html += '<span class="ctx-chevron w-4 h-4 flex items-center justify-center text-gray-500 hover:text-gray-300 flex-shrink-0 cursor-pointer"><svg class="w-3 h-3 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></span>';
+    } else {
+      html += '<span class="w-4 h-4 flex items-center justify-center flex-shrink-0"><span class="w-1 h-1 rounded-full bg-emerald-500/60"></span></span>';
+    }
+    // Key name (click to copy)
+    html += '<span class="text-[11px] font-mono text-emerald-300/80 group-hover:text-emerald-300 transition-colors truncate cursor-pointer flex-1 min-w-0" onclick="event.stopPropagation();navigator.clipboard.writeText(\'' + expr + '\').then(function(){var e=this;e.classList.add(\'text-white\');setTimeout(function(){e.classList.remove(\'text-white\')},400)}.bind(this))" title="Copier ' + escapeHtml(expr) + '">' + escapeHtml(k) + '</span>';
+    // Value preview or child count
     if (!isExpandable) {
       var preview = '';
-      if (typeof val === 'string') preview = val.length > 30 ? val.substring(0, 30) + '…' : val;
-      else if (typeof val === 'number' || typeof val === 'boolean') preview = String(val);
+      if (typeof val === 'string') preview = '"' + (val.length > 20 ? val.substring(0, 20) + '…' : val) + '"';
+      else if (typeof val === 'number') preview = String(val);
+      else if (typeof val === 'boolean') preview = val ? 'true' : 'false';
       else if (val === null) preview = 'null';
       else if (Array.isArray(val)) preview = '[' + val.length + ']';
-      if (preview) {
-        html += '<span class="text-[9px] text-gray-600 font-mono truncate text-right opacity-0 group-hover:opacity-100 transition-opacity">' + escapeHtml(preview) + '</span>';
+      if (preview !== '') {
+        html += '<span class="text-[10px] text-gray-500 font-mono truncate flex-shrink max-w-[100px] ml-1 opacity-60 group-hover:opacity-100">' + escapeHtml(preview) + '</span>';
       }
     } else {
-      html += '<span class="text-[9px] text-gray-600 font-mono">{' + Object.keys(val).length + '}</span>';
+      html += '<span class="text-[9px] text-gray-600 font-mono flex-shrink-0 ml-1">{' + Object.keys(val).length + '}</span>';
     }
-    html += '</div>';
+    html += '</div></div>';
     if (isExpandable) {
       html += '<div class="ctx-tree-children hidden">' + buildCtxTree(val, fullKey, depth + 1) + '</div>';
     }
@@ -2352,8 +2368,13 @@ function setupCtxPanel() {
     keyList.addEventListener('click', function (e) {
       var chevron = e.target.closest('.ctx-chevron');
       if (!chevron) return;
-      var row = chevron.parentElement;
-      var children = row.nextElementSibling;
+      // Walk up to .ctx-tree-node, then find .ctx-tree-children sibling
+      var node = chevron.parentElement;
+      while (node && !node.classList.contains('ctx-tree-node')) {
+        node = node.parentElement;
+      }
+      if (!node) return;
+      var children = node.nextElementSibling;
       if (children && children.classList.contains('ctx-tree-children')) {
         var open = !children.classList.contains('hidden');
         children.classList.toggle('hidden', open);

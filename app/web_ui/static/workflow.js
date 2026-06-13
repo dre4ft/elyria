@@ -309,7 +309,26 @@ function setupPaletteDrag() {
       e.dataTransfer.setData('saved-id', item.dataset.savedId);
     }
 
+    // Custom drag image: clone the item so the ghost looks clean
+    var ghost = item.cloneNode(true);
+    ghost.style.position = 'absolute';
+    ghost.style.top = '-9999px';
+    ghost.style.width = item.offsetWidth + 'px';
+    ghost.style.opacity = '0.85';
+    ghost.style.pointerEvents = 'none';
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, ghost.offsetHeight / 2);
+    setTimeout(function () { ghost.remove(); }, 0);
+
     e.dataTransfer.effectAllowed = 'copy';
+  });
+
+  // Prevent default on the whole document so drops work everywhere on the canvas
+  document.addEventListener('dragover', function (e) {
+    if (e.target.closest('#wf-canvas-wrapper')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    }
   });
 
   dom.canvasWrapper.addEventListener('dragover', (e) => {
@@ -1145,21 +1164,22 @@ async function doArazzoImport() {
   try {
     const formData = new FormData();
     formData.append('file', arazzoSelectedFile);
+    formData.append('target_url', targetServer);
+    formData.append('team_id', teamId);
     // Attach OpenAPI spec if provided
     if (arazzoOpenapiSelectedFile) {
       formData.append('openapi_file', arazzoOpenapiSelectedFile);
     }
-    let qs = `target_url=${encodeURIComponent(targetServer)}&team_id=${encodeURIComponent(teamId)}`;
     if (openapiUrl) {
-      qs += `&openapi_url=${encodeURIComponent(openapiUrl)}`;
+      formData.append('openapi_url', openapiUrl);
     }
     if (inputsRaw) {
       try {
         JSON.parse(inputsRaw); // validate
-        qs += `&inputs_values=${encodeURIComponent(inputsRaw)}`;
+        formData.append('inputs_values', inputsRaw);
       } catch { /* ignore invalid JSON */ }
     }
-    const res = await fetch(`/api/document/openapi?${qs}`, {
+    const res = await fetch('/api/document/openapi', {
       method: 'POST',
       headers: { ...getAuthHeader() },
       body: formData,
@@ -1627,7 +1647,6 @@ function setupCanvasInteractions() {
   // Click on canvas background → cancel connection or deselect
   dom.canvas.addEventListener('mousedown', (e) => {
     if (wf.connecting) {
-      // Clicked outside any port → cancel
       if (!e.target.closest('.wf-port')) {
         cancelConnecting();
         renderConnections();
@@ -1636,10 +1655,14 @@ function setupCanvasInteractions() {
     if (e.target === dom.canvas) {
       selectNode(null);
       selectConnection(null);
+      if (e.button === 0) {
+        e.preventDefault();
+        wf.panning = { startX: e.clientX, startY: e.clientY, panX: wf.panX, panY: wf.panY };
+      }
     }
   });
 
-  // Pan: middle-click drag on canvas wrapper
+  // Pan: middle-click drag anywhere on canvas wrapper (kept for convenience)
   dom.canvasWrapper.addEventListener('mousedown', (e) => {
     if (e.button === 1) {
       e.preventDefault();
@@ -1649,6 +1672,7 @@ function setupCanvasInteractions() {
 
   document.addEventListener('mousemove', (e) => {
     if (wf.panning) {
+      dom.canvasWrapper.style.cursor = 'grabbing';
       const dx = e.clientX - wf.panning.startX;
       const dy = e.clientY - wf.panning.startY;
       wf.panX = wf.panning.panX + dx;
@@ -1659,13 +1683,14 @@ function setupCanvasInteractions() {
   });
 
   document.addEventListener('mouseup', (e) => {
-    if (e.button === 1 && wf.panning) {
+    if (wf.panning) {
       wf.panning = null;
+      dom.canvasWrapper.style.cursor = '';
       renderConnections();
     }
   });
 
-  // Zoom: Ctrl+wheel centered on cursor
+  // Zoom: Ctrl+wheel centered on cursor. Plain wheel / two-finger → pan.
   dom.canvasWrapper.addEventListener('wheel', (e) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
@@ -1674,6 +1699,9 @@ function setupCanvasInteractions() {
       const cy = e.clientY - rect.top;
       const delta = -e.deltaY * 0.005;
       setZoom(wf.zoom + delta, cx, cy);
+    } else {
+      e.preventDefault();
+      panBy(-e.deltaX, -e.deltaY);
     }
   }, { passive: false });
 
@@ -2146,10 +2174,51 @@ function panBy(dx, dy) {
   renderConnections();
 }
 
+function fitToContent() {
+  if (wf.nodes.length === 0) {
+    wf.panX = 0;
+    wf.panY = 0;
+    setZoom(1);
+    return;
+  }
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  wf.nodes.forEach(node => {
+    const el = $(`#node-${node.id}`);
+    if (!el) return;
+    const w = el.offsetWidth || 200;
+    const h = el.offsetHeight || 80;
+    minX = Math.min(minX, node.x);
+    minY = Math.min(minY, node.y);
+    maxX = Math.max(maxX, node.x + w);
+    maxY = Math.max(maxY, node.y + h);
+  });
+
+  if (minX === Infinity) return;
+
+  const contentW = maxX - minX;
+  const contentH = maxY - minY;
+  const wrapperRect = dom.canvasWrapper.getBoundingClientRect();
+  const padding = 80;
+
+  const zw = (wrapperRect.width - padding * 2) / contentW;
+  const zh = (wrapperRect.height - padding * 2) / contentH;
+  wf.zoom = Math.max(0.3, Math.min(1.5, Math.min(zw, zh)));
+
+  const centerX = minX + contentW / 2;
+  const centerY = minY + contentH / 2;
+  wf.panX = wrapperRect.width / 2 - centerX * wf.zoom;
+  wf.panY = wrapperRect.height / 2 - centerY * wf.zoom;
+
+  applyTransform();
+  dom.zoomLevel.textContent = Math.round(wf.zoom * 100) + '%';
+  renderConnections();
+}
+
 function setupToolbar() {
   dom.btnZoomIn.addEventListener('click', () => setZoom(wf.zoom + 0.1));
   dom.btnZoomOut.addEventListener('click', () => setZoom(wf.zoom - 0.1));
-  dom.btnZoomFit.addEventListener('click', () => { wf.panX = 0; wf.panY = 0; setZoom(1); });
+  dom.btnZoomFit.addEventListener('click', fitToContent);
   dom.btnClear.addEventListener('click', clearCanvas);
   dom.btnClearLogs.addEventListener('click', clearLogs);
   dom.btnRun.addEventListener('click', runWorkflow);

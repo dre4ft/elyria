@@ -44,9 +44,12 @@ def init_db():
 
 
 def _seal_graph(graph_data, user_id, team_id):
-    """Encrypt the workflow graph JSON."""
-    from database.crypto_store import crypto_seal
-    return crypto_seal(graph_data, user_id, team_id) if graph_data else ""
+    """Encrypt the workflow graph JSON. Returns '' if crypto unavailable."""
+    try:
+        from database.crypto_store import crypto_seal
+        return crypto_seal(graph_data, user_id, team_id) if graph_data else ""
+    except Exception:
+        return ""
 
 
 def _open_graph(encrypted, user_id, team_id):

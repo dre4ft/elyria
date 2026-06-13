@@ -312,6 +312,22 @@ async def chat(page, messages, request, stream_cb=None, slot="flash"):
 
     reply = (resp.get("content", "") if resp else "") or final_reply
 
+    # ── Fallback: if still no reply, force one last call WITHOUT tools ──
+    if not reply:
+        fallback_prompt = "Resume en 1-2 phrases ce que tu viens de faire et les resultats obtenus." if actions_executed else "Reponds a la question de l'utilisateur en 1-2 phrases."
+        try:
+            full_messages.append({"role": "user", "content": fallback_prompt})
+            fallback_resp = provider.chat(full_messages, tools=[])  # no tools → forces text response
+            reply = fallback_resp.get("content", "") or ""
+            if reply:
+                tokens_used += fallback_resp.get("usage", {}).get("total_tokens", 0) if isinstance(fallback_resp.get("usage"), dict) else 0
+        except Exception:
+            pass
+
+    # ── Ultimate safety net ──
+    if not reply:
+        reply = "Action terminee" if actions_executed else "Je n'ai pas pu traiter ta demande. Peux-tu reformuler ?"
+
     # ── Memory compaction (fire and forget, errors are non-fatal) ──
     try:
         import asyncio

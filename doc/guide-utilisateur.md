@@ -89,6 +89,41 @@ Après envoi, le panneau de réponse affiche :
 
 Le panneau est **redimensionnable** — tirez la poignée entre le builder et la réponse.
 
+### 3.4. Contexte utilisateur (`{{ctx.xxx}}`)
+
+Le **contexte utilisateur** est un dictionnaire JSON persistant qui permet de stocker des données extraites des réponses HTTP et de les réutiliser dans vos requêtes suivantes via la syntaxe `{{ctx.xxx}}`.
+
+**Ouvrir le panneau** : bouton **Ctx** dans la barre du haut.
+
+Le panneau est divisé en deux zones :
+
+| Zone | Description |
+|------|-------------|
+| **Éditeur JSON** (haut) | Éditeur avec coloration syntaxique. Toute modification est sauvegardée automatiquement. |
+| **Variables disponibles** (bas) | Arborescence des clés disponibles. Cliquer sur une clé copie `{{ctx.xxx.yyy}}` dans le presse-papier. |
+
+**Sauvegarder une réponse dans le contexte** :
+
+1. Envoyez une requête
+2. Dans la barre de réponse, cliquez sur **Ctx**
+3. Donnez un nom à la variable (ex: `loginResponse`)
+4. Les champs `status_code`, `url`, `method`, `headers` et `body` sont stockés
+
+**Utiliser le contexte dans une requête** :
+
+Dans n'importe quel champ (URL, headers, body, query params), utilisez la syntaxe `{{ctx.xxx}}` :
+
+```
+URL      : https://api.example.com/users/{{ctx.loginResponse.body.user.id}}
+Header   : Authorization: Bearer {{ctx.loginResponse.body.token}}
+Body     : {"userId": "{{ctx.loginResponse.body.id}}"}
+Query    : token={{ctx.loginResponse.body.access_token}}
+```
+
+Les templates `{{ctx.xxx}}` sont résolus **avant l'envoi** de la requête, à la fois côté client (navigateur) et côté serveur (proxy).
+
+**Arborescence** : les clés imbriquées sont affichées sous forme d'arbre avec connecteurs `├` et `└`. Les branches (objets) ont un chevron ▶ pour les déplier, les feuilles (strings, nombres, booléens) affichent un aperçu de leur valeur.
+
 ---
 
 ## 4. Les Collections
@@ -606,7 +641,11 @@ Le mot-clé `TARGET` dans les commandes est automatiquement remplacé par la cib
 
 #### Résolution de localhost
 
-Les adresses `127.0.0.1` et `localhost` dans les commandes ou la target sont automatiquement converties en **`host.docker.internal`** pour que le conteneur puisse atteindre l'hôte (le conteneur est sur un réseau Docker isolé, donc `localhost` pointerait vers lui-même).
+Les adresses `127.0.0.1` et `localhost` dans les commandes ou URLs peuvent être converties en un host Docker personnalisé pour que le conteneur puisse atteindre l'hôte (le conteneur est sur un réseau Docker isolé, donc `localhost` pointerait vers lui-même). Cette fonctionnalité est **opt-in** :
+
+- Définissez `ELYRIA_DOCKER_HOST=host.docker.internal` pour activer le remplacement automatique
+- Sans cette variable, les URLs passent inchangées (comportement par défaut)
+- S'applique à tous les tools : `ely_send_request`, `ely_bash`, `ely_fuzz`, `ely_browser_query`
 
 #### Sanitization
 
@@ -719,10 +758,11 @@ L'agent IA (modèles Flash + Pro) enrichit les findings :
 
 ### 14.5. Findings et filtres
 
-- Tableau trié par sévérité avec titre, catégorie, description
-- **Filtres** : sévérité, type de module, source (Deterministic / AI Refined)
-- **Panneau de détail** : description, évidence, remédiation, analyse IA
+- Tableau trié par sévérité avec titre, catégorie, description, et badge `AI` pour les findings enrichis
+- **Filtres** : sévérité, type de module, source (System / AI Refined)
+- **Panneau de détail** : sévérité, description, catégorie, évidence formatée, remédiation, analyse IA
 - **Rafraîchissement** automatique pendant le scan
+- **KPIs** : jauge de score de risque (0-100), compteurs Critical/High/Total, indicateurs DNS/SSL/HTTP/Subdomains/Emails/Tech Stack avec dots de statut (vert/orange/rouge)
 
 ---
 
@@ -764,10 +804,11 @@ Le rapport Purple Team est structuré en trois sections :
 ### 15.4. Findings et filtres
 
 - **Dashboard** : compteurs CVE, CWE, Practices, Critical, High
-- **Filtres** : par partie (CVE, CWE, Practices, AI Discovered) et par sévérité
+- **Filtres** : par partie (CVE, CWE, Practices, AI Discovered), par sévérité, **par CWE/CVE ID** (ex: `CWE-578`), et **par fichier** (filtre textuel sur le chemin du fichier contenant le finding)
 - **Badge AI** : les findings découverts par l'IA sont marqués d'un badge violet `AI`
 - **Panneau de détail** : sévérité, titre, catégorie, CVE/CWE, localisation (fichier:ligne), CVSS, description, remédiation, analyse IA
-- **Rapport** : visualisation markdown complète dans l'interface, téléchargement .md
+- **Rapport** : visualisation markdown avec **table des matières** et rendu Mermaid dans l'interface, téléchargement .md
+- **Toggle View Report / View Findings** : le bouton View Report permet de basculer entre la vue rapport et la liste des findings
 
 ### 15.5. Envoi vers Blue Team
 

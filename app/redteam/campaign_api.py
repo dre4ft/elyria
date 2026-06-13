@@ -9,6 +9,7 @@ running scans, viewing findings, and generating reports.
 import asyncio
 import threading
 import time
+from typing import Optional, Union
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from redteam.scan_events import publish, heartbeat, cleanup
@@ -60,10 +61,11 @@ class ProfileCreateRequest(BaseModel):
     name: str
     target_url: str
     description: str = ""
-    auth_config: dict = None
+    team_ids: Union[list, str, None] = None
+    auth_config: Union[dict, str, None] = None
     openapi_spec_url: str = ""
-    openapi_spec_content: str = ""  # for direct spec upload
-    id_list: dict = None
+    openapi_spec_content: Optional[str] = None  # for direct spec upload
+    id_list: Union[dict, str, None] = None
     collection_id: str = ""
     explore_rounds: int = 15
     analysis_rounds: int = 5
@@ -81,14 +83,16 @@ async def api_create_profile(_request : ProfileCreateRequest, request: Request):
     target_url = _request.target_url
     if not name or not target_url:
         raise HTTPException(400, "name and target_url are required")
-    team_ids = _request.team_ids if _request.team_ids else get_auth_user_teams(request)
+    team_ids = _request.team_ids if isinstance(_request.team_ids, list) else get_auth_user_teams(request)
+    auth_config = _request.auth_config if isinstance(_request.auth_config, dict) else None
+    id_list = _request.id_list if isinstance(_request.id_list, dict) else None
     pid = create_profile(
         name=name, target_url=target_url,
         user_id=get_auth_user(request), team_ids=team_ids,
         description=_request.description,
-        auth_config=_request.auth_config,
+        auth_config=auth_config,
         openapi_spec_url=_request.openapi_spec_url,
-        id_list=_request.id_list,
+        id_list=id_list,
         collection_id=_request.collection_id,
         explore_rounds=_request.explore_rounds,
         analysis_rounds=_request.analysis_rounds,
