@@ -87,6 +87,9 @@
     var btnToggle = $('#btn-toggle-sidebar');
     if (btnToggle) btnToggle.addEventListener('click', toggleSidebar);
 
+    // Resizable sidebar (valise)
+    _initResizeHandle();
+
     document.getElementById('filter-part').onchange = renderFindings;
     document.getElementById('filter-severity').onchange = renderFindings;
     document.getElementById('filter-cwe').addEventListener('input', function () {
@@ -122,6 +125,77 @@
   }
 
   // ── Sidebar ──
+  function _initResizeHandle() {
+    var sidebar = document.getElementById('pt-sidebar');
+    var handle = document.getElementById('pt-resize-handle');
+    if (!sidebar || !handle) return;
+
+    var startX, startWidth;
+    var MIN_W = 180;
+    var MAX_W = 600;
+
+    function onDown(e) {
+      e.preventDefault();
+      startX = e.clientX;
+      startWidth = sidebar.offsetWidth;
+      handle.classList.add('!bg-purple-500/40');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    }
+
+    function onMove(e) {
+      var dx = e.clientX - startX;
+      var w = Math.max(MIN_W, Math.min(MAX_W, startWidth + dx));
+      sidebar.style.width = w + 'px';
+    }
+
+    function onUp() {
+      handle.classList.remove('!bg-purple-500/40');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+    }
+
+    handle.addEventListener('pointerdown', onDown);
+
+    // Detail panel resize
+    var detailPanel = document.getElementById('pt-detail-panel');
+    var detailHandle = document.getElementById('pt-detail-resize-handle');
+    if (detailPanel && detailHandle) {
+      var dStartX, dStartWidth;
+
+      function dOnDown(e) {
+        e.preventDefault();
+        dStartX = e.clientX;
+        dStartWidth = detailPanel.offsetWidth;
+        detailHandle.classList.add('!bg-purple-500/40');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        document.addEventListener('pointermove', dOnMove);
+        document.addEventListener('pointerup', dOnUp);
+      }
+
+      function dOnMove(e) {
+        var dx = dStartX - e.clientX;
+        var w = Math.max(220, Math.min(700, dStartWidth + dx));
+        detailPanel.style.width = w + 'px';
+      }
+
+      function dOnUp() {
+        detailHandle.classList.remove('!bg-purple-500/40');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        document.removeEventListener('pointermove', dOnMove);
+        document.removeEventListener('pointerup', dOnUp);
+      }
+
+      detailHandle.addEventListener('pointerdown', dOnDown);
+    }
+  }
+
   function toggleSidebar() {
     var sidebar = document.getElementById('pt-sidebar');
     if (!sidebar) return;
@@ -480,6 +554,7 @@
     var f = state.findings.find(function (x) { return x.finding_id === fid; });
     if (!f) return;
     dom.detailPanel.classList.remove('hidden');
+    var dh = $('#pt-detail-resize-handle'); if (dh) dh.classList.remove('hidden');
     dom.detailContent.innerHTML =
       '<div><span class="text-[10px] text-gray-500">Severity</span><div class="text-sm font-semibold mt-0.5">' + esc(f.severity).toUpperCase() + '</div></div>' +
       '<div><span class="text-[10px] text-gray-500">Title</span><div class="text-sm mt-0.5">' + esc(f.title) + '</div></div>' +
@@ -494,6 +569,7 @@
 
   window.closeDetail = function () {
     dom.detailPanel.classList.add('hidden');
+    var dh = $('#pt-detail-resize-handle'); if (dh) dh.classList.add('hidden');
   };
 
   // ── Report ──

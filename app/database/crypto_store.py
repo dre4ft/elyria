@@ -465,6 +465,26 @@ def get_tvk(user_id: str, team_id: str) -> bytes | None:
 
 
 # ═══════════════════════════════════════════════════════════════
+# Team API convenience wrappers
+# ═══════════════════════════════════════════════════════════════
+
+def create_team_with_key(team_id: str, creator_user_id: str) -> str:
+    """Create TVK, return system-sealed wrapped key for teams.encrypted_team_key."""
+    tvk = create_tvk(team_id, creator_user_id)
+    return seal_system_str(tvk.hex())
+
+
+def get_team_key(user_id: str, team_id: str) -> bytes | None:
+    """Get the raw TVK for a user+team."""
+    return get_tvk(user_id, team_id)
+
+
+def add_member_team_key(team_id: str, new_user_id: str, added_by_user_id: str):
+    """Wrap TVK for a new team member."""
+    add_member_to_team(team_id, new_user_id, added_by_user_id)
+
+
+# ═══════════════════════════════════════════════════════════════
 # System-level seal / open (server wrap key, no user context needed)
 # ═══════════════════════════════════════════════════════════════
 

@@ -40,6 +40,12 @@
     @keyframes shimmer { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
     .profile-item:hover { background:rgba(255,255,255,.03); border-color:rgba(255,255,255,.05); }
     .profile-item.active { background:rgba(168,85,247,.08); border-color:rgba(168,85,247,.2); }
+    /* Resize handle (valise) */
+    #pt-resize-handle { position:relative; z-index:10; }
+    #pt-resize-handle::after { content:''; position:absolute; inset:-4px -4px; }
+    #pt-resize-handle .handle-grip { display:none; }
+    #pt-resize-handle:hover .handle-grip,
+    #pt-resize-handle:active .handle-grip { display:block; }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -56,7 +62,7 @@
   </script>
 
   <div class="flex h-[calc(100vh-3rem)]">
-    <aside id="pt-sidebar" class="w-64 min-w-[256px] bg-base-800 border-r border-white/5 flex flex-col shrink-0 overflow-hidden transition-all duration-300">
+    <aside id="pt-sidebar" class="bg-base-800 border-r border-white/5 flex flex-col shrink-0 overflow-hidden" style="width:256px;min-width:180px;max-width:600px;">
       <div class="p-3 pb-2 border-b border-white/5 space-y-2">
         <div class="flex items-center justify-between">
           <button id="btn-toggle-sidebar" class="h-7 w-7 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors" title="Toggle Sidebar">
@@ -71,6 +77,12 @@
       </div>
       <div id="pt-profile-list" class="p-2 space-y-0.5 scrollbar-thin flex-1 overflow-y-auto"></div>
     </aside>
+
+    <!-- Resize handle (valise) — invisible hit area larger than visual -->
+    <div id="pt-resize-handle" class="w-2 bg-transparent hover:bg-purple-500/15 active:bg-purple-500/30 cursor-col-resize flex-shrink-0 transition-colors relative flex items-center justify-center" title="Redimensionner">
+      <div class="absolute inset-y-0 -left-1.5 -right-1.5"></div>
+      <span class="h-6 w-[3px] rounded-full bg-white/10 group-hover:bg-purple-400/40 transition-colors"></span>
+    </div>
 
     <!-- Main -->
     <main id="pt-main" class="flex-1 flex flex-col overflow-hidden">
@@ -219,8 +231,13 @@
       </div>
     </main>
 
+    <!-- Detail Panel resize handle -->
+    <div id="pt-detail-resize-handle" class="hidden w-2 bg-transparent hover:bg-purple-500/15 active:bg-purple-500/30 cursor-col-resize flex-shrink-0 transition-colors relative flex items-center justify-center" title="Redimensionner">
+      <div class="absolute inset-y-0 -left-1.5 -right-1.5"></div>
+      <span class="h-6 w-[3px] rounded-full bg-white/10 hover:bg-purple-400/40 transition-colors"></span>
+    </div>
     <!-- Detail Panel -->
-    <aside id="pt-detail-panel" class="hidden w-80 bg-base-800 border-l border-white/5 flex flex-col shrink-0 overflow-y-auto">
+    <aside id="pt-detail-panel" class="hidden bg-base-800 border-l border-white/5 flex flex-col shrink-0 overflow-y-auto" style="width:320px;min-width:220px;max-width:700px;">
       <div class="p-3 border-b border-white/5 flex items-center justify-between shrink-0">
         <span class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">Finding Detail</span>
         <button onclick="window.closeDetail()" class="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-gray-500 hover:text-gray-300">

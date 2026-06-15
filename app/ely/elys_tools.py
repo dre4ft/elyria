@@ -440,6 +440,18 @@ async def browser_query_tool(args, request):
     except Exception as e:
         return {"error": str(e)[:200]}
     
+@_action("ely_search_engine", "Search the web for information",
+            {"query": {"type": "string"}, })
+async def search_engine(args, request):
+    from ely.search_engine import search_engine_async
+    from core.auth import get_user as get_user_id
+    user_id = get_user_id(request)
+    try:
+        result = await search_engine_async(query=args["query"])
+        return {"status": 200, "data": {"result": result}}
+    except Exception as e:
+        return {"error": str(e)[:200]}
+    
 @_action("ely_browser_click", "Use a headless browser to interact with web pages, useful for complex interactions and JS-heavy sites",
             {"url": {"type": "string"}, "selector": {"type": "string", "description": "CSS selector for the element to interact with"}})
 async def browser_click_tool(args, request):
@@ -630,13 +642,13 @@ def get_action_definitions(page=None):
     if not page:
         return all_defs
     page_actions = {
-        "app":      ["ely_create_request", "ely_create_collection", "ely_get_request_result", "ely_request_ctx", "ely_send_raw_request", "ely_send_request", "ely_list_resources", "ely_bash", "ely_fuzz","ely_browser_query", "ely_browser_click"],
+        "app":      ["ely_create_request", "ely_create_collection", "ely_get_request_result", "ely_request_ctx", "ely_send_raw_request", "ely_send_request", "ely_list_resources", "ely_bash", "ely_fuzz","ely_browser_query", "ely_browser_click", "ely_search_engine"],
         "workflow": ["ely_create_workflow", "ely_list_resources","ely_bash", "ely_fuzz"],
-        "pentest":  ["ely_run_scan", "ely_get_findings", "ely_list_resources", "ely_bash", "ely_fuzz","ely_browser_query", "ely_browser_click"],
-        "greyteam": ["ely_osint_scan", "ely_get_findings", "ely_list_resources", "ely_bash","ely_browser_query", "ely_browser_click"],
+        "pentest":  ["ely_run_scan", "ely_get_findings", "ely_list_resources", "ely_bash", "ely_fuzz","ely_browser_query", "ely_browser_click", "ely_search_engine"],
+        "greyteam": ["ely_osint_scan", "ely_get_findings", "ely_list_resources", "ely_bash","ely_browser_query", "ely_browser_click", "ely_search_engine"],
         "blueteam": ["ely_blueteam_analyze", "ely_get_findings", "ely_list_resources", "ely_bash"],
         "hub":      ["ely_list_resources", "ely_create_collection"],
-        "doc":        ["ely_get_doc", "ely_list_doc_pages"],
+        "doc":        ["ely_get_doc", "ely_list_doc_pages", "ely_search_engine"],
         "purpleteam": ["ely_purpleteam_scan", "ely_purpleteam_get_findings", "ely_list_resources", "ely_bash"],
     }
     diary_tools = ["ely_diary_add", "ely_diary_query", "ely_diary_list", "ely_diary_get", "ely_diary_delete"]
