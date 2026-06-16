@@ -50,3 +50,4 @@ CLAUDE.md
 !.env.example
 .gate_key
 elyria.cfg
+.pytest_cache/

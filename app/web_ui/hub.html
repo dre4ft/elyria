@@ -276,7 +276,9 @@ async function unfollow(tid){ await fetch(U.followed+'/'+tid,{method:'DELETE',he
 async function addProxy(){ const n=$('#proxy-name').value.trim(),u=$('#proxy-url').value.trim(); if(!u)return; await fetch(U.proxies,{method:'POST',headers:{'Content-Type':'application/json',...getAuthHeader()},body:JSON.stringify({name:n,url:u})}); $('#proxy-name').value=''; $('#proxy-url').value=''; refreshHub(); }
 async function delProxy(id){ await fetch(U.proxies+'/'+id,{method:'DELETE',headers:{...getAuthHeader()}}); refreshHub(); }
 async function setFav(id){ await fetch(U.fav,{method:'PUT',headers:{'Content-Type':'application/json',...getAuthHeader()},body:JSON.stringify({proxy_id:id})}); refreshHub(); }
-function copyToClipboard(text){ navigator.clipboard.writeText(text).then(()=>{}).catch(()=>{}); }
+function copyToClipboard(text){ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(function(){ showCopyToast('Copie !'); }).catch(function(){ fallbackCopy(text); }); }else{ fallbackCopy(text); } }
+function fallbackCopy(text){ var ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.left='-9999px'; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy'); showCopyToast('Copie !');}catch(e){ alert('Team ID: '+text); } document.body.removeChild(ta); }
+function showCopyToast(msg){ var t=document.getElementById('copy-toast'); if(!t){ t=document.createElement('div'); t.id='copy-toast'; t.className='fixed top-4 left-1/2 -translate-x-1/2 bg-green-500/90 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 transition-all opacity-0 pointer-events-none'; document.body.appendChild(t); } t.textContent=msg; t.classList.remove('opacity-0'); setTimeout(function(){ t.classList.add('opacity-0'); },1500); }
 function goBack(){ if(document.referrer&&document.referrer.includes(location.host)){history.back()}else{location.href='/app'} }
 function switchHubTab(tab) {
   document.querySelectorAll('.hub-tab').forEach(b => b.classList.remove('active'));

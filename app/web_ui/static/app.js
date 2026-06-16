@@ -1436,6 +1436,31 @@ function setupHistory() {
   btnClear.addEventListener('click', () => { state.history = []; renderHistoryLog(); });
   searchInput.addEventListener('input', () => renderHistoryLog());
 
+  // Event delegation for Load / Replay buttons inside quick-views
+  const historyLogList = $('#history-log-list');
+  if (historyLogList) {
+    historyLogList.addEventListener('click', (e) => {
+      const loadBtn = e.target.closest('.qv-load-btn');
+      const replayBtn = e.target.closest('.qv-send-btn');
+      if (loadBtn) {
+        e.stopPropagation();
+        const qv = loadBtn.closest('.history-quick-view');
+        const hid = qv ? qv.dataset.hidQv : null;
+        const entry = hid ? state.history.find(h => h.id === hid) : null;
+        if (entry) {
+          loadHistoryEntry(entry);
+          document.querySelector('.tab-panel.active')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      } else if (replayBtn) {
+        e.stopPropagation();
+        const qv = replayBtn.closest('.history-quick-view');
+        const hid = qv ? qv.dataset.hidQv : null;
+        const entry = hid ? state.history.find(h => h.id === hid) : null;
+        if (entry) replayHistoryEntry(entry);
+      }
+    });
+  }
+
   // Status code filter buttons
   const filterBtns = document.querySelectorAll('#history-status-filter button');
   filterBtns.forEach(btn => {
@@ -1553,8 +1578,6 @@ function renderHistoryLog() {
     qv.dataset.hidQv = entry.id;
     qv.innerHTML = buildQuickViewHTML(entry);
     logList.appendChild(qv);
-    // Setup quick-view buttons after DOM insertion
-    setTimeout(() => setupQuickViewButtons(qv, entry), 0);
   });
 }
 
@@ -1572,11 +1595,11 @@ function buildQuickViewHTML(entry) {
   return `<div class="qv-toolbar flex items-center gap-2 mb-3">
     <span class="text-[10px] uppercase text-gray-500 font-semibold">Details</span>
     <div class="flex-1"></div>
-    <button class="qv-load-btn h-6 px-3 rounded-md bg-accent/10 hover:bg-accent/20 border border-accent/20 hover:border-accent/40 text-[10px] font-medium text-accent-light transition-all flex items-center gap-1">
+    <button type="button" class="qv-load-btn h-6 px-3 rounded-md bg-accent/10 hover:bg-accent/20 border border-accent/20 hover:border-accent/40 text-[10px] font-medium text-accent-light transition-all flex items-center gap-1">
       <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
       Load
     </button>
-    <button class="qv-send-btn h-6 px-3 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/20 hover:border-amber-500/40 text-[10px] font-medium text-amber-400 transition-all flex items-center gap-1">
+    <button type="button" class="qv-send-btn h-6 px-3 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/20 hover:border-amber-500/40 text-[10px] font-medium text-amber-400 transition-all flex items-center gap-1">
       <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
       Replay
     </button>
@@ -1603,59 +1626,46 @@ function switchQVTab(qvId, tab) {
   panel.querySelectorAll('.qv-panel').forEach(p => { p.classList.toggle('hidden', !p.id.startsWith(qvId + '-' + tab)); });
 }
 
-function setupQuickViewButtons(qvEl, entry) {
-  // Load button — populate the main builder
-  qvEl.querySelector('.qv-load-btn')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    loadHistoryEntry(entry);
-    // Scroll to top
-    document.querySelector('.tab-panel.active')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
+async function replayHistoryEntry(entry) {
+  const url = entry.url || '';
+  const method = entry.method || 'GET';
+  const body = entry.reqBody || '';
+  if (!url) return;
 
-  // Replay button — re-send the exact same request
-  qvEl.querySelector('.qv-send-btn')?.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    const url = entry.url || '';
-    const method = entry.method || 'GET';
-    const body = entry.reqBody || '';
-    if (!url) return;
+  const headers = entry.reqHeaders || {};
+  // Show progress in the quick-view's result area
+  const qv = document.querySelector(`.history-quick-view[data-hid-qv="${entry.id}"]`);
+  let resultEl = qv ? qv.querySelector('.qv-result') : null;
+  if (!resultEl && qv) {
+    resultEl = document.createElement('div');
+    resultEl.className = 'qv-result mt-3 p-3 rounded-lg bg-base-900/60 border border-white/5 text-[10px] font-mono text-gray-300 max-h-48 overflow-y-auto';
+    qv.appendChild(resultEl);
+  }
+  if (resultEl) {
+    resultEl.classList.remove('hidden');
+    resultEl.textContent = 'Envoi...';
+  }
 
-    // Build headers from stored reqHeaders
-    const headers = entry.reqHeaders || {};
-    const resultPanel = qvEl.querySelector('.qv-result');
-    if (!resultPanel) {
-      const panel = document.createElement('div');
-      panel.className = 'qv-result mt-3 p-3 rounded-lg bg-base-900/60 border border-white/5 text-[10px] font-mono text-gray-300 max-h-48 overflow-y-auto';
-      panel.textContent = 'Envoi...';
-      qvEl.appendChild(panel);
-    }
-    const resultEl = qvEl.querySelector('.qv-result');
-    if (resultEl) {
-      resultEl.classList.remove('hidden');
-      resultEl.textContent = 'Envoi...';
-    }
-
-    try {
-      const res = await fetch(API.structured, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ url, method, headers, body: body || undefined }),
-      });
-      const data = await res.json();
-      const resp = data.response || data;
-      const statusCode = resp.status_code || 0;
-      const respBody = resp.body || '';
-      if (resultEl) resultEl.innerHTML = `<span class="${statusCode >= 400 ? 'text-red-400' : 'text-green-400'} font-bold">${statusCode}</span> — ${respBody.substring(0, 500)}`;
-      _notifyRequestComplete({
-        id: data.request_uuid || generateId(), method, url, statusCode,
-        reqHeaders: headers, reqBody: body, reqParams: [],
-        headers: resp.headers || {}, body: respBody,
-        type: 'structured', timestamp: Date.now(),
-      });
-    } catch (err) {
-      if (resultEl) resultEl.innerHTML = `<span class="text-red-400">Erreur: ${escapeHtml(err.message)}</span>`;
-    }
-  });
+  try {
+    const res = await fetch(API.structured, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ url, method, headers, body: body || undefined }),
+    });
+    const data = await res.json();
+    const resp = data.response || data;
+    const statusCode = resp.status_code || 0;
+    const respBody = resp.body || '';
+    if (resultEl) resultEl.innerHTML = `<span class="${statusCode >= 400 ? 'text-red-400' : 'text-green-400'} font-bold">${statusCode}</span> — ${respBody.substring(0, 500)}`;
+    _notifyRequestComplete({
+      id: data.request_uuid || generateId(), method, url, statusCode,
+      reqHeaders: headers, reqBody: body, reqParams: [],
+      headers: resp.headers || {}, body: respBody,
+      type: 'structured', timestamp: Date.now(),
+    });
+  } catch (err) {
+    if (resultEl) resultEl.innerHTML = `<span class="text-red-400">Erreur: ${escapeHtml(err.message)}</span>`;
+  }
 }
 
 function toggleHistoryQuickView(row, entry) {

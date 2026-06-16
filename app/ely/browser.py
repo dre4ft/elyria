@@ -21,34 +21,37 @@ async def close_browser(browser, playwright):
     await browser.close()
     await playwright.stop()
 
-async def query_page(browser, url: str, selector: str = "body"):
+async def query_page(browser, url: str, selector: str = "body", timeout: int = 15000):
     _log.info(f"Querying page: {url} with selector: {selector}")
     if url in get("security", "blocked_urls", []):
         _log.warning(f"URL {url} is blocked. Skipping browser query.")
         return ""
     context = await browser.new_context()
-    page = await context.new_page()
-    await page.goto(url)
-    element = await page.query_selector(selector)
-    content = await element.inner_text() if element else ""
-    await context.close()
-    return content
+    try:
+        page = await context.new_page()
+        await page.goto(url, timeout=timeout)
+        loc = page.locator(selector).first
+        content = await loc.inner_text() if await loc.count() > 0 else ""
+        return content
+    finally:
+        await context.close()
 
-async def click_element(browser, url: str, selector: str):
+async def click_element(browser, url: str, selector: str, timeout: int = 15000):
     _log.info(f"Clicking element on page: {url} with selector: {selector}")
     if url in get("security", "blocked_urls", []):
         _log.warning(f"URL {url} is blocked. Skipping browser click.")
         return False
     context = await browser.new_context()
-    page = await context.new_page()
-    await page.goto(url)
-    element = await page.query_selector(selector)
-    if element:
-        await element.click()
+    try:
+        page = await context.new_page()
+        await page.goto(url, timeout=timeout)
+        loc = page.locator(selector).first
+        if await loc.count() > 0:
+            await loc.click()
+            return True
+        return False
+    finally:
         await context.close()
-        return True
-    await context.close()
-    return False
 
 async def basic_handler(user_id: str, url: str = None, selector: str = "body", action: str = "query"):
     """Handler asynchrone pour les opérations browser"""
@@ -76,8 +79,13 @@ async def basic_handler(user_id: str, url: str = None, selector: str = "body", a
             return True
     except Exception as e:
         _log.error(f"Browser action failed: {e}")
-        # Nettoyer en cas d'erreur
+        # Clean up on error
         if user_id in browsers:
-            await close_browser(browser, playwright)
+            try:
+                await close_browser(browser, playwright)
+            except Exception:
+                pass
             del browsers[user_id]
+        if action == "query":
+            return f"Error: {e}"
         raise e 

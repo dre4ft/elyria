@@ -7,6 +7,7 @@ AI Provider configuration API — flash and pro slots, multi-provider.
 
 from fastapi import APIRouter, Request, HTTPException
 from core.auth import get_user
+from database.auth_utils import get_auth_user
 from database.ai_config_mgmt import (
     list_provider_configs,
     get_provider_config,
@@ -178,21 +179,24 @@ def _extract_model_ids(model_list):
 @app.get("")
 async def api_list_configs(request: Request, slot: str = ""):
     get_user(request)
-    return _mask_keys(list_provider_configs(slot=slot if slot else None))
+    uid = get_auth_user(request)
+    return _mask_keys(list_provider_configs(slot=slot if slot else None, user_id=uid))
 
 
 @app.get("/defaults")
 async def api_get_defaults(request: Request):
     get_user(request)
-    flash = get_default_config("flash")
-    pro = get_default_config("pro")
+    uid = get_auth_user(request)
+    flash = get_default_config("flash", user_id=uid)
+    pro = get_default_config("pro", user_id=uid)
     return {"flash": _mask_key(flash), "pro": _mask_key(pro)}
 
 
 @app.get("/default/{slot}")
 async def api_get_default_slot(request: Request, slot: str):
     get_user(request)
-    cfg = get_default_config(slot)
+    uid = get_auth_user(request)
+    cfg = get_default_config(slot, user_id=uid)
     if not cfg:
         raise HTTPException(404, "No default provider configured for this slot")
     return _mask_key(cfg)
@@ -201,6 +205,7 @@ async def api_get_default_slot(request: Request, slot: str):
 @app.post("")
 async def api_create_config(request: Request):
     get_user(request)
+    uid = get_auth_user(request)
     body = await request.json()
     slot = body.get("slot", "pro")
     if slot not in ("flash", "pro"):
@@ -218,6 +223,7 @@ async def api_create_config(request: Request):
             api_key=body.get("api_key", ""),
             model=body.get("model", ""),
             is_default=body.get("is_default", False),
+            user_id=uid,
         )
     }
 
@@ -225,17 +231,19 @@ async def api_create_config(request: Request):
 @app.post("/{config_id}/set-default")
 async def api_set_default(request: Request, config_id: str):
     get_user(request)
-    cfg = get_provider_config(config_id)
+    uid = get_auth_user(request)
+    cfg = get_provider_config(config_id, user_id=uid)
     if not cfg:
         raise HTTPException(404, "Config not found")
-    update_provider_config(config_id, is_default=True)
+    update_provider_config(config_id, user_id=uid, is_default=True)
     return {"status": "ok", "slot": cfg["slot"], "config_id": config_id}
 
 
 @app.get("/{config_id}/models")
 async def api_list_models(request: Request, config_id: str):
     get_user(request)
-    cfg = get_provider_config(config_id)
+    uid = get_auth_user(request)
+    cfg = get_provider_config(config_id, user_id=uid)
     if not cfg:
         raise HTTPException(404, "Config not found")
     from ai_core.ai_wrapper import AIWrapper
@@ -272,7 +280,8 @@ async def api_list_models(request: Request, config_id: str):
 @app.get("/{config_id}")
 async def api_get_config(request: Request, config_id: str):
     get_user(request)
-    cfg = get_provider_config(config_id)
+    uid = get_auth_user(request)
+    cfg = get_provider_config(config_id, user_id=uid)
     if not cfg:
         raise HTTPException(404, "Config not found")
     return _mask_key(cfg)
@@ -281,22 +290,24 @@ async def api_get_config(request: Request, config_id: str):
 @app.put("/{config_id}")
 async def api_update_config(config_id: str, request: Request):
     get_user(request)
-    cfg = get_provider_config(config_id)
+    uid = get_auth_user(request)
+    cfg = get_provider_config(config_id, user_id=uid)
     if not cfg:
         raise HTTPException(404, "Config not found")
     body = await request.json()
     updates = {k: v for k, v in body.items() if v is not None}
     if not updates.get("api_key") or updates["api_key"] == "****":
         updates.pop("api_key", None)
-    update_provider_config(config_id, **updates)
+    update_provider_config(config_id, user_id=uid, **updates)
     return {"status": "updated"}
 
 
 @app.delete("/{config_id}")
 async def api_delete_config(request: Request, config_id: str):
     get_user(request)
-    cfg = get_provider_config(config_id)
+    uid = get_auth_user(request)
+    cfg = get_provider_config(config_id, user_id=uid)
     if not cfg:
         raise HTTPException(404, "Config not found")
-    delete_provider_config(config_id)
+    delete_provider_config(config_id, user_id=uid)
     return {"status": "deleted"}

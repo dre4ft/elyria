@@ -49,6 +49,9 @@ def init_teams():
     for tbl, col in [("folders", "team_id"), ("saved_requests", "team_id"), ("workflow_graphs", "team_id"), ("pentest_scan_profiles", "team_ids")]:
         try: c.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} TEXT DEFAULT ''")
         except: pass
+    # Migration: wrapped_tvk for team key storage
+    try: c.execute("ALTER TABLE team_users ADD COLUMN wrapped_tvk TEXT DEFAULT ''")
+    except: pass
     c.commit(); c.close()
 init_teams()
 
@@ -91,14 +94,19 @@ async def create_team(request: Request):
     if not name: raise HTTPException(400, "name required")
     uid = get_auth_user(request)
     tid = str(uuid.uuid4())
+    c = _conn()
+    c.execute("INSERT INTO teams (team_id,name,creator_user_id,created_at) VALUES(?,?,?,?)",
+              (tid, name, uid, _now()))
+    c.execute("INSERT INTO team_users (team_id,user_id) VALUES(?,?)",
+              (tid, uid))
+    c.commit(); c.close()
     # Generate team key and wrap it for the creator (BYOK)
+    # Must commit before this — create_team_with_key opens its own connection
     from database.crypto_store import create_team_with_key
     wrapped_key = create_team_with_key(tid, uid)
     c = _conn()
-    c.execute("INSERT INTO teams (team_id,name,creator_user_id,created_at,encrypted_team_key) VALUES(?,?,?,?,?)",
-              (tid, name, uid, _now(), wrapped_key))
-    c.execute("INSERT INTO team_users (team_id,user_id,encrypted_team_key) VALUES(?,?,?)",
-              (tid, uid, wrapped_key))
+    c.execute("UPDATE teams SET encrypted_team_key=? WHERE team_id=?",
+              (wrapped_key, tid))
     c.execute("INSERT OR IGNORE INTO user_followed_teams (user_id,team_id) VALUES(?,?)", (uid, tid))
     c.commit(); c.close()
     _invalidate_team_caches(tid, uid)
