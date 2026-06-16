@@ -78,7 +78,7 @@ def verify_ownership(resource: dict, user_id: str, user_teams: str):
     if not resource:
         raise HTTPException(404, "Resource not found")
     # User owns it directly
-    if resource.get("user_id") == user_id or not resource.get("user_id"):
+    if resource.get("user_id") == user_id:
         return
     # Check team_ids (comma-separated)
     team_ids = resource.get("team_ids", "")

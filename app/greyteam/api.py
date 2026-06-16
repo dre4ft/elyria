@@ -73,22 +73,31 @@ def _cleanup_events(report_id: str):
 # Profiles CRUD
 # ═══════════════════════════════════════════════════════════════
 
+class CreateGreyProfileRequest(BaseModel):
+    name: str
+    team_ids: str = ""
+    description: str = ""
+    target_path: str = ""
+    target_domain: str = ""
+    categories: list = []
+    explore_rounds: int = 15
+    analysis_rounds: int = 5
+
 @app.post("/profiles")
-async def api_create_profile(request: Request):
-    body = await request.json()
-    name = body.get("name", "").strip()
+async def api_create_profile(body: CreateGreyProfileRequest, request: Request):
+    name = body.name.strip()
     if not name:
         raise HTTPException(400, "name is required")
     pid = create_profile(
         name=name,
         user_id=get_auth_user(request),
-        team_ids=body.get("team_ids") or get_auth_user_teams(request),
-        description=body.get("description", ""),
-        target_path=body.get("target_path", ""),
-        target_domain=body.get("target_domain", ""),
-        categories=body.get("categories", []),
-        explore_rounds=body.get("explore_rounds", 15),
-        analysis_rounds=body.get("analysis_rounds", 5),
+        team_ids=body.team_ids or get_auth_user_teams(request),
+        description=body.description,
+        target_path=body.target_path,
+        target_domain=body.target_domain,
+        categories=body.categories,
+        explore_rounds=body.explore_rounds,
+        analysis_rounds=body.analysis_rounds,
     )
     return {"profile_id": pid}
 
@@ -475,8 +484,9 @@ async def api_get_findings(report_id: str, request: Request):
         raise HTTPException(404, "Report not found")
     from greyteam.database import get_profile as _gp
     p = _gp(r["profile_id"])
-    if p:
-        _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
+    if not p:
+        raise HTTPException(404, "Profile not found")
+    _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
     findings = get_report_findings(report_id)
     counts = get_finding_counts(report_id)
     return {"findings": findings, "counts": counts, "total": len(findings)}
@@ -489,11 +499,13 @@ async def api_get_finding(finding_id: str, request: Request):
         raise HTTPException(404, "Finding not found")
     # Verify ownership via report → profile
     r = get_report(f["report_id"])
-    if r:
-        from greyteam.database import get_profile as _gp
-        p = _gp(r["profile_id"])
-        if p:
-            _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
+    if not r:
+        raise HTTPException(404, "Report not found")
+    from greyteam.database import get_profile as _gp
+    p = _gp(r["profile_id"])
+    if not p:
+        raise HTTPException(404, "Profile not found")
+    _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
     return f
 
 
@@ -503,11 +515,13 @@ async def api_delete_finding(finding_id: str, request: Request):
     if not f:
         raise HTTPException(404, "Finding not found")
     r = get_report(f["report_id"])
-    if r:
-        from greyteam.database import get_profile as _gp
-        p = _gp(r["profile_id"])
-        if p:
-            _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
+    if not r:
+        raise HTTPException(404, "Report not found")
+    from greyteam.database import get_profile as _gp
+    p = _gp(r["profile_id"])
+    if not p:
+        raise HTTPException(404, "Profile not found")
+    _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
     delete_finding(finding_id)
     return {"deleted": True}
 

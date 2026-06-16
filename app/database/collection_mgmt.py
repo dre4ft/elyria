@@ -254,8 +254,8 @@ def update_saved_request(saved_request_id: str, author_user_id: str, **kwargs):
         sensitive = {"method", "url", "headers", "body"}
         if sensitive & set(updates.keys()):
             row = cursor.execute(
-                "SELECT method, url, headers, body, team_id FROM saved_requests WHERE saved_request_id=?",
-                (saved_request_id,)
+                "SELECT method, url, headers, body, team_id FROM saved_requests WHERE saved_request_id=? AND author_user_id=?",
+                (saved_request_id, author_user_id)
             ).fetchone()
             if row:
                 tid = row["team_id"] or ""

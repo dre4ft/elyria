@@ -10,8 +10,26 @@ import threading
 
 from core.logging import get_logger
 from fastapi import APIRouter, Request, HTTPException
+from pydantic import BaseModel
 
 _log = get_logger("blueteam.api")
+
+class CreateBlueProfileRequest(BaseModel):
+    name: str
+    target_url: str = ""
+    team_ids: str = ""
+    description: str = ""
+    master_prompt: str = ""
+    documentation: str = ""
+    openapi_spec_url: str = ""
+    openapi_spec_content: str = ""
+    collection_id: str = ""
+
+class ImportPentestRequest(BaseModel):
+    campaign_id: str
+    findings: list = None
+    name: str = ""
+    team_ids: str = ""
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from redteam.scan_events import publish, cleanup as events_cleanup
 
@@ -50,28 +68,23 @@ async def api_stop_analysis(profile_id: str, request: Request):
     return {"status": "stopped"}
 
 @app.post("/profiles")
-async def api_create_profile(request: Request):
-    body = await request.json()
-    name = body.get("name", "").strip()
-    target_url = body.get("target_url", "").strip()
+async def api_create_profile(body: CreateBlueProfileRequest, request: Request):
+    name = body.name.strip()
+    target_url = body.target_url.strip()
     if not name:
         raise HTTPException(400, "name is required")
-    team_ids = body.get("team_ids", "")
-    if not team_ids:
-        team_ids = get_auth_user_teams(request)
+    team_ids = body.team_ids or get_auth_user_teams(request)
     pid = create_profile(
         name=name, target_url=target_url,
         user_id=get_auth_user(request), team_ids=team_ids,
-        description=body.get("description", ""),
-        master_prompt=body.get("master_prompt", ""),
-        documentation=body.get("documentation", ""),
-        openapi_spec_url=body.get("openapi_spec_url", ""),
-        collection_id=body.get("collection_id", ""),
+        description=body.description,
+        master_prompt=body.master_prompt,
+        documentation=body.documentation,
+        openapi_spec_url=body.openapi_spec_url,
+        collection_id=body.collection_id,
     )
-    # Cache OpenAPI spec content for later use
-    spec_content = body.get("openapi_spec_content", "")
-    if spec_content:
-        _spec_cache[pid] = spec_content
+    if body.openapi_spec_content:
+        _spec_cache[pid] = body.openapi_spec_content
     return {"profile_id": pid}
 
 
@@ -132,10 +145,9 @@ async def api_delete_profile(profile_id: str, request: Request):
 # ═══════════════════════════════════════════
 
 @app.post("/import-from-pentest")
-async def api_import_from_pentest(request: Request):
+async def api_import_from_pentest(body: ImportPentestRequest, request: Request):
     """Create a Blue Team remediation analysis from a Red Team pentest campaign."""
-    body = await request.json()
-    campaign_id = body.get("campaign_id", "").strip()
+    campaign_id = body.campaign_id.strip()
     if not campaign_id:
         raise HTTPException(400, "campaign_id is required")
 
@@ -151,7 +163,7 @@ async def api_import_from_pentest(request: Request):
     except Exception:
         raise HTTPException(404, "Campaign not found")
 
-    findings = body.get("findings") or get_campaign_findings(campaign_id) or []
+    findings = body.findings or get_campaign_findings(campaign_id) or []
 
     # Build documentation from pentest report + findings
     findings_text = "\n".join(

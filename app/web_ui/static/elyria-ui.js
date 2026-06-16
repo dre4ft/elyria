@@ -180,6 +180,7 @@
   var NAV_ITEMS = [
     { id: 'app',      label: 'Client API', path: '/app',      color: 'cyan' },
     { id: 'workflow', label: 'Workflows',  path: '/workflow', color: 'green' },
+    { id: 'ged',      label: 'GED',        path: '/ged',      color: 'violet' },
     { id: 'pentest',  label: 'Red Team',   path: '/pentest',  color: 'red' },
     { id: 'greyteam', label: 'Grey Team',  path: '/greyteam', color: 'gray' },
     { id: 'blueteam',   label: 'Blue Team',   path: '/blueteam',   color: 'blue' },

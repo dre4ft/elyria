@@ -11,6 +11,7 @@ import threading
 from core.logging import get_logger
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
 
 _log = get_logger("purpleteam.api")
 
@@ -35,27 +36,40 @@ _progress = {}
 # PROFILES
 # ═══════════════════════════════════════════
 
+class CreatePurpleProfileRequest(BaseModel):
+    name: str
+    repo_source: str = "github"
+    repo_url: str = ""
+    repo_auth_type: str = ""
+    repo_auth_key: str = ""
+    repo_branch: str = "main"
+    target_endpoint: str = ""
+    openapi_spec_url: str = ""
+    collection_id: str = ""
+    team_ids: str = ""
+    description: str = ""
+    scan_depth: str = "full"
+
 @app.post("/profiles")
-async def api_create_profile(request: Request):
-    body = await request.json()
-    name = body.get("name", "").strip()
+async def api_create_profile(body: CreatePurpleProfileRequest, request: Request):
+    name = body.name.strip()
     if not name:
         raise HTTPException(400, "name is required")
-    team_ids = body.get("team_ids", "") or get_auth_user_teams(request)
+    team_ids = body.team_ids or get_auth_user_teams(request)
     pid = create_profile(
         name=name,
-        repo_source=body.get("repo_source", "github"),
-        repo_url=body.get("repo_url", ""),
-        repo_auth_type=body.get("repo_auth_type", ""),
-        repo_auth_key=body.get("repo_auth_key", ""),
-        repo_branch=body.get("repo_branch", "main"),
-        target_endpoint=body.get("target_endpoint", ""),
-        openapi_spec_url=body.get("openapi_spec_url", ""),
-        collection_id=body.get("collection_id", ""),
+        repo_source=body.repo_source,
+        repo_url=body.repo_url,
+        repo_auth_type=body.repo_auth_type,
+        repo_auth_key=body.repo_auth_key,
+        repo_branch=body.repo_branch,
+        target_endpoint=body.target_endpoint,
+        openapi_spec_url=body.openapi_spec_url,
+        collection_id=body.collection_id,
         user_id=get_auth_user(request),
         team_ids=team_ids,
-        description=body.get("description", ""),
-        scan_depth=body.get("scan_depth", "full"),
+        description=body.description,
+        scan_depth=body.scan_depth,
     )
     return {"profile_id": pid}
 

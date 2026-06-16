@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Elyria
 
-from fastapi import APIRouter, Request, HTTPException, File, Form, UploadFile
+from fastapi import APIRouter, Request, HTTPException, Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import json
@@ -27,19 +27,28 @@ class UploadReq(BaseModel):
     target_url: str = "http://localhost:9000"
     team_id: str = ""
 
-
-
 class OpenapiUploadReq(BaseModel):
     target_url: str = "http://localhost:9000"
     team_id: str = ""
     inputs_values: str = ""
     openapi_url: str = ""
 
+def _parse_openapi_form(
+    target_url: str = Form("http://localhost:9000"),
+    team_id: str = Form(""),
+    inputs_values: str = Form(""),
+    openapi_url: str = Form(""),
+) -> OpenapiUploadReq:
+    return OpenapiUploadReq(target_url=target_url, team_id=team_id, inputs_values=inputs_values, openapi_url=openapi_url)
+
 @app.post("/openapi")
-async def upload(request: Request, target_url: str = Form("http://localhost:9000"), team_id: str = Form(""), inputs_values: str = Form(""), openapi_url: str = Form(""), file: UploadFile = None, openapi_file: UploadFile = None):
-    # Validate with Pydantic model
-    params = OpenapiUploadReq(target_url=target_url, team_id=team_id, inputs_values=inputs_values, openapi_url=openapi_url)
+async def upload(request: Request, params: OpenapiUploadReq = Depends(_parse_openapi_form), file: UploadFile = None, openapi_file: UploadFile = None):
     user_id = request.state.token
+    target_url = params.target_url
+    team_id = params.team_id
+    inputs_values = params.inputs_values
+    openapi_url = params.openapi_url
+
 
     # If no file but a URL is provided, fetch it
     if file is None and openapi_url:
@@ -60,6 +69,8 @@ async def upload(request: Request, target_url: str = Form("http://localhost:9000
     elif file is not None:
         file_type = _validate_file(file)
         content = file.file.read()
+        # Save original file to GED
+        _save_to_ged(file.filename or "spec", "openapi", content, user_id, f"Imported {file.filename or 'spec'}", file.filename or "")
         if file_type == "json":
             content_as_dict = json.loads(content)
         elif file_type == "yaml":
@@ -80,7 +91,7 @@ async def upload(request: Request, target_url: str = Form("http://localhost:9000
 
         # Route to Arazzo parser
         if arazzo_parser.validate_wrapper(content_as_dict):
-            # Parse optional inputs_values overrides from query param (JSON string)
+            # Parse optional inputs_values overrides (JSON string)
             inputs_vals = None
             try:
                 inputs_vals = json.loads(inputs_values) if inputs_values else None
@@ -131,6 +142,15 @@ async def upload(request: Request, target_url: str = Form("http://localhost:9000
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)[:200]}")
 
 
+def _save_to_ged(name: str, file_type: str, content: bytes, user_id: str, snippet: str = "", filename: str = ""):
+    """Persist imported file to GED (non-blocking)."""
+    try:
+        from database.ged_mgmt import create_document
+        create_document(name=name, file_type=file_type, user_id=user_id,
+                        file_content=content, snippet=snippet, original_filename=filename or name)
+    except Exception:
+        pass  # GED storage is best-effort, never block the main import
+
 # ── Postman / Bruno import ──────────────────────────────────────────────
 
 @app.post("/postman")
@@ -139,8 +159,10 @@ async def upload_postman(request: Request, file: UploadFile = File(...)):
     from doc_mgmt.postman.parser import parse_postman
     from database.collection_mgmt import create_folder, create_saved_request
 
-    raw = (await file.read()).decode("utf-8", errors="replace")
-    parsed = parse_postman(raw)
+    raw = await file.read()
+    _save_to_ged(file.filename or "postman_collection", "other", raw, user_id, "Postman collection", file.filename or "")
+    raw_str = raw.decode("utf-8", errors="replace")
+    parsed = parse_postman(raw_str)
 
     # Create folder tree
     folder_map = {}
@@ -171,8 +193,10 @@ async def upload_bruno(request: Request, file: UploadFile = File(...)):
     from doc_mgmt.bruno.parser import parse_bruno
     from database.collection_mgmt import create_saved_request
 
-    raw = (await file.read()).decode("utf-8", errors="replace")
-    parsed = parse_bruno(raw, file.filename or "")
+    raw = await file.read()
+    _save_to_ged(file.filename or "bruno_collection", "other", raw, user_id, "Bruno collection", file.filename or "")
+    raw_str = raw.decode("utf-8", errors="replace")
+    parsed = parse_bruno(raw_str, file.filename or "")
 
     count = 0
     for req in parsed.get("requests", []):

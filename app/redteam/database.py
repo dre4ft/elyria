@@ -518,7 +518,7 @@ def get_finding_detail_log(campaign_id, finding_id):
     """Return the most relevant scan log for a finding, matching by method first."""
     import re
     conn = _connect()
-    f = conn.execute("SELECT * FROM pentest_findings WHERE finding_id=?", (finding_id,)).fetchone()
+    f = conn.execute("SELECT * FROM pentest_findings WHERE finding_id=? AND campaign_id=?", (finding_id, campaign_id)).fetchone()
     if not f:
         conn.close()
         return None

@@ -20,9 +20,19 @@ def _invalidate_team_caches(team_id: str, user_id: str = ""):
 import json, uuid, math
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException
+from pydantic import BaseModel
 from database.connection import get_connection
 
 app = APIRouter(prefix="/api", tags=["teams"])
+
+class CreateTeamRequest(BaseModel):
+    name: str
+
+class FollowTeamRequest(BaseModel):
+    team_id: str = ""
+
+class SetFavProxyRequest(BaseModel):
+    proxy_id: str = ""
 
 def _now(): return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 def _conn():
@@ -88,9 +98,8 @@ def user_hub(request: Request):
 
 # ── Teams CRUD ──
 @app.post("/teams")
-async def create_team(request: Request):
-    body = await request.json()
-    name = body.get("name", "").strip()
+async def create_team(body: CreateTeamRequest, request: Request):
+    name = body.name.strip()
     if not name: raise HTTPException(400, "name required")
     uid = get_auth_user(request)
     tid = str(uuid.uuid4())
@@ -254,10 +263,9 @@ def unfollow_team(team_id: str, request: Request):
 
 # ── Proxy favorite ──
 @app.put("/user/proxy-favorite")
-async def set_fav_proxy(request: Request):
-    body = await request.json()
+async def set_fav_proxy(body: SetFavProxyRequest, request: Request):
     uid = get_auth_user(request)
-    pid = body.get("proxy_id")
+    pid = body.proxy_id
     c = _conn()
     if pid:
         c.execute("INSERT OR REPLACE INTO user_favorite_proxy (user_id,proxy_id) VALUES(?,?)", (uid, pid))

@@ -6,6 +6,7 @@ AI Provider configuration API — flash and pro slots, multi-provider.
 """
 
 from fastapi import APIRouter, Request, HTTPException
+from pydantic import BaseModel
 from core.auth import get_user
 from database.auth_utils import get_auth_user
 from database.ai_config_mgmt import (
@@ -18,6 +19,29 @@ from database.ai_config_mgmt import (
 )
 
 app = APIRouter(prefix="/api/ai-configs", tags=["ai-configs"])
+
+class ListModelsRequest(BaseModel):
+    provider_type: str = "openai"
+    base_url: str = ""
+    api_key: str = ""
+
+class UpdateConfigRequest(BaseModel):
+    name: str = None
+    slot: str = None
+    provider_type: str = None
+    base_url: str = None
+    api_key: str = None
+    model: str = None
+    is_default: bool = None
+
+class CreateConfigRequest(BaseModel):
+    slot: str = "pro"
+    name: str = ""
+    provider_type: str = "openai"
+    base_url: str = ""
+    api_key: str = ""
+    model: str = ""
+    is_default: bool = False
 
 
 def _mask_key(cfg):
@@ -33,14 +57,10 @@ def _mask_keys(configs):
 
 
 @app.post("/list-models")
-async def api_list_models_from_params(request: Request):
+async def api_list_models_from_params(body: ListModelsRequest, request: Request):
     get_user(request)
     """List models from raw provider params (no saved config needed)."""
-    body = await request.json()
-    provider_type = body.get("provider_type", "openai")
-    base_url = body.get("base_url", "")
-    api_key = body.get("api_key", "")
-    models = _fetch_models(provider_type, base_url, api_key)
+    models = _fetch_models(body.provider_type, body.base_url, body.api_key)
     return {"models": models}
 
 
@@ -203,15 +223,14 @@ async def api_get_default_slot(request: Request, slot: str):
 
 
 @app.post("")
-async def api_create_config(request: Request):
+async def api_create_config(body: CreateConfigRequest, request: Request):
     get_user(request)
     uid = get_auth_user(request)
-    body = await request.json()
-    slot = body.get("slot", "pro")
+    slot = body.slot
     if slot not in ("flash", "pro"):
         raise HTTPException(400, "slot must be 'flash' or 'pro'")
-    name = body.get("name", "").strip() or f"{slot.capitalize()} provider"
-    provider_type = body.get("provider_type", "openai")
+    name = body.name.strip() or f"{slot.capitalize()} provider"
+    provider_type = body.provider_type
     if provider_type not in ("openai", "ollama", "lmstudio"):
         raise HTTPException(400, "provider_type must be openai, ollama, or lmstudio")
     return {
@@ -219,10 +238,10 @@ async def api_create_config(request: Request):
             slot=slot,
             name=name,
             provider_type=provider_type,
-            base_url=body.get("base_url", ""),
-            api_key=body.get("api_key", ""),
-            model=body.get("model", ""),
-            is_default=body.get("is_default", False),
+            base_url=body.base_url,
+            api_key=body.api_key,
+            model=body.model,
+            is_default=body.is_default,
             user_id=uid,
         )
     }
@@ -288,14 +307,13 @@ async def api_get_config(request: Request, config_id: str):
 
 
 @app.put("/{config_id}")
-async def api_update_config(config_id: str, request: Request):
+async def api_update_config(config_id: str, body: UpdateConfigRequest, request: Request):
     get_user(request)
     uid = get_auth_user(request)
     cfg = get_provider_config(config_id, user_id=uid)
     if not cfg:
         raise HTTPException(404, "Config not found")
-    body = await request.json()
-    updates = {k: v for k, v in body.items() if v is not None}
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates.get("api_key") or updates["api_key"] == "****":
         updates.pop("api_key", None)
     update_provider_config(config_id, user_id=uid, **updates)

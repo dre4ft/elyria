@@ -780,6 +780,24 @@ function setupArazzoImport() {
 
   // Import button
   dom.arazzoImportBtn.addEventListener('click', () => doArazzoImport());
+
+  // GED button
+  const arazzoGedBtn = $('#arazzo-from-ged');
+  if (arazzoGedBtn) {
+    arazzoGedBtn.addEventListener('click', () => {
+      if (typeof window.openGedPicker === 'function') {
+        window.openGedPicker(async (doc) => {
+          try {
+            const res = await fetch('/api/ged/' + doc.doc_id + '/download', { headers: { ...getAuthHeader() } });
+            if (!res.ok) { alert('Failed to fetch document from GED'); return; }
+            const blob = await res.blob();
+            const file = new File([blob], doc.name, { type: blob.type || 'application/yaml' });
+            selectArazzoFile(file);
+          } catch (e) { alert('GED error: ' + e.message); }
+        });
+      }
+    });
+  }
 }
 
 function openArazzoModal() {
