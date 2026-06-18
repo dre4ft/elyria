@@ -6,9 +6,21 @@
 import json, uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException
+from pydantic import BaseModel
 from database.connection import get_connection
 
 app = APIRouter(prefix="/api/proxies", tags=["proxies"])
+
+class CreateProxyRequest(BaseModel):
+    name: str = ""
+    url: str
+    team_ids: str = ""
+
+class UpdateProxyRequest(BaseModel):
+    name: str = None
+    url: str = None
+    enabled: bool = None
+    team_ids: str = None
 
 def _now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -49,15 +61,14 @@ def list_proxies(request: Request):
     return [dict(r) for r in rows]
 
 @app.post("")
-async def create_proxy(request: Request):
-    body = await request.json()
-    name = body.get("name","").strip()
-    url = body.get("url","").strip()
+async def create_proxy(body: CreateProxyRequest, request: Request):
+    name = body.name.strip()
+    url = body.url.strip()
     if not url: raise HTTPException(400, "url required")
     c = _conn()
     pid = str(uuid.uuid4())
     c.execute("INSERT INTO proxies (proxy_id,name,url,user_id,team_ids,created_at) VALUES(?,?,?,?,?,?)",
-              (pid, name or url, url, get_auth_user(request), body.get("team_ids",""), _now()))
+              (pid, name or url, url, get_auth_user(request), body.team_ids, _now()))
     c.commit(); c.close()
     return {"proxy_id": pid}
 
@@ -74,11 +85,13 @@ def get_favorite(request: Request):
     c.close()
     return {"proxy": dict(row) if row else None}
 
+class SetFavoriteRequest(BaseModel):
+    proxy_id: str = ""
+
 @app.put("/favorite")
-async def set_favorite(request: Request):
-    body = await request.json()
+async def set_favorite(body: SetFavoriteRequest, request: Request):
     uid = get_auth_user(request)
-    proxy_id = body.get("proxy_id")  # None or "" = clear favorite
+    proxy_id = body.proxy_id or None  # None or "" = clear favorite
     c = _conn()
     if proxy_id:
         # Preserve existing enabled flag if present
@@ -98,11 +111,13 @@ def get_proxy_toggle(request: Request):
     c.close()
     return {"enabled": bool(row[0]) if row else False}
 
+class ToggleProxyRequest(BaseModel):
+    enabled: bool = True
+
 @app.put("/toggle")
-async def set_proxy_toggle(request: Request):
-    body = await request.json()
+async def set_proxy_toggle(body: ToggleProxyRequest, request: Request):
     uid = get_auth_user(request)
-    enabled = 1 if body.get("enabled", True) else 0
+    enabled = 1 if body.enabled else 0
     c = _conn()
     # Only update if a row exists (proxy must be set as favorite first)
     row = c.execute("SELECT user_id FROM user_favorite_proxy WHERE user_id=?", (uid,)).fetchone()

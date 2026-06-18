@@ -28,6 +28,29 @@ app = APIRouter(prefix="/api/ely", tags=["ely"])
 
 
 
+class PreferencesRequest(BaseModel):
+    preferred_provider: str = ""
+    preferred_model: str = ""
+
+class DiaryCreateRequest(BaseModel):
+    page: str = ""
+    title: str = ""
+    content: str = ""
+    context_url: str = ""
+    tags: list = None
+
+class DiarySnapshotRequest(BaseModel):
+    page: str = "app"
+    url: str = ""
+    method: str = ""
+    status_code: int = 0
+    response_preview: str = ""
+
+class DiaryUpdateRequest(BaseModel):
+    title: str = None
+    content: str = None
+    tags: list = None
+
 class ChatMessage(BaseModel):
     page: str = "app"
     message: str = ""
@@ -170,20 +193,16 @@ _PAGE_THEME = {
 
 
 @diary_app.post("")
-async def api_diary_create(request: Request):
+async def api_diary_create(body: DiaryCreateRequest, request: Request):
     user_id = get_user_id(request)
-    try:
-        body = await request.json()
-    except Exception:
-        return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
     from ely.diary_database import diary_create
     did = diary_create(
         user_id=user_id,
-        page=body.get("page", ""),
-        title=body.get("title", ""),
-        content=body.get("content", ""),
-        context_url=body.get("context_url", ""),
-        tags=body.get("tags"),
+        page=body.page,
+        title=body.title,
+        content=body.content,
+        context_url=body.context_url,
+        tags=body.tags,
     )
     return {"diary_id": did}
 
@@ -215,22 +234,18 @@ async def api_diary_count(request: Request):
 
 
 @diary_app.post("/snapshot")
-async def api_diary_snapshot(request: Request):
+async def api_diary_snapshot(body: DiarySnapshotRequest, request: Request):
     from ely.diary_database import diary_create
     from ely.agent import get_context_for_page
     user_id = get_user_id(request)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    page = body.get("page", "app")
+    page = body.page
     theme = _PAGE_THEME.get(page, "notes")
     context = get_context_for_page(page, request)
 
-    context_url = body.get("url", "")
-    method = body.get("method", "")
-    status_code = body.get("status_code", 0)
-    response_preview = body.get("response_preview", "")
+    context_url = body.url
+    method = body.method
+    status_code = body.status_code
+    response_preview = body.response_preview
 
     parts = [f"## Snapshot — {page}"]
     if method and context_url:
@@ -265,14 +280,11 @@ async def api_diary_get(diary_id: str, request: Request):
 
 
 @diary_app.put("/{diary_id}")
-async def api_diary_update(diary_id: str, request: Request):
+async def api_diary_update(diary_id: str, body: DiaryUpdateRequest, request: Request):
     from ely.diary_database import diary_update
     user_id = get_user_id(request)
-    try:
-        body = await request.json()
-    except Exception:
-        return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
-    entry = diary_update(diary_id, user_id, **body)
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    entry = diary_update(diary_id, user_id, **updates)
     if not entry:
         return JSONResponse(status_code=404, content={"detail": "Not found"})
     return entry

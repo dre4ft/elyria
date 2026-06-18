@@ -265,6 +265,8 @@ def _send_request(protocol="http", host="127.0.0.1", port=8000, raw_request=""):
 
 
 def handle_raw(user_id: str, url: str, request: str,is_done_by_ai:bool=False):
+    from core.security import validate_url_or_raise
+    validate_url_or_raise(url)
     request_uuid = _generate_request_uuid()
     author = user_id
 

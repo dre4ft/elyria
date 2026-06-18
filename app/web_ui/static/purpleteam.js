@@ -540,7 +540,7 @@
       var partLabel = partLabels[part] || 'PRAC';
       var isAI = f.category === 'ai_discovered';
       var aiBadge = isAI ? '<span class="px-1 py-0 rounded text-[8px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">AI</span>' : '';
-      return '<div class="finding-row px-5 py-2.5 flex items-center gap-3 text-[12px] cursor-pointer" onclick="window._showDetail(\'' + f.finding_id + '\')">' +
+      return '<div class="finding-row px-5 py-2.5 flex items-center gap-3 text-[12px] cursor-pointer" onclick="window._showDetail(\'' + esc(f.finding_id).replace(/\\/g, '\\\\') + '\')">' +
         '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ' + (sevColors[f.severity] || sevColors.info) + '">' + esc(f.severity) + '</span>' +
         '<span class="text-[9px] text-gray-600 font-mono w-8">' + partLabel + '</span>' +
         aiBadge +

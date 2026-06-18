@@ -72,6 +72,12 @@ class WorkflowCreateRequest(BaseModel):
     description: str = ""
     team_id: str = ""
 
+class WorkflowUpdateRequest(BaseModel):
+    name: str = None
+    graph: dict = None
+    description: str = None
+    team_id: str = None
+
 @app.post("")
 async def api_save_workflow(_request: WorkflowCreateRequest, request: Request):
     name = _request.name
@@ -117,20 +123,19 @@ async def api_get_workflow(workflow_id: str, request: Request):
 
 
 @app.put("/{workflow_id}")
-async def api_update_workflow(workflow_id: str, request: Request):
+async def api_update_workflow(workflow_id: str, body: WorkflowUpdateRequest, request: Request):
     wf = get_workflow(workflow_id)
     _verify_ownership(wf, get_auth_user(request), get_auth_user_teams(request))
-    body = await request.json()
-    graph = body.get("graph", wf["graph"])
+    graph = body.graph if body.graph is not None else wf["graph"]
     _validate_graph_expressions(graph)
-    team_id = body.get("team_id", wf.get("team_id", ""))
+    team_id = body.team_id if body.team_id is not None else wf.get("team_id", "")
     if team_id and team_id != wf.get("team_id", ""):
         _verify_team_membership(team_id, get_auth_user(request))
     update_workflow(
         workflow_id,
-        name=body.get("name", wf["name"]),
+        name=body.name if body.name is not None else wf["name"],
         graph=graph,
-        description=body.get("description", wf.get("description", "")),
+        description=body.description if body.description is not None else wf.get("description", ""),
         team_id=team_id,
     )
     _audit("workflow.update", user_id=get_auth_user(request), resource_id=workflow_id, resource_type="workflow", team_id=team_id)

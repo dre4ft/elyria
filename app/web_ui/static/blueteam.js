@@ -274,6 +274,29 @@ async function createProfile() {
 function setupOpenAPIDrop() {
   const zone = $('#bt-openapi-drop-zone');
   const input = $('#bt-modal-openapi-file');
+
+  // GED picker button
+  const gedBtn = $('#bt-from-ged');
+  if (gedBtn) {
+    gedBtn.addEventListener('click', function () {
+      if (typeof window.openGedPicker === 'function') {
+        window.openGedPicker(async function (doc) {
+          try {
+            const res = await fetch('/api/ged/' + doc.doc_id + '/download', { headers: getAuthHeader() });
+            if (!res.ok) { alert('Failed to fetch from GED'); return; }
+            const blob = await res.blob();
+            const file = new File([blob], doc.name, { type: blob.type || 'application/json' });
+            if (input) {
+              const dt = new DataTransfer();
+              dt.items.add(file);
+              input.files = dt.files;
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          } catch (e) { alert('GED error: ' + e.message); }
+        });
+      }
+    });
+  }
   if(!zone||!input) return;
   const show = (name) => {
     $('#bt-openapi-drop-content').classList.add('hidden');

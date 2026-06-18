@@ -87,6 +87,12 @@ def search_engine(query: str) -> str | list[dict]:
         "Accept-Language": "fr,fr-FR;q=0.9,en;q=0.8",
     }
 
+    from core.config import get as _cfg
+    blocked = _cfg("security", "blocked_urls", [])
+    if DDG_LITE_URL in blocked:
+        _log.error(f"Search URL is blocked by config: {DDG_LITE_URL}")
+        return "Error: search engine blocked by configuration"
+
     try:
         resp = requests.post(DDG_LITE_URL, data=params, headers=headers, timeout=15, verify=True)
     except requests.exceptions.RequestException as e:

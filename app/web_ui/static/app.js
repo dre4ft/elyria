@@ -199,6 +199,7 @@ const dom = {
   btnDocModalClose: $('#btn-doc-modal-close'),
   btnDocModalCancel:$('#btn-doc-modal-cancel'),
   btnDocModalUpload:$('#btn-doc-modal-upload'),
+  btnDocFromGed:    $('#btn-doc-from-ged'),
   btnOpenDocs:      $('#btn-open-docs'),
   docTargetServer:  $('#doc-target-server'),
 
@@ -1563,7 +1564,7 @@ function renderHistoryLog() {
     const row = document.createElement('div');
     row.className = 'history-log-row';
     row.dataset.hid = entry.id;
-    row.innerHTML = `<span class="hl-method ${mC}">${entry.method}</span>
+    row.innerHTML = `<span class="hl-method ${mC}">${escapeHtml(entry.method)}</span>
       <span class="hl-status ${scC}">${sc || '—'}</span>
       <span class="hl-path" title="${escapeHtml(entry.url||'')}">${escapeHtml(path)}</span>
       <span class="hl-time">${time}</span>
@@ -1656,7 +1657,7 @@ async function replayHistoryEntry(entry) {
     const resp = data.response || data;
     const statusCode = resp.status_code || 0;
     const respBody = resp.body || '';
-    if (resultEl) resultEl.innerHTML = `<span class="${statusCode >= 400 ? 'text-red-400' : 'text-green-400'} font-bold">${statusCode}</span> — ${respBody.substring(0, 500)}`;
+    if (resultEl) resultEl.innerHTML = `<span class="${statusCode >= 400 ? 'text-red-400' : 'text-green-400'} font-bold">${statusCode}</span> — ${escapeHtml(respBody.substring(0, 500))}`;
     _notifyRequestComplete({
       id: data.request_uuid || generateId(), method, url, statusCode,
       reqHeaders: headers, reqBody: body, reqParams: [],
@@ -1821,6 +1822,35 @@ function setupDocModal() {
 
   // Upload button
   dom.btnDocModalUpload.addEventListener('click', uploadDocument);
+
+  // GED button — pick a document from GED
+  if (dom.btnDocFromGed) {
+    dom.btnDocFromGed.addEventListener('click', function () {
+      if (typeof window.openGedPicker === 'function') {
+        window.openGedPicker(async function (doc) {
+          // Fetch the document content and upload it as an OpenAPI spec
+          try {
+            var res = await fetch('/api/ged/' + doc.doc_id + '/download', { headers: getAuthHeader() });
+            if (!res.ok) { showDocMsg('Failed to fetch document from GED', 'error'); return; }
+            var blob = await res.blob();
+            var file = new File([blob], doc.name, { type: blob.type || 'application/json' });
+            selectedDocFile = file;
+            dom.docDropContent.classList.add('hidden');
+            dom.docFileSelected.classList.remove('hidden');
+            dom.docFileName.textContent = doc.name;
+            dom.docFileSize.textContent = formatFileSize(file.size);
+            dom.docMsg.classList.add('hidden');
+            dom.btnDocModalUpload.disabled = false;
+            dom.docDropZone.classList.add('border-violet-500/30');
+          } catch (e) {
+            showDocMsg('Erreur: ' + e.message, 'error');
+          }
+        });
+      } else {
+        showDocMsg('GED non disponible sur cette page', 'error');
+      }
+    });
+  }
 
   // Escape key to close
   document.addEventListener('keydown', (e) => {

@@ -27,6 +27,10 @@ import time
 
 from fastapi import Request, APIRouter
 from fastapi.responses import JSONResponse, HTMLResponse
+from pydantic import BaseModel
+
+class GateRequest(BaseModel):
+    key: str = ""
 
 
 GATE_COOKIE = "elyria_gate"
@@ -162,18 +166,13 @@ async def serve_gate_page():
 
 
 @gate_app.post("/gate")
-async def validate_gate(request: Request):
+async def validate_gate(body: GateRequest, request: Request):
     """Validate the gate key. Hard-capped deadline for timing attack prevention."""
     t0 = time.perf_counter()
-    try:
-        body = await request.json()
-    except Exception:
-        return JSONResponse(status_code=404, content={"detail": "Not Found"})
-
     if _deadline_exceeded(t0):
         return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
-    key = (body.get("key") or "").strip().lower()
+    key = body.key.strip().lower()
 
     if not KEY_PATTERN.match(key):
         return JSONResponse(status_code=404, content={"detail": "Not Found"})

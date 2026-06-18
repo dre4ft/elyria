@@ -23,6 +23,7 @@ from auth_users.oidc_api import app as oidc_router
 from ely.api import app as ely_router
 from ely.api import diary_app as ely_diary_router
 from purpleteam.api import app as purpleteam_router
+from database.ged_api import app as ged_router
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -95,7 +96,7 @@ async def check_authorization(request: Request, call_next):
     # HTML shells (/app, /workflow, etc.) are served without auth so the SPA
     # can load auth.js — client-side auth handles the rest.
     PUBLIC_ROUTES = {
-        "/", "/login", "/app", "/workflow", "/pentest", "/greyteam", "/hub", "/doc", "/blueteam", "/purpleteam", "/m", "/gate",
+        "/", "/login", "/app", "/workflow", "/pentest", "/greyteam", "/hub", "/doc", "/blueteam", "/purpleteam", "/ged", "/m", "/gate",
         "/api/user/login", "/api/user/create", "/api/user/refresh",
         "/api/user/verify-email", "/api/user/resend-code",
         "/api/user/reset-password", "/api/user/reset-password/confirm",
@@ -161,8 +162,12 @@ async def serve_login():
 
 def _serve_html(filename: str) -> HTMLResponse:
     """Serve an HTML file. In production mode, inject cache-busting version."""
+    safe_name = os.path.basename(filename)
+    if safe_name != filename or ".." in filename:
+        from fastapi.responses import Response
+        return Response(status_code=404)
     try:
-        with open(f"web_ui/{filename}", "r") as f:
+        with open(f"web_ui/{safe_name}", "r") as f:
             html = f.read()
         if os.getenv("ELYRIA_PRODUCTION", "") == "1":
             # Cache-busting: use file mtime as version
@@ -185,7 +190,7 @@ def _serve_html(filename: str) -> HTMLResponse:
                           f'<link rel="stylesheet" href="static/bundle.min.css?v={v}">', html)
             for script_src in ["static/auth.js", "static/app.js",
                                "static/workflow.js", "static/pentest.js", "static/blueteam.js",
-                               "static/greyteam.js", "static/doc.js", "static/hub.js"]:
+                               "static/greyteam.js", "static/doc.js", "static/hub.js", "static/ged.js"]:
                 html = re.sub(rf'<script src="{script_src}"[^>]*></script>', '', html)
             html = html.replace('</head>',
                                 f'\n  <link rel="stylesheet" href="static/bundle.min.css?v={v}">\n</head>')
@@ -232,12 +237,17 @@ async def serve_doc():
 async def serve_purpleteam():
     return _serve_html("purpleteam.html")
 
+@app.get("/ged")
+async def serve_ged():
+    return _serve_html("ged.html")
+
 
 @app.get("/api/doc")
 async def get_doc(lang: str = "fr"):
     filename = "guide-utilisateur-en.md" if lang == "en" else "guide-utilisateur.md"
+    path = os.path.join("..", "doc", filename)
     try:
-        with open(f"../doc/{filename}", "r") as f:
+        with open(path, "r") as f:
             return JSONResponse(content={"content": f.read(), "lang": lang})
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Documentation file not found")
@@ -266,6 +276,7 @@ app.include_router(oidc_router)
 app.include_router(ely_router)
 app.include_router(ely_diary_router)
 app.include_router(purpleteam_router)
+app.include_router(ged_router)
 from database.ctx_api import app as ctx_router
 app.include_router(ctx_router)
 
