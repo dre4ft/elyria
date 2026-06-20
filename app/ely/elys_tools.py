@@ -466,6 +466,51 @@ async def browser_click_tool(args, request):
 
 
 
+@_action("ely_list_document", "list documents in the GED (Gestion Electronique de Documents) storage",
+            {"team_id": {"type": "string", "description": "Optional team ID to filter documents, empty for personnal doc "},"search": {"type": "string", "description": "Optional search term to filter documents by name or content"},"file_type":{"type": "string", "description": "file type of the document ; markdown, openapi, arazzo, other"}})
+async def list_documents_tool(args, request):
+    from doc_mgmt.database import list_documents
+    from core.auth import get_user, get_user_teams
+    user_id = get_user(request)
+    user_teams = get_user_teams(request)
+    team_id = args.get("team_id", None)
+    if team_id and team_id not in user_teams.split(","):
+        return{"error" : "Not a member of the specified team"}
+    search = args.get("search", None)
+    limit = 15
+    file_type = args.get("file_type", None)
+    return list_documents(user_id,team_id,file_type,search,limit)
+
+
+
+@_action("ely_get_document", "get documents in the GED (Gestion Electronique de Documents) storage",
+            {"team_id": {"type": "string", "description": "Optional team ID to filter documentsempty for personnal doc" },"doc_id":{"type": "string", "description": "id of the document"}})
+async def list_documents_tool(args, request):
+    from doc_mgmt.database import get_document,get_document_owner
+    from core.auth import get_user, get_user_teams
+    _STORAGE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "doc_mgmt", "ged_storage")
+    os.makedirs(_STORAGE, exist_ok=True)
+    def _storage_path(doc_id):
+        return os.path.join(_STORAGE, f"{doc_id}.md")   
+    user_id = get_user(request)
+    user_teams = get_user_teams(request)
+    doc_id = args.get("doc_id", None)
+    team_id = args.get("team_id", None)
+    doc = get_document(doc_id)
+    if not doc:
+        return None
+    owner_id = get_document_owner(doc_id)
+    if owner_id != user_id:
+         return "Not the owner of the document"
+    if team_id and team_id not in user_teams.split(","):
+        return "Not a member of the specified team"
+    try:
+        with open(_storage_path(doc_id), "rb") as f:
+            content = f.read()
+        return content
+    except FileNotFoundError:
+        return None
+
 # ═══════════════════════════════════════════════════════════════
 # Diary tools — available on all pages
 # ═══════════════════════════════════════════════════════════════
@@ -642,14 +687,14 @@ def get_action_definitions(page=None):
     if not page:
         return all_defs
     page_actions = {
-        "app":      ["ely_create_request", "ely_create_collection", "ely_get_request_result", "ely_request_ctx", "ely_send_raw_request", "ely_send_request", "ely_list_resources", "ely_bash", "ely_fuzz","ely_browser_query", "ely_browser_click", "ely_search_engine"],
-        "workflow": ["ely_create_workflow", "ely_list_resources","ely_bash", "ely_fuzz"],
-        "pentest":  ["ely_run_scan", "ely_get_findings", "ely_list_resources", "ely_bash", "ely_fuzz","ely_browser_query", "ely_browser_click", "ely_search_engine"],
-        "greyteam": ["ely_osint_scan", "ely_get_findings", "ely_list_resources", "ely_bash","ely_browser_query", "ely_browser_click", "ely_search_engine"],
-        "blueteam": ["ely_blueteam_analyze", "ely_get_findings", "ely_list_resources", "ely_bash"],
+        "app":      ["ely_create_request", "ely_create_collection", "ely_get_request_result", "ely_request_ctx", "ely_send_raw_request", "ely_send_request", "ely_list_resources", "ely_bash", "ely_fuzz","ely_browser_query", "ely_browser_click", "ely_search_engine","ely_list_document","ely_get_document"],
+        "workflow": ["ely_create_workflow", "ely_list_resources","ely_bash", "ely_fuzz","ely_list_document","ely_get_document"],
+        "pentest":  ["ely_run_scan", "ely_get_findings", "ely_list_resources", "ely_bash", "ely_fuzz","ely_browser_query", "ely_browser_click", "ely_search_engine","ely_list_document","ely_get_document"],
+        "greyteam": ["ely_osint_scan", "ely_get_findings", "ely_list_resources", "ely_bash","ely_browser_query", "ely_browser_click", "ely_search_engine","ely_list_document","ely_get_document"],
+        "blueteam": ["ely_blueteam_analyze", "ely_get_findings", "ely_list_resources", "ely_bash","ely_list_document","ely_get_document"],
         "hub":      ["ely_list_resources", "ely_create_collection"],
         "doc":        ["ely_get_doc", "ely_list_doc_pages", "ely_search_engine"],
-        "purpleteam": ["ely_purpleteam_scan", "ely_purpleteam_get_findings", "ely_list_resources", "ely_bash"],
+        "purpleteam": ["ely_purpleteam_scan", "ely_purpleteam_get_findings", "ely_list_resources", "ely_bash","ely_list_document","ely_get_document"],
     }
     diary_tools = ["ely_diary_add", "ely_diary_query", "ely_diary_list", "ely_diary_get", "ely_diary_delete"]
     allowed = set(page_actions.get(page, [])) | set(diary_tools)
