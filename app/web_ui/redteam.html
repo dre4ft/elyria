@@ -335,20 +335,65 @@
 
           <!-- Tab: Auth -->
           <div id="mtab-auth" class="mtab-panel hidden">
-            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Bearer Token</label>
-            <input id="modal-bearer" type="text" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 mb-3" placeholder="eyJhbGciOiJIUzUxMiJ9..." />
-            <div class="flex items-center gap-2 mb-4">
-              <select id="modal-wf-select" class="flex-1 h-8 px-2 rounded-lg bg-base-700 border border-white/8 text-[10px] text-gray-400 focus:outline-none focus:border-emerald-500/40">
-                <option value="">— Workflow OAuth —</option>
-              </select>
-              <button id="btn-wf-fetch-token" class="h-8 px-3 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/15 hover:border-emerald-500/30 text-emerald-400 hover:text-emerald-300 text-[10px] font-medium transition-all flex items-center gap-1.5 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed">
-                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
-                Recuperer
-              </button>
+            <!-- Auth Type Selector -->
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Type d'authentification</label>
+            <select id="modal-auth-type" onchange="toggleAuthFields()" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-sm text-gray-200 focus:outline-none focus:border-red-500/40 mb-3">
+              <option value="jwt_bearer">JWT Bearer</option>
+              <option value="opaque_token">Jeton d'accès opaque</option>
+              <option value="jwe">JWE (Jeton encrypté)</option>
+              <option value="cookie">Cookie de session</option>
+              <option value="custom">Header personnalisé</option>
+            </select>
+
+            <!-- Bearer Token / Opaque Token -->
+            <div id="auth-bearer-fields">
+              <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Token</label>
+              <input id="modal-bearer" type="text" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 mb-3" placeholder="eyJhbGciOiJIUzUxMiJ9..." />
+              <div class="flex items-center gap-2 mb-4">
+                <select id="modal-wf-select" class="flex-1 h-8 px-2 rounded-lg bg-base-700 border border-white/8 text-[10px] text-gray-400 focus:outline-none focus:border-emerald-500/40">
+                  <option value="">— Workflow OAuth —</option>
+                </select>
+                <button id="btn-wf-fetch-token" class="h-8 px-3 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/15 hover:border-emerald-500/30 text-emerald-400 hover:text-emerald-300 text-[10px] font-medium transition-all flex items-center gap-1.5 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
+                  Récupérer
+                </button>
+              </div>
+              <div id="modal-wf-status" class="text-[9px] text-gray-600 mb-3 hidden"></div>
             </div>
-            <div id="modal-wf-status" class="text-[9px] text-gray-600 mb-3 hidden"></div>
-            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Headers personnalisés (JSON)</label>
-            <textarea id="modal-headers" class="w-full h-24 px-3 py-2 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 resize-none" placeholder='{"X-API-Key": "sk_live_...", "X-Team": "red"}'></textarea>
+
+            <!-- JWE fields -->
+            <div id="auth-jwe-fields" class="hidden">
+              <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">JWE Token (encrypté)</label>
+              <textarea id="modal-jwe-token" class="w-full h-20 px-3 py-2 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 resize-none mb-3" placeholder="eyJhbGciOiJBMTI4S1ciLCJlbmMiOiJBMTI4R0NNIn0..."></textarea>
+              <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Clé de déchiffrement</label>
+              <input id="modal-jwe-key" type="text" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 mb-2" placeholder="Base64 ou clé en texte" />
+              <select id="modal-jwe-key-type" class="w-full h-8 px-2 rounded-lg bg-base-700 border border-white/8 text-[10px] text-gray-400 focus:outline-none focus:border-red-500/40 mb-3">
+                <option value="symmetric">Symétrique (AES)</option>
+                <option value="private_key">Clé privée (RSA/EC)</option>
+              </select>
+            </div>
+
+            <!-- Cookie fields -->
+            <div id="auth-cookie-fields" class="hidden">
+              <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Nom du cookie</label>
+              <input id="modal-cookie-name" type="text" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 mb-3" placeholder="session" />
+              <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Valeur du cookie</label>
+              <input id="modal-cookie-value" type="text" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 mb-2" placeholder="abc123..." />
+              <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Domaine (optionnel)</label>
+              <input id="modal-cookie-domain" type="text" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 mb-3" placeholder=".example.com" />
+            </div>
+
+            <!-- Custom Header fields -->
+            <div id="auth-custom-fields" class="hidden">
+              <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Nom du header</label>
+              <input id="modal-custom-header-name" type="text" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 mb-3" placeholder="X-API-Key" />
+              <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Valeur du header</label>
+              <input id="modal-custom-header-value" type="text" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 mb-3" placeholder="sk_live_..." />
+            </div>
+
+            <!-- Headers personnalisés (tous types) -->
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Headers supplémentaires (JSON)</label>
+            <textarea id="modal-headers" class="w-full h-20 px-3 py-2 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 resize-none" placeholder='{"X-Team": "red"}'></textarea>
           </div>
 
           <!-- Tab: OpenAPI -->

@@ -9,6 +9,7 @@ Phase 2b: Pro model deep-analyzes results (with reasoning).
 
 import asyncio
 import json
+from redteam.auth_utils import resolve_auth, get_auth_description
 import re
 import time
 from urllib.parse import urljoin
@@ -210,7 +211,7 @@ class AIScanner:
         self.campaign_id = campaign_id
         self.target = target_url.rstrip("/")
         self.user_id = user_id
-        self.auth = auth_config or {}
+        self.auth = resolve_auth(auth_config or {})
         self.findings_ref = deterministic_findings or []
         self.collection_requests = collection_requests or []
         self.id_list = id_list or {}
@@ -239,11 +240,32 @@ class AIScanner:
     def _setup_session(self):
         self.session = requests.Session()
         self.session.timeout = 15
+        auth_type = self.auth.get("auth_type", "none")
+
+        # Custom headers always applied first
         for k, v in (self.auth.get("headers") or {}).items():
             self.session.headers[k] = v
-        token = self.auth.get("bearer_token")
-        if token:
-            self.session.headers["Authorization"] = f"Bearer {token}"
+
+        if auth_type in ("jwt_bearer", "opaque_token", "jwe"):
+            token = self.auth.get("bearer_token")
+            if token:
+                self.session.headers["Authorization"] = f"Bearer {token}"
+        elif auth_type == "cookie":
+            cookie_name = self.auth.get("cookie_name", "session")
+            cookie_value = self.auth.get("cookie_value", "")
+            if cookie_name and cookie_value:
+                self.session.headers["Cookie"] = f"{cookie_name}={cookie_value}"
+        elif auth_type == "custom":
+            h_name = self.auth.get("custom_header_name", "")
+            h_value = self.auth.get("custom_header_value", "")
+            if h_name and h_value:
+                self.session.headers[h_name] = h_value
+        elif auth_type == "basic":
+            basic_user = self.auth.get("basic_user")
+            basic_pass = self.auth.get("basic_pass")
+            if basic_user and basic_pass:
+                self.session.auth = (basic_user, basic_pass)
+
         proxy = self.auth.get("proxy")
         if proxy:
             self.session.proxies = {"http": proxy, "https": proxy}
@@ -621,7 +643,7 @@ class AIScanner:
         system = {"role": "system", "content": f"""You are an expert API penetration testing agent with tool access.
 
 TARGET: {self.target}
-AUTH: {'Bearer token configured — make authenticated requests' if self.auth.get('bearer_token') else 'No auth configured'}
+AUTH: {get_auth_description(self.auth)}
 {context}
 
 CRITICAL: You have SIX tools. MAXIMIZE every response — call MULTIPLE tools or batch commands.

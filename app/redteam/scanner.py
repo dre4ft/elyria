@@ -63,12 +63,15 @@ def _load_wordlist():
     return sorted(paths)
 
 
+from redteam.auth_utils import resolve_auth
+
+
 # ── Scanner orchestrator ──
 class Scanner:
     def __init__(self, target_url, auth_config=None, progress_cb=None, log_cb=None,
                  id_list=None, collection_requests=None):
         self.target = target_url.rstrip("/")
-        self.auth = auth_config or {}
+        self.auth = resolve_auth(auth_config or {})
         self.progress_cb = progress_cb
         self.log_cb = log_cb
         self.id_list = id_list or {}
@@ -78,17 +81,31 @@ class Scanner:
         self._endpoints = None
 
     def _apply_auth(self):
+        auth_type = self.auth.get("auth_type", "none")
         headers = self.auth.get("headers", {})
         if headers:
             self.session.headers.update(headers)
-        token = self.auth.get("bearer_token")
-        if token:
-            self.session.headers["Authorization"] = f"Bearer {token}"
-        basic_user = self.auth.get("basic_user")
-        basic_pass = self.auth.get("basic_pass")
-        if basic_user and basic_pass:
-            self.session.auth = (basic_user, basic_pass)
-        # Apply proxy if provided in auth_config
+
+        if auth_type in ("jwt_bearer", "opaque_token", "jwe"):
+            token = self.auth.get("bearer_token")
+            if token:
+                self.session.headers["Authorization"] = f"Bearer {token}"
+        elif auth_type == "cookie":
+            cookie_name = self.auth.get("cookie_name", "session")
+            cookie_value = self.auth.get("cookie_value", "")
+            if cookie_name and cookie_value:
+                self.session.headers["Cookie"] = f"{cookie_name}={cookie_value}"
+        elif auth_type == "custom":
+            h_name = self.auth.get("custom_header_name", "")
+            h_value = self.auth.get("custom_header_value", "")
+            if h_name and h_value:
+                self.session.headers[h_name] = h_value
+        elif auth_type == "basic":
+            basic_user = self.auth.get("basic_user")
+            basic_pass = self.auth.get("basic_pass")
+            if basic_user and basic_pass:
+                self.session.auth = (basic_user, basic_pass)
+
         proxy = self.auth.get("proxy")
         if proxy:
             self.session.proxies = {"http": proxy, "https": proxy}
@@ -706,6 +723,12 @@ class Scanner:
 
     async def check_jwt(self):
         findings = []
+        auth_type = self.auth.get("auth_type", "none")
+
+        # Only check JWT structure for JWT bearer tokens (not opaque, cookie, or none)
+        if auth_type in ("cookie", "none", "opaque_token"):
+            return findings
+
         auth_header = self.session.headers.get("Authorization", "")
         token = None
         if auth_header.startswith("Bearer "):
@@ -716,17 +739,6 @@ class Scanner:
         if not token:
             return findings
 
-        parts = token.split(".")
-        if len(parts) != 3:
-            findings.append({
-                "title": "Malformed JWT token",
-                "description": "The JWT token does not have the standard 3-part header.payload.signature format.",
-                "severity": "low",
-                "category": "Broken Authentication",
-                "cwe_id": "CWE-287",
-            })
-            return findings
-
         import base64
 
         def _pad_decode(part):
@@ -735,6 +747,52 @@ class Scanner:
                 return json.loads(base64.urlsafe_b64decode(padded))
             except Exception:
                 return None
+
+        # JWE: check the original JWE structure first, then check decrypted inner JWT
+        if auth_type == "jwe":
+            jwe_token = self.auth.get("jwe_token", "")
+            if jwe_token:
+                jwe_parts = jwe_token.split(".")
+                if len(jwe_parts) != 5:
+                    findings.append({
+                        "title": "Malformed JWE token",
+                        "description": "The JWE token does not have the standard 5-part compact serialization format.",
+                        "severity": "low",
+                        "category": "Broken Authentication",
+                        "cwe_id": "CWE-287",
+                    })
+                else:
+                    jwe_header = _pad_decode(jwe_parts[0])
+                    if jwe_header:
+                        alg = jwe_header.get("alg", "")
+                        enc = jwe_header.get("enc", "")
+                        if alg == "dir":
+                            key_len = len(self.auth.get("jwe_key", ""))
+                            min_key = {"A128GCM": 16, "A192GCM": 24, "A256GCM": 32}.get(enc, 32)
+                            if key_len < min_key:
+                                findings.append({
+                                    "title": "JWE direct encryption key may be too short",
+                                    "description": f"JWE uses 'dir' (direct encryption) with {enc}. Key length is {key_len} bytes; {min_key} expected.",
+                                    "severity": "medium",
+                                    "category": "Broken Authentication",
+                                    "cwe_id": "CWE-327",
+                                })
+            # Now check the decrypted inner JWT
+            token = self.auth.get("bearer_token", "")
+            if not token:
+                return findings
+
+        parts = token.split(".")
+        if len(parts) != 3:
+            if auth_type == "jwt_bearer":
+                findings.append({
+                    "title": "Malformed JWT token",
+                    "description": "The JWT token does not have the standard 3-part header.payload.signature format.",
+                    "severity": "low",
+                    "category": "Broken Authentication",
+                    "cwe_id": "CWE-287",
+                })
+            return findings
 
         header = _pad_decode(parts[0])
         payload = _pad_decode(parts[1])
@@ -752,13 +810,17 @@ class Scanner:
                     "cwe_id": "CWE-347",
                 })
             if alg.lower().startswith("hs") and len(self.auth.get("jwt_secret", "")) < 32:
-                # Heuristic: warn about weak HMAC secrets
-                pass
+                findings.append({
+                    "title": "JWT uses weak HMAC secret",
+                    "description": "The JWT uses an HMAC algorithm but the configured secret is short (< 32 chars), making it vulnerable to brute-force.",
+                    "severity": "medium",
+                    "category": "Broken Authentication",
+                    "remediation": "Use a long, random secret (at least 32 bytes) for HMAC algorithms.",
+                    "cvss_score": 6.5,
+                    "cwe_id": "CWE-327",
+                })
 
         if payload:
-            if "exp" in payload:
-                # Could check if exp is unreasonably far in the future
-                pass
             if "iat" not in payload:
                 findings.append({
                     "title": "JWT missing 'iat' claim",

@@ -39,6 +39,7 @@ from redteam.scanner import Scanner
 from redteam.report_generator import generate_report
 from redteam.ai_enhancer import analyze_findings
 from redteam.ai_scanner import AIScanner
+from redteam.auth_utils import resolve_auth
 from pydantic import BaseModel
 import ipaddress
 import json
@@ -85,6 +86,8 @@ async def api_create_profile(_request : ProfileCreateRequest, request: Request):
         raise HTTPException(400, "name and target_url are required")
     team_ids = _request.team_ids if isinstance(_request.team_ids, list) else get_auth_user_teams(request)
     auth_config = _request.auth_config if isinstance(_request.auth_config, dict) else None
+    if auth_config:
+        auth_config = resolve_auth(auth_config)
     id_list = _request.id_list if isinstance(_request.id_list, dict) else None
     pid = create_profile(
         name=name, target_url=target_url,
@@ -144,6 +147,8 @@ async def api_update_profile(profile_id: str, request: Request):
     if not p: raise HTTPException(404, "Profile not found")
     _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
     body = await request.json()
+    if "auth_config" in body and isinstance(body["auth_config"], dict):
+        body["auth_config"] = resolve_auth(body["auth_config"])
     update_profile(profile_id, **{k: v for k, v in body.items() if v is not None})
     return {"status": "updated"}
 
