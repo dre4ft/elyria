@@ -140,30 +140,53 @@ def _get_refiner_tools(has_sandbox: bool = False) -> list[dict]:
             "type": "function",
             "function": {
                 "name": "bash",
-                "description": "Execute passive OSINT commands in the sandbox. Use for: dig, whois, curl to public APIs (crt.sh, archive.org, api.github.com), python3 for data processing, jq for JSON parsing. Use 'commands' array to run up to 5 commands sequentially — results return as a batch. NEVER use for: nmap, sqlmap, ffuf, or any active scanning/fuzzing of the target.",
+                "description": "Execute passive OSINT commands in the sandbox. Use for: dig, whois, curl to public APIs (crt.sh, archive.org, api.github.com), python3 for data processing, jq for JSON parsing. Use 'commands' array to run up to 5 commands sequentially. NEVER: nmap, sqlmap, ffuf, or any active scanning/fuzzing.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "Single shell command to run. Example: 'dig example.com MX +short'",
-                        },
-                        "commands": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "minItems": 1,
-                            "maxItems": 5,
-                            "description": "Run up to 5 commands sequentially. Faster than calling bash multiple times. Each gets 30s timeout. Example: ['dig example.com A', 'dig example.com TXT', 'curl -s https://crt.sh/?q=%25.example.com&output=json | python3 -c \"import sys,json; print(len(json.load(sys.stdin)))\"']",
-                        },
-                        "timeout_ms": {
-                            "type": "integer",
-                            "description": "Max execution time per command in ms (default: 15000)",
-                        },
+                        "command": {"type": "string", "description": "Single shell command"},
+                        "commands": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 5, "description": "Up to 5 commands sequentially"},
+                        "timeout_ms": {"type": "integer", "description": "Timeout per command in ms (default 15000)"},
                     },
                     "required": [],
                 },
             },
         })
+
+    # Browser tool — always available
+    tools.append({
+        "type": "function",
+        "function": {
+            "name": "osint_browse",
+            "description": "Browse a web page using a headless browser. Use to: inspect JS-rendered pages, check for exposed admin panels, verify website content, extract data from dynamic pages, read pages that curl can't render. Returns the page text content.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "Full URL to browse (e.g., 'https://target.com/admin')"},
+                    "selector": {"type": "string", "description": "CSS selector to extract specific content (e.g., 'body', '#content', '.results'). Default: 'body'"},
+                    "reasoning": {"type": "string", "description": "What OSINT data are you looking for?"},
+                },
+                "required": ["url", "reasoning"],
+            },
+        },
+    })
+
+    # Search engine tool — always available
+    tools.append({
+        "type": "function",
+        "function": {
+            "name": "osint_search",
+            "description": "Search the web for OSINT intelligence. Use for: finding leaked credentials, exposed documents, company tech stack mentions, employee info, news about security incidents. Similar to Google dorking but uses a real search engine.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query. Use dork syntax: site:target.com, filetype:pdf, intitle:admin, inurl:config. Example: 'site:example.com filetype:pdf confidential'"},
+                    "reasoning": {"type": "string", "description": "What intelligence are you trying to gather?"},
+                },
+                "required": ["query", "reasoning"],
+            },
+        },
+    })
 
     return tools
 
@@ -503,6 +526,37 @@ class AIOSINTRefiner:
         except Exception as e:
             return json.dumps({"error": str(e)[:500]})
 
+    def _handle_browse(self, args: dict) -> str:
+        """Browse a URL using headless browser for OSINT reconnaissance."""
+        try:
+            from ely.browser import basic_handler
+            url = args.get("url", "")
+            if not url:
+                return json.dumps({"error": "URL required"})
+            output = basic_handler(self.user_id, url=url,
+                                   selector=args.get("selector", "body"),
+                                   action="query")
+            return json.dumps({"status": 200, "url": url, "content": str(output)[:5000]})
+        except Exception as e:
+            return json.dumps({"error": f"Browser error: {str(e)[:300]}"})
+
+    def _handle_search(self, args: dict) -> str:
+        """Search the web for OSINT intelligence."""
+        try:
+            from ely.search_engine import search_engine
+            query = args.get("query", "")
+            if not query:
+                return json.dumps({"error": "Search query required"})
+            results = search_engine(query)
+            if isinstance(results, list):
+                preview = [{"title": r.get("title", ""), "snippet": r.get("snippet", ""), "url": r.get("url", "")}
+                          for r in results[:8]]
+            else:
+                preview = str(results)[:3000]
+            return json.dumps({"status": 200, "query": query, "results": preview})
+        except Exception as e:
+            return json.dumps({"error": f"Search error: {str(e)[:300]}"})
+
     def _handle_create_finding(self, args: dict) -> str:
         """Create a brand new finding from AI analysis."""
         new_finding = {
@@ -539,6 +593,8 @@ class AIOSINTRefiner:
         "osint_create_finding": "_handle_create_finding",
         "osint_correlate_findings": "_handle_correlate",
         "bash": "_handle_bash",
+        "osint_browse": "_handle_browse",
+        "osint_search": "_handle_search",
     }
 
     def _execute_tool(self, name: str, args) -> str:
@@ -695,8 +751,7 @@ class AIOSINTRefiner:
 
         bash_block = ""
         if self.bash_tool:
-            bash_block = """
-- bash: Execute PASSIVE OSINT commands. Supports single 'command' or 'commands' array (up to 5 run in batch). Use for: dig/dns, whois, curl to crt.sh/archive.org/GitHub API, python3/jq. BLOCKED: nmap, sqlmap, ffuf, nuclei."""
+            bash_block = "\n- bash: Execute PASSIVE OSINT commands (dig, whois, curl to public APIs, python3, jq). Up to 5 commands in batch. BLOCKED: nmap, sqlmap, ffuf, nuclei."
 
         system = {
             "role": "system",
@@ -704,13 +759,18 @@ class AIOSINTRefiner:
 
 YOUR ROLE:
 1. Review each deterministic finding and enrich it with AI intelligence via osint_refine_finding
-2. Use osint_create_finding to ADD NEW findings you discover during analysis — things the Phase 1 scanner missed: exposed services, misconfigurations, suspicious patterns, infrastructure issues you notice
+2. Use osint_create_finding to ADD NEW findings you discover during analysis
 3. Correlate findings into realistic attack chains via osint_correlate_findings
-4. Use bash to verify hunches by running passive OSINT commands
+4. Use osint_browse to inspect web pages with a headless browser — check for exposed panels, verify content, read JS-rendered pages
+5. Use osint_search to search the web for leaked credentials, exposed documents, company info, security incidents
+{bash_block}
 
-TOOLS:{bash_block}
+TOOLS:
 - osint_refine_finding: Add exploitation context, attack vector, and priority to an existing finding
-- osint_create_finding: Create a NEW finding you discovered during analysis. Use when you spot something important the scanner missed.
+- osint_create_finding: Create a NEW finding you discovered during analysis
+- osint_correlate_findings: Link multiple findings into attack chains
+- osint_browse: Browse a URL with a headless browser. Use for JS-rendered pages, admin panels, content verification.
+- osint_search: Search the web. Use dork syntax: site:target.com, filetype:pdf, intitle:admin, inurl:config.
 - osint_correlate_findings: Chain 2+ findings into an attack scenario
 
 RULES:

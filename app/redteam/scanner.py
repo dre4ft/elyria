@@ -79,6 +79,8 @@ class Scanner:
         self.session = _make_session()
         self._apply_auth()
         self._endpoints = None
+        from redteam.request_graph import RequestGraph
+        self.graph = RequestGraph()
 
     def _apply_auth(self):
         auth_type = self.auth.get("auth_type", "none")
@@ -154,6 +156,12 @@ class Scanner:
             elapsed = int((time.monotonic() - start) * 1000)
             resp_body = resp.text[:2000] if resp.text else ""
             self._log(path, method, url, h, body or "", resp.status_code, dict(resp.headers), resp_body, elapsed, check_name)
+            try:
+                self.graph.add_request(method, path, resp.status_code, resp.text[:2000] or "",
+                                       request_params=None, response_headers=dict(resp.headers),
+                                       content_type=resp.headers.get("Content-Type", ""))
+            except Exception:
+                pass
             return resp, elapsed, req_info
         except Exception as e:
             elapsed = int((time.monotonic() - start) * 1000)
@@ -177,6 +185,7 @@ class Scanner:
             ("Collection Request Fuzzing", self.check_collection_fuzzing),
             ("BOLA / IDOR", self.check_bola),
             ("Business Logic Flaws", self.check_business_logic),
+            ("Smart Parameter Discovery", self.check_smart_params),
         ]
 
         total = len(checks)
@@ -200,6 +209,77 @@ class Scanner:
             self.progress_cb(90, "Phase 1 done — starting AI deep scan")
 
         return all_findings
+
+    async def check_smart_params(self):
+        """Leverage the request graph and ID list to identify and test
+        high-value parameters discovered during the scan."""
+        findings = []
+        ids = self.graph.get_discovered_ids()
+        unexplored = self.graph.get_unexplored_paths()
+
+        # 1. If we have an ID list, cross-reference with graph-discovered IDs
+        if self.id_list and ids:
+            users = list(self.id_list.items())
+            findings.append({
+                "title": f"ID list ready for BOLA ({len(users)} users, {len(ids)} IDs extracted)",
+                "description": f"Extracted resource IDs from responses: {', '.join(ids[:15])}. "
+                               f"These will be cross-referenced against {len(users)} users for BOLA testing.",
+                "severity": "info",
+                "category": "Improper Inventory Management",
+                "endpoint": self.target,
+                "evidence": {"discovered_ids": ids[:20], "user_count": len(users)},
+                "cwe_id": "CWE-639",
+            })
+
+        # 2. Highlight unexplored paths for manual/AI follow-up
+        if unexplored:
+            top = unexplored[:10]
+            findings.append({
+                "title": f"Unexplored API paths discovered ({len(unexplored)} candidates)",
+                "description": f"The graph detected {len(unexplored)} paths linked from responses but not yet tested. "
+                               f"Top candidates: {', '.join(p[1] for p in top)}.",
+                "severity": "info",
+                "category": "Improper Inventory Management",
+                "endpoint": self.target,
+                "evidence": {"unexplored_paths": [p[1] for p in top]},
+                "remediation": "Add these paths to the scan scope.",
+                "cwe_id": "CWE-1057",
+            })
+
+        # 3. Test high-value targets from the graph
+        high_val = self.graph.get_high_value_targets()
+        tested = 0
+        for method, path, statuses in high_val[:15]:
+            if tested >= 10:
+                break
+            # Probe with ID substitution if we have IDs
+            if self.id_list and ids:
+                for id_val in list(ids)[:3]:
+                    test_path = path
+                    # Try to substitute an ID-like segment in the path
+                    for seg in path.split("/"):
+                        if seg in ids or (seg.isdigit() and len(seg) < 10):
+                            test_path = path.replace(f"/{seg}/", f"/{id_val}/", 1).replace(f"/{seg}", f"/{id_val}", 1)
+                            if test_path != path:
+                                break
+                    if test_path != path:
+                        resp, _, _ = self._do_request(method, test_path, check_name="Smart BOLA probe")
+                        if resp and resp.status_code in (200, 201, 202):
+                            findings.append({
+                                "title": f"Possible IDOR: {method} {path} → {test_path} returned {resp.status_code}",
+                                "description": f"Substituting an ID in {path} with {id_val} returned HTTP {resp.status_code}, "
+                                               f"suggesting horizontal privilege escalation.",
+                                "severity": "high",
+                                "category": "Broken Object Level Authorization",
+                                "endpoint": test_path, "method": method,
+                                "evidence": {"original_path": path, "substituted_id": id_val, "status": resp.status_code},
+                                "remediation": f"Verify that {method} {path} enforces ownership for the requested resource.",
+                                "cvss_score": 7.5,
+                                "cwe_id": "CWE-639",
+                            })
+            tested += 1
+
+        return findings
 
     # ── Individual checks ──
 
@@ -879,15 +959,44 @@ class Scanner:
         return findings
 
     async def check_endpoint_discovery(self):
-        """Discover common API endpoints using the bundled wordlist."""
+        """Discover API endpoints — validate collection + wordlist enumeration."""
         findings = []
-        wordlist = _load_wordlist()
 
+        # 1. Validate collection/OpenAPI endpoints if available
+        if self.collection_requests:
+            coll_discovered = []
+            for req in self.collection_requests[:50]:
+                method = req.get("method", "GET").upper()
+                url = req.get("url", "")
+                path = url.replace(self.target, "") if url else "/"
+                resp, _, _ = self._do_request(method, path, check_name="Endpoint Discovery")
+                status = resp.status_code if resp else 0
+                if status:
+                    coll_discovered.append({"path": path, "method": method, "status": status})
+            if coll_discovered:
+                findings.append({
+                    "title": f"Collection endpoints validated ({len(coll_discovered)} reachable)",
+                    "description": f"All endpoints from the OpenAPI spec/collection have been probed.",
+                    "severity": "info",
+                    "category": "Improper Inventory Management",
+                    "endpoint": self.target,
+                    "evidence": {"endpoints_tested": len(coll_discovered)},
+                    "cwe_id": "CWE-1057",
+                })
+
+        # 2. Always run wordlist enumeration to discover HIDDEN/undocumented endpoints
+        wordlist = _load_wordlist()
         discovered = []
         for path in wordlist:
-            resp, elapsed, _ = self._do_request("GET", path, check_name="Endpoint Discovery")
+            resp, _, _ = self._do_request("GET", path, check_name="Endpoint Discovery")
             if resp and resp.status_code in (200, 301, 302, 401, 403, 405):
                 discovered.append({"path": path, "status": resp.status_code})
+                # Probe discovered paths with additional HTTP methods
+                if resp.status_code in (200, 401, 403):
+                    for m in ("POST", "PUT", "DELETE", "OPTIONS"):
+                        r2, _, _ = self._do_request(m, path, check_name="Endpoint Discovery")
+                        if r2 and r2.status_code != 405:
+                            discovered.append({"path": path, "method": m, "status": r2.status_code})
 
         if len(discovered) > 5:
             findings.append({
@@ -902,19 +1011,21 @@ class Scanner:
             })
 
         # Check for Swagger/OpenAPI exposure
-        if any(d["status"] == 200 and d["path"] in ("/swagger.json", "/openapi.json", "/api-docs") for d in discovered):
-            swagger_path = next(d["path"] for d in discovered if d["status"] == 200 and d["path"] in ("/swagger.json", "/openapi.json", "/api-docs"))
-            findings.append({
-                "title": "API documentation publicly accessible",
-                "description": "OpenAPI/Swagger documentation is exposed. Attackers can use this to map the entire API surface.",
-                "severity": "medium",
-                "category": "Improper Inventory Management",
-                "endpoint": self._url(swagger_path),
-                "method": "GET",
-                "remediation": "Restrict API documentation access to development environments only, or protect it with authentication.",
-                "cvss_score": 5.3,
-                "cwe_id": "CWE-1057",
-            })
+        d_statuses = {d["path"]: d.get("status", d.get("status", 0)) for d in discovered}
+        for sw_path in ("/swagger.json", "/openapi.json", "/api-docs"):
+            if d_statuses.get(sw_path) == 200:
+                findings.append({
+                    "title": "API documentation publicly accessible",
+                    "description": "OpenAPI/Swagger documentation is exposed. Attackers can use this to map the entire API surface.",
+                    "severity": "medium",
+                    "category": "Improper Inventory Management",
+                    "endpoint": self._url(sw_path),
+                    "method": "GET",
+                    "remediation": "Restrict API documentation access to development environments only, or protect it with authentication.",
+                    "cvss_score": 5.3,
+                    "cwe_id": "CWE-1057",
+                })
+                break
 
         return findings
 

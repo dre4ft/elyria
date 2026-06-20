@@ -180,24 +180,31 @@
             <div class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-3">Top Findings</div>
             <div id="findings-preview" class="space-y-2"></div>
           </div>
-          <div id="tab-findings" class="pentest-tab-panel h-full overflow-y-auto p-5 scrollbar-thin hidden">
-            <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <span id="findings-count" class="text-xs text-gray-500">0 findings</span>
-              <div class="flex items-center gap-2 flex-wrap">
-                <select id="filter-severity" onchange="refreshFindings()" class="h-7 px-2 rounded-md bg-base-700 border border-white/5 text-[11px] text-gray-400 focus:outline-none focus:border-primary/30">
-                  <option value="all">Toutes severites</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option>
-                </select>
-                <select id="filter-finding-type" onchange="refreshFindings()" class="h-7 px-2 rounded-md bg-base-700 border border-white/5 text-[11px] text-gray-400 focus:outline-none focus:border-primary/30">
-                  <option value="all">Tous types</option>
-                  <option value="auth">Auth</option><option value="injection">Injection</option><option value="config">Config</option><option value="data_exposure">Data Exposure</option><option value="rate_limit">Rate Limit</option><option value="bola">BOLA/IDOR</option><option value="cors">CORS</option><option value="jwt">JWT</option><option value="ssrf">SSRF</option><option value="other">Autre</option>
-                </select>
-                <select id="filter-source" onchange="refreshFindings()" class="h-7 px-2 rounded-md bg-base-700 border border-white/5 text-[11px] text-gray-400 focus:outline-none focus:border-primary/30">
-                  <option value="all">Toutes sources</option><option value="deterministic">Deterministe</option><option value="ai">IA</option>
-                </select>
-                <button id="btn-refresh-findings" class="h-7 px-3 rounded-lg bg-base-700 hover:bg-white/5 border border-white/5 text-[11px] text-gray-500 hover:text-gray-300 transition-all">Rafraichir</button>
+          <div id="tab-findings" class="pentest-tab-panel h-full overflow-y-auto scrollbar-thin hidden flex flex-col">
+            <div id="findings-stats-bar" class="hidden px-5 py-2 flex items-center gap-4 border-b border-white/5 text-[11px] shrink-0">
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-red-500"></div><span class="text-gray-500">Critical</span><span id="stat-critical" class="font-mono text-red-400 font-semibold">0</span></div>
+                <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-orange-500"></div><span class="text-gray-500">High</span><span id="stat-high" class="font-mono text-orange-400 font-semibold">0</span></div>
+                <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-yellow-500"></div><span class="text-gray-500">Medium</span><span id="stat-medium" class="font-mono text-yellow-400 font-semibold">0</span></div>
+                <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-green-500"></div><span class="text-gray-500">Low</span><span id="stat-low" class="font-mono text-green-400 font-semibold">0</span></div>
+                <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-gray-500"></div><span class="text-gray-500">Info</span><span id="stat-info" class="font-mono text-gray-400 font-semibold">0</span></div>
+                <div class="w-px h-3 bg-white/10"></div>
+                <span class="text-gray-500">Det: <span id="stat-det" class="font-mono text-gray-400">0</span></span>
+                <span class="text-gray-500">AI: <span id="stat-ai" class="font-mono text-violet-400">0</span></span>
               </div>
+              <div class="flex-1"></div>
+              <select id="filter-severity" onchange="refreshFindings()" class="h-6 px-2 rounded-md bg-base-700 border border-white/5 text-[10px] text-gray-400 focus:outline-none focus:border-primary/30">
+                <option value="all">Toutes severites</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option>
+              </select>
+              <select id="filter-finding-type" onchange="refreshFindings()" class="h-6 px-2 rounded-md bg-base-700 border border-white/5 text-[10px] text-gray-400 focus:outline-none focus:border-primary/30">
+                <option value="all">Tous types</option><option value="auth">Auth</option><option value="injection">Injection</option><option value="config">Config</option><option value="data_exposure">Data Exposure</option><option value="bola">BOLA/IDOR</option><option value="cors">CORS</option><option value="jwt">JWT</option><option value="ssrf">SSRF</option><option value="other">Autre</option>
+              </select>
+              <select id="filter-source" onchange="refreshFindings()" class="h-6 px-2 rounded-md bg-base-700 border border-white/5 text-[10px] text-gray-400 focus:outline-none focus:border-primary/30">
+                <option value="all">Toutes sources</option><option value="deterministic">Deterministe</option><option value="ai">IA</option>
+              </select>
+              <button id="btn-refresh-findings" class="h-6 px-2.5 rounded-md bg-base-700 hover:bg-white/5 border border-white/5 text-[10px] text-gray-500 hover:text-gray-300 transition-all">Rafraichir</button>
             </div>
-            <div id="findings-table" class="space-y-3"></div>
+            <div class="p-5 flex-1 overflow-y-auto"><div id="findings-table" class="space-y-3"></div></div>
           </div>
           <div id="tab-logs" class="pentest-tab-panel h-full overflow-y-auto p-5 scrollbar-thin hidden">
             <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -340,7 +347,7 @@
             <select id="modal-auth-type" onchange="toggleAuthFields()" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-sm text-gray-200 focus:outline-none focus:border-red-500/40 mb-3">
               <option value="jwt_bearer">JWT Bearer</option>
               <option value="opaque_token">Jeton d'accès opaque</option>
-              <option value="jwe">JWE (Jeton encrypté)</option>
+              <option value="jwe">JWE (Jeton chiffré)</option>
               <option value="cookie">Cookie de session</option>
               <option value="custom">Header personnalisé</option>
             </select>
@@ -363,7 +370,7 @@
 
             <!-- JWE fields -->
             <div id="auth-jwe-fields" class="hidden">
-              <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">JWE Token (encrypté)</label>
+              <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">JWE Token (chiffré)</label>
               <textarea id="modal-jwe-token" class="w-full h-20 px-3 py-2 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 resize-none mb-3" placeholder="eyJhbGciOiJBMTI4S1ciLCJlbmMiOiJBMTI4R0NNIn0..."></textarea>
               <label class="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1 block">Clé de déchiffrement</label>
               <input id="modal-jwe-key" type="text" class="w-full h-9 px-3 rounded-lg bg-base-700 border border-white/8 text-xs font-mono text-gray-300 focus:outline-none focus:border-red-500/40 mb-2" placeholder="Base64 ou clé en texte" />
@@ -519,6 +526,7 @@
   </style>
 
   <script src="static/auth.js"></script>
+  <script src="static/ged.js"></script>
   <script src="static/pentest.js"></script>
 </body>
 </html>

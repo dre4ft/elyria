@@ -20,18 +20,32 @@ from purpleteam.repo_manager import list_repo_files, detect_language, parse_depe
 _log = get_logger("purpleteam.ai")
 
 
-def _get_tools():
-    return [
+def _get_tools(has_target=False):
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "list_directory",
+                "description": "List files and subdirectories in a directory. Use FIRST to map the project tree before reading files — saves tokens by exploring efficiently.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "subdirectory": {"type": "string", "description": "Directory to list (e.g. 'src', 'app/routes', '' for root)"},
+                    },
+                    "required": [],
+                },
+            },
+        },
         {
             "type": "function",
             "function": {
                 "name": "read_source_file",
-                "description": "Read the content of a source file from the repository. Use to understand code structure, find vulnerabilities, and trace data flows.",
+                "description": "Read a source file. Content limited to key excerpts. Use AFTER listing directories to target high-value files: auth modules, route handlers, DB queries, config files, middleware.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "file_path": {"type": "string", "description": "Relative path to the source file"},
-                        "reasoning": {"type": "string", "description": "Why are you reading this file? What vulnerability are you investigating?"},
+                        "reasoning": {"type": "string", "description": "What vulnerability class are you investigating?"},
                     },
                     "required": ["file_path", "reasoning"],
                 },
@@ -41,13 +55,13 @@ def _get_tools():
             "type": "function",
             "function": {
                 "name": "grep_codebase",
-                "description": "Search the entire codebase for a pattern or keyword. Use to find all occurrences of a function, variable, import, or configuration.",
+                "description": "Search all source files for a pattern. Use to find dangerous function calls, hardcoded secrets, auth bypass patterns. Returns file:line matches (max 50).",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "pattern": {"type": "string", "description": "Regex or keyword to search for"},
-                        "file_pattern": {"type": "string", "description": "Optional file pattern filter (e.g. '*.py', '*.java')"},
-                        "reasoning": {"type": "string", "description": "What are you searching for and why?"},
+                        "file_pattern": {"type": "string", "description": "File glob filter (e.g. '*.py', '*.java', '*.js')"},
+                        "reasoning": {"type": "string", "description": "What vulnerability are you hunting?"},
                     },
                     "required": ["pattern", "reasoning"],
                 },
@@ -56,40 +70,8 @@ def _get_tools():
         {
             "type": "function",
             "function": {
-                "name": "make_test_request",
-                "description": "Send a test HTTP request to the target API endpoint. Use to validate suspected vulnerabilities.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]},
-                        "path": {"type": "string", "description": "URL path (e.g. /api/users/1)"},
-                        "headers": {"type": "object", "description": "Extra headers to send"},
-                        "body": {"type": "string", "description": "Request body (JSON string)"},
-                        "reasoning": {"type": "string", "description": "What vulnerability are you testing?"},
-                    },
-                    "required": ["method", "path", "reasoning"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "list_source_files",
-                "description": "List all source files in the repository. Use to understand project structure and discover endpoints, controllers, models, etc.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "subdirectory": {"type": "string", "description": "Optional subdirectory to list"},
-                    },
-                    "required": [],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
                 "name": "submit_finding",
-                "description": "Report a confirmed security vulnerability. Use AFTER investigating with read_source_file, grep_codebase, or make_test_request. Call this for EACH vulnerability you confirm.",
+                "description": "Report a confirmed vulnerability. Call this IMMEDIATELY for each finding — do not batch. One call = one vulnerability.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -98,14 +80,14 @@ def _get_tools():
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "title": {"type": "string", "description": "Concise title describing the vulnerability"},
+                                    "title": {"type": "string"},
                                     "severity": {"type": "string", "enum": ["critical", "high", "medium", "low", "info"]},
-                                    "description": {"type": "string", "description": "What is the bug, why is it exploitable, what is the concrete impact (max 500 chars)"},
-                                    "file_path": {"type": "string", "description": "Relative path to the affected file"},
-                                    "line_number": {"type": "integer", "description": "Line number where the vulnerability is"},
-                                    "remediation": {"type": "string", "description": "Specific fix recommendation"},
-                                    "cwe_id": {"type": "string", "description": "CWE identifier (e.g. CWE-89, CWE-79)"},
-                                    "cvss_score": {"type": "number", "description": "CVSS 3.1 base score (0.0-10.0)"},
+                                    "description": {"type": "string", "description": "Impact and exploitability (max 500 chars)"},
+                                    "file_path": {"type": "string"},
+                                    "line_number": {"type": "integer"},
+                                    "remediation": {"type": "string"},
+                                    "cwe_id": {"type": "string"},
+                                    "cvss_score": {"type": "number"},
                                 },
                                 "required": ["title", "severity", "description", "file_path"],
                             },
@@ -117,6 +99,26 @@ def _get_tools():
             },
         },
     ]
+    if has_target:
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "make_test_request",
+                "description": "Send an HTTP request to the TARGET API to VALIDATE a suspected vulnerability. Use to prove exploitability — do NOT use for exploration.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]},
+                        "path": {"type": "string", "description": "URL path (e.g. /api/users/1)"},
+                        "headers": {"type": "object"},
+                        "body": {"type": "string", "description": "JSON body as string"},
+                        "reasoning": {"type": "string", "description": "What vulnerability are you trying to exploit?"},
+                    },
+                    "required": ["method", "path", "reasoning"],
+                },
+            },
+        })
+    return tools
 
 
 class AIPurpleScanner:
@@ -163,6 +165,36 @@ class AIPurpleScanner:
         self._pro_model = pro_cfg["model"]
 
     # ── Tool handlers ──
+
+    def _handle_list_directory(self, args):
+        subdir = args.get("subdirectory", "")
+        # Security: prevent path traversal
+        clean = subdir.replace("..", "").lstrip("/").lstrip("\\")
+        target = os.path.join(self.repo_path, clean) if clean else self.repo_path
+        if not os.path.isdir(target):
+            return json.dumps({"error": f"Directory not found: {subdir}", "files": [], "dirs": []})
+        try:
+            entries = sorted(os.listdir(target))
+            files = []
+            dirs = []
+            for e in entries:
+                full = os.path.join(target, e)
+                if e.startswith(".") or e in ("node_modules", "__pycache__", "venv", ".git", "target", "build", "dist"):
+                    continue
+                if os.path.isdir(full):
+                    dirs.append(e + "/")
+                elif os.path.isfile(full):
+                    size = os.path.getsize(full)
+                    files.append({"name": e, "size": size})
+            # Limit to avoid huge listings
+            return json.dumps({
+                "path": clean or "/",
+                "directories": dirs[:30],
+                "files": files[:50],
+                "total_entries": len(dirs) + len(files),
+            })
+        except Exception as e:
+            return json.dumps({"error": str(e)})
 
     def _handle_read_source_file(self, args):
         file_path = args.get("file_path", "")
@@ -316,14 +348,16 @@ class AIPurpleScanner:
         _log.info(f"[AI] Starting — flash={self._flash_model}, pro={self._pro_model}, "
                   f"repo={self.repo_path}, target={self.target_endpoint or 'none'}, "
                   f"files={len(self._files)}, static_findings={len(self.static_findings)}")
-        tools = _get_tools()
+        has_target = bool(self.target_endpoint)
+        tools = _get_tools(has_target=has_target)
         tool_map = {
+            "list_directory": self._handle_list_directory,
             "read_source_file": self._handle_read_source_file,
             "grep_codebase": self._handle_grep_codebase,
-            "make_test_request": self._handle_make_test_request,
-            "list_source_files": self._handle_list_source_files,
             "submit_finding": self._handle_submit_finding,
         }
+        if has_target:
+            tool_map["make_test_request"] = self._handle_make_test_request
 
         deps = parse_dependencies(self.repo_path, self.language)
         dep_text = "\n".join(f"- {d['name']} @ {d.get('version', '?')}" for d in deps[:30]) or "(none)"
@@ -332,44 +366,70 @@ class AIPurpleScanner:
             for f in self.static_findings[:30]
         ) or "(none)"
 
-        system_prompt = f"""You are an expert application security engineer performing a Purple Team deep code review on a {self.language}/{self.framework} codebase.
+        # Tech-specific vulnerability patterns
+        tech_guidance = {
+            ("python", "fastapi"): "FastAPI — check Pydantic model strictness, Depends() auth bypass, middleware order, CORSMiddleware config, path parameter type confusion.",
+            ("python", "flask"): "Flask — check app.config['SECRET_KEY'] hardness, @login_required gaps, Jinja2 autoescape, before_request auth bypass, session cookie signing.",
+            ("python", "django"): "Django — check settings.DEBUG, ALLOWED_HOSTS, CSRF middleware gaps, raw() queryset SQLi, FileField upload validation.",
+            ("java", "spring"): "Spring Boot — check SecurityFilterChain gaps, @PreAuthorize bypass, actuator endpoints, JPA native query concatenation, Jackson deserialization.",
+            ("javascript", "express"): "Express — check middleware order, helmet.js config, express.json() limit, req.params type coercion, JWT verify() algorithm param.",
+            ("javascript", "nestjs"): "NestJS — check @Guards() ordering, class-validator gaps, GraphQL resolver auth, TypeORM raw query usage, CORS config.",
+            ("go", "go"): "Go — check chi/gin/echo middleware chains, sqlx raw queries, template/html escaping, crypto/rand vs math/rand for tokens.",
+            ("ruby", "rails"): "Rails — check Strong Parameters gaps, protect_from_forgery config, ActiveRecord SQL injection via where(), devise auth config.",
+            ("php", "laravel"): "Laravel — check Eloquent mass assignment ($guarded), debug mode, CSRF middleware, raw DB::statement() calls, .env exposure.",
+            ("php", "symfony"): "Symfony — check security.yaml firewalls, isGranted() gaps, Doctrine raw SQL, Twig autoescape, .env.local exposure.",
+        }.get((self.language, self.framework), f"Focus on {self.language}-specific injection patterns, auth middleware, and framework misconfigurations.")
+
+        mode = "IAST (static + dynamic)" if has_target else "SAST (static code review only)"
+        target_note = f"\n**Target endpoint:** {self.target_endpoint} — validate findings with make_test_request." if has_target else "\n**No target endpoint** — SAST-only. Focus on code-level findings: hardcoded secrets, SQLi patterns, auth bypass in code, crypto weaknesses."
+
+        system_prompt = f"""You are an expert application security engineer performing a {mode} on a {self.language}/{self.framework} codebase.
 
 **Static analysis already found:**
 {static_text}
 
 **Dependencies:** {len(deps)} packages detected.
 
-**Your mission:** Find vulnerabilities the static scanner MISSED:
+**Tech-specific guidance:** {tech_guidance}
+{target_note}
+
+**Your mission — find what the static scanner MISSED:**
 - Business logic flaws (auth bypass, privilege escalation, workflow abuse, race conditions)
-- Injection points missed by regex (NoSQL injection, template injection, XPath, LDAP)
-- Insecure framework defaults and misconfigurations
-- Cryptographic weaknesses (weak keys, predictable RNG for security tokens)
+- Injection points missed by regex (NoSQL injection, template injection, XPath, LDAP, GraphQL injection)
+- Insecure framework defaults, debug mode, exposed admin panels
+- Cryptographic weaknesses (weak keys, predictable RNG, MD5/SHA1 for passwords)
 - Authorization flaws (missing ownership checks, BOLA/IDOR, function-level auth gaps)
-- Chained vulnerabilities (combine low-severity issues into high-impact exploits)
-- Sensitive data leaks in logs, error messages, or debug output
+- Chained vulnerabilities (combine low-severity into high-impact)
+- Hardcoded API keys, tokens, cloud credentials, JWT secrets in code/config
 
-**Method:** Use grep_codebase to find patterns, read_source_file to analyze suspicious code, make_test_request to validate exploitable endpoints, then call submit_finding for EACH vulnerability you confirm.
+**Method:**
+1. list_directory to map the project tree (start from root, explore subdirectories)
+2. grep_codebase for high-risk patterns specific to {self.language}/{self.framework}
+3. read_source_file to analyze suspicious code — read the FULL file when you find something
+4. submit_finding IMMEDIATELY for each confirmed vulnerability — do not batch
 
-**IMPORTANT:** Call submit_finding EVERY TIME you find a real vulnerability. One call per finding. Be specific: include the exact file path, line number, CWE ID, and a CVSS score."""
+**TOKEN DISCIPLINE:** Use list_directory BEFORE reading files. Only read files that are likely to contain vulnerabilities. Do not read boilerplate, tests, or generated code."""
 
-        exploration_prompt = f"""Explore this {self.language}/{self.framework} codebase for security vulnerabilities:
+        exploration_prompt = f"""Explore this {self.language}/{self.framework} codebase methodically:
 
-1. List source files to map the project structure
-2. Grep for high-risk patterns: exec(, eval(, os.system(, subprocess, pickle.load, yaml.load, requests.get(.*format, innerHTML, dangerouslySetInnerHTML, raw SQL with f-strings, hardcoded keys/secrets
-3. Read key files: auth modules, database handlers, API routes, middleware, configuration
-4. Trace data flow from user input to dangerous sinks
-5. For every confirmed vulnerability, call submit_finding immediately"""
+1. list_directory('') to see the root structure
+2. list_directory on key subdirectories (src/, app/, routes/, controllers/, middleware/, config/)
+3. grep_codebase for {self.language}-specific dangerous patterns
+4. read_source_file on files that matched dangerous patterns
+5. submit_finding for each vulnerability you CONFIRM — be aggressive, every finding matters
 
-        analysis_prompt = f"""Deep-dive into the most critical areas:
+Focus on: auth logic, database queries, input handling, crypto, config files, API routes."""
 
-1. **Authentication flow**: Read the auth module, check token validation, session management, password handling
-2. **Authorization**: Check every endpoint for ownership verification — are users isolated? Can user A access user B's data?
-3. **Input validation**: For every POST/PUT endpoint found, verify input is validated before reaching DB queries, file operations, or command execution
-4. **Cryptography**: How are secrets stored? What RNG is used for tokens? What hash algorithm for passwords?
-5. **Error handling**: Do error responses leak stack traces, SQL errors, or internal paths?
-6. **Configuration**: Is DEBUG enabled? Are there default admin credentials? Exposed management endpoints?
+        analysis_prompt = f"""Phase 2 — Deep analysis of this {self.language}/{self.framework} codebase:
 
-For each confirmed vulnerability, call submit_finding with full details."""
+1. Read the main auth/authorization modules in full — trace how authentication tokens are validated, how sessions are managed, how password reset works
+2. For every API route handler found, verify ownership checks exist — can user A access user B's resources?
+3. Check all database queries for injection — concatenation, f-strings, raw queries, ORM bypasses
+4. Audit the cryptography: password hashing, token generation (RNG source), key storage, encryption algorithms
+5. Review configuration files for debug mode, hardcoded credentials, exposed admin panels, insecure defaults
+6. Check error handlers — do they leak stack traces, SQL, or internal paths?
+
+For each finding: call submit_finding with exact file path, line number, CWE ID, CVSS score, and a concrete remediation."""
 
         total_findings = 0
 
