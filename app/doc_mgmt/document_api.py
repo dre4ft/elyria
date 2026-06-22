@@ -144,10 +144,12 @@ async def upload(request: Request, params: OpenapiUploadReq = Depends(_parse_ope
 
 def _save_to_ged(name: str, file_type: str, content: bytes, user_id: str, snippet: str = "", filename: str = ""):
     """Persist imported file to GED (non-blocking)."""
-    try:
-        from database.ged_mgmt import create_document
-        create_document(name=name, file_type=file_type, user_id=user_id,
-                        file_content=content, snippet=snippet, original_filename=filename or name)
+    from doc_mgmt.database import insert_document
+    try: 
+        insert_document(name=name, file_type=file_type, content=content, author_user_id=user_id, snippet=snippet, filename=filename)
+        with open(f"ged_storage/{name}.md", "wb") as f:
+            f.write(content)
+        
     except Exception:
         pass  # GED storage is best-effort, never block the main import
 

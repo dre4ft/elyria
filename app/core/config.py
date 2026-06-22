@@ -39,6 +39,9 @@ _DEFAULTS = {
         "blocked_hosts": "metadata.google.internal,169.254.169.254,instance-data,host.docker.internal",
         "blocked_urls": "",
     },
+    "sandbox": {
+        "enabled": "1",
+    },
 }
 
 

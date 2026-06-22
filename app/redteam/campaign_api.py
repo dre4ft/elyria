@@ -39,6 +39,7 @@ from redteam.scanner import Scanner
 from redteam.report_generator import generate_report
 from redteam.ai_enhancer import analyze_findings
 from redteam.ai_scanner import AIScanner
+from redteam.auth_utils import resolve_auth
 from pydantic import BaseModel
 import ipaddress
 import json
@@ -85,6 +86,8 @@ async def api_create_profile(_request : ProfileCreateRequest, request: Request):
         raise HTTPException(400, "name and target_url are required")
     team_ids = _request.team_ids if isinstance(_request.team_ids, list) else get_auth_user_teams(request)
     auth_config = _request.auth_config if isinstance(_request.auth_config, dict) else None
+    if auth_config:
+        auth_config = resolve_auth(auth_config)
     id_list = _request.id_list if isinstance(_request.id_list, dict) else None
     pid = create_profile(
         name=name, target_url=target_url,
@@ -144,6 +147,8 @@ async def api_update_profile(profile_id: str, request: Request):
     if not p: raise HTTPException(404, "Profile not found")
     _verify_ownership(p, get_auth_user(request), get_auth_user_teams(request))
     body = await request.json()
+    if "auth_config" in body and isinstance(body["auth_config"], dict):
+        body["auth_config"] = resolve_auth(body["auth_config"])
     update_profile(profile_id, **{k: v for k, v in body.items() if v is not None})
     return {"status": "updated"}
 
@@ -207,6 +212,93 @@ _running_scans = {}
 _spec_cache = {}
 _stop_flags = {}
 _scan_configs = {}
+
+
+def _generate_ids_from_openapi(spec_dict):
+    """Extract parameter names from an OpenAPI spec and generate generic test IDs.
+    Returns a dict compatible with the id_list format: {param_name: [id1, id2, ...]}"""
+    import re
+    ids = {}
+    # Common ID-like parameter name patterns
+    id_patterns = re.compile(
+        r'(id|uuid|user_id|team_id|project_id|order_id|product_id|item_id|'
+        r'account_id|owner_id|resource_id|file_id|document_id|group_id|'
+        r'role_id|tenant_id|org_id|organization_id|customer_id|subscription_id|'
+        r'token_id|key_id|client_id|app_id|workspace_id|repo_id|build_id|'
+        r'deploy_id|release_id|artifact_id|pipeline_id|job_id|task_id|'
+        r'session_id|device_id|payment_id|invoice_id|transaction_id|wallet_id|'
+        r'card_id|coupon_id|promo_id|subscription_id|plan_id|tier_id)$',
+        re.IGNORECASE
+    )
+
+    for path_url, path_item in spec_dict.get("paths", {}).items():
+        # Path parameters (e.g., /users/{userId})
+        for param in path_item.get("parameters", []):
+            name = param.get("name", "")
+            if id_patterns.match(name):
+                ids.setdefault(name, [])
+
+        # Operations (GET, POST, etc.)
+        for method, operation in path_item.items():
+            if method in ("get", "post", "put", "patch", "delete", "options", "head"):
+                for param in operation.get("parameters", []):
+                    name = param.get("name", "")
+                    param_in = param.get("in", "query")
+                    schema = param.get("schema", {})
+                    param_type = schema.get("type", "string")
+                    if id_patterns.match(name) or (param_in == "path" and param_type in ("integer", "string") and name.lower().endswith("id")):
+                        ids.setdefault(name, [])
+                # Request body properties
+                body = operation.get("requestBody", {})
+                for media_type, media_obj in body.get("content", {}).items():
+                    props = media_obj.get("schema", {}).get("properties", {})
+                    for prop_name, prop_schema in props.items():
+                        if id_patterns.match(prop_name):
+                            ids.setdefault(prop_name, [])
+
+    # Generate realistic test IDs for each discovered parameter
+    generic_numeric = ["1", "2", "3", "42", "0", "-1", "999999", "1 OR 1=1"]
+    generic_uuid = ["00000000-0000-0000-0000-000000000001",
+                    "00000000-0000-0000-0000-000000000002"]
+    generic_string = ["admin", "test", "root", "null", "' OR '1'='1", "${7*7}"]
+
+    for param_name in ids:
+        lower = param_name.lower()
+        if "uuid" in lower:
+            ids[param_name] = generic_uuid
+        elif lower in ("id", "id_") or lower.endswith("_id") or lower.endswith("id"):
+            ids[param_name] = generic_numeric
+        else:
+            ids[param_name] = generic_string
+
+    return ids
+
+
+def _generate_ids_from_requests(collection_requests):
+    """Extract likely ID parameters from collection request URLs and bodies."""
+    import re
+    from urllib.parse import urlparse
+    ids = {}
+    # Find path segments that look like IDs
+    id_seg = re.compile(r'/(\d+|[a-f0-9]{8,36})/')
+    for req in collection_requests[:30]:
+        url = req.get("url", "")
+        path = urlparse(url).path
+        for m in id_seg.finditer(path):
+            seg_val = m.group(1)
+            if seg_val.isdigit():
+                ids.setdefault("id", ["1", "2", "3", "42", "0", "-1"])
+            elif len(seg_val) >= 8:
+                ids.setdefault("uuid", ["00000000-0000-0000-0000-000000000001",
+                                        "00000000-0000-0000-0000-000000000002"])
+        # Check for query params named like IDs
+        query = urlparse(url).query
+        for param in query.split("&"):
+            if "=" in param:
+                name = param.split("=", 1)[0].lower()
+                if name.endswith("id") or name in ("id", "uuid", "key", "ref"):
+                    ids.setdefault(name, ["1", "2", "3", "42"])
+    return ids
 
 
 def _is_safe_url(url):
@@ -295,6 +387,7 @@ async def api_start_scan(profile_id: str, request: Request):
 
     # ── Build collection_requests from OpenAPI spec, explicit collection, or both ──
     collection_requests = []
+    spec_dict = None  # keep for ID generation
 
     # 1) Load OpenAPI spec → generate full requests via the existing parser
     spec_content = _spec_cache.pop(profile_id, None)
@@ -317,12 +410,10 @@ async def api_start_scan(profile_id: str, request: Request):
             spec_dict = json.loads(spec_content) if spec_content.strip().startswith("{") else _yaml.safe_load(spec_content)
             from doc_mgmt.openapi.parser import parse_openapi
             parsed = parse_openapi(spec_dict, server_url=p["target_url"])
-            # Flatten all requests from all folders
             for folder in parsed.get("folders", []):
                 for r in folder.get("requests", []):
                     collection_requests.append(r)
         except Exception:
-            # Fallback: at least extract endpoints
             pass
 
     # 2) Also load explicit collection if selected
@@ -363,6 +454,13 @@ async def api_start_scan(profile_id: str, request: Request):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
+        # ── Generate test IDs from OpenAPI parameters if no ID list provided ──
+        id_list = p.get("id_list") or {}
+        if not id_list and spec_dict:
+            id_list = _generate_ids_from_openapi(spec_dict)
+        elif not id_list and collection_requests:
+            id_list = _generate_ids_from_requests(collection_requests)
+
         async def _run():
             auth_cfg = p.get("auth_config") or {}
             # Extract proxy from request JWT at scan start (no DB call needed later)
@@ -374,7 +472,7 @@ async def api_start_scan(profile_id: str, request: Request):
                 auth_config=auth_cfg,
                 progress_cb=progress_cb,
                 log_cb=log_cb,
-                id_list=p.get("id_list") or {},
+                id_list=id_list,
                 collection_requests=collection_requests,
             )
             # ── Phase 1: Deterministic scan ──
@@ -447,12 +545,13 @@ async def api_start_scan(profile_id: str, request: Request):
                     auth_config=p.get("auth_config") or {},
                     deterministic_findings=existing,
                     collection_requests=collection_requests,
-                    id_list=p.get("id_list") or {},
+                    id_list=id_list,
                     description=p.get("description", ""),
                     explore_rounds=p.get("explore_rounds", 30 if expert_mode else 15),
                     analysis_rounds=p.get("analysis_rounds", 15 if expert_mode else 5),
                     callbacks={"on_log": log_cb, "on_finding": ai_on_finding, "on_progress": progress_cb},
                     stop_check=lambda: _stop_flags.get(campaign_id, False),
+                    request_graph=getattr(scanner, 'graph', None),
                 )
                 if expert_mode:
                     from redteam.expert_scanner import ExpertAIScanner

@@ -8,7 +8,7 @@
 
 **Workflows** — Orchestrateur de requêtes avec moteur d'exécution local. Blocs Start, HTTP Request, Set Data, If/Else, For Loop, Assert, Delay. Sous-workflows, expressions `{{ctx.*}}`, exécution pas à pas. Import Arazzo → workflow exécutable.
 
-**Red Team** — Scanner OWASP API Top 10 en 2 phases (déterministe + IA deep scan). Fuzzing paramètres, tests BOLA, analyse JWT, diff de réponses. Rapports Markdown avec annexe requêtes/réponses.
+**Red Team** — Scanner OWASP API Top 10 en 2 phases (déterministe + IA deep scan). Fuzzing paramètres, tests BOLA, analyse JWT/JWE/opaque token/cookie, diff de réponses. Auth multi-type : Bearer JWT, jeton opaque, JWE, cookie de session, header personnalisé. Rapports Markdown avec annexe requêtes/réponses.
 
 **Blue Team** — Analyse security-by-design de specs OpenAPI. L'IA audite auth, chiffrement, input validation, logging. Rapports SSDLC multi-rounds personnalisables.
 
@@ -19,6 +19,8 @@
 **Collections** — Arborescence dossiers/requêtes. Multi-teams avec permissions. Import OpenAPI, Postman. Export curl.
 
 **Éditeur JSON** — Auto-pairing `{}[]""`, validation en temps réel, formatage (Ctrl+Shift+F) sur tous les champs JSON.
+
+**GED** — Gestion Électronique de Documents. Stockage de specs OpenAPI, Arazzo, markdown et autres fichiers. Upload par glisser-déposer, visualisation intégrée (markdown rendu, JSON formaté), téléchargement, suppression. Picker GED pour lier des documents aux profils Red/Blue/Purple Team.
 
 **Auth** — Login/email, Argon2id, JWT HS512 éphémère, 12 mots de récupération BIP39. Envelope encryption (AES-256-GCM) — master key + DEK par collection. Zero-knowledge at rest : DB dump = données illisibles. Connecteur OIDC modulaire (Google, Azure, Keycloak…).
 

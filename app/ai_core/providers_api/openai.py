@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Elyria
 
-from openai import OpenAI
-
-
+from openai import OpenAI, DefaultHttpxClient
+from core.config import get
 
 
 class OpenAIProvider:
@@ -11,9 +10,32 @@ class OpenAIProvider:
         self.url = provider_url
         self.key = api_key
         self.model = model 
-        self.client =  OpenAI(
-                        api_key=self.key,
-                        base_url=self.url)
+        self.validate_ssl = get("llm","validate_ssl", default=True)
+        if not self.validate_ssl:
+            self.custom_client = DefaultHttpxClient(verify=False)
+            if "litellm" in self.url:
+                self.client = OpenAI(
+                            http_client=self.custom_client,
+                            base_url=self.url,
+                            api_key=self.key,
+                            default_headers={"x-litellm-api-key": self.key})
+            else:
+                self.client =  OpenAI(
+                            http_client=self.custom_client,
+                            api_key=self.key,
+                            base_url=self.url,
+                            default_headers={"x-litellm-api-key": self.key})
+        else:
+            if "litellm" in self.url:
+                self.client = OpenAI(
+                            base_url=self.url,
+                            api_key=self.key,
+                            default_headers={"x-litellm-api-key": self.key})
+            else:
+                self.client = OpenAI(
+                            api_key=self.key,
+                            base_url=self.url,
+                            default_headers={"x-litellm-api-key": self.key})
         
 
     def chat(self, messages: list, tools: list = None):

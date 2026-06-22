@@ -9,6 +9,7 @@ Phase 2b: Pro model deep-analyzes results (with reasoning).
 
 import asyncio
 import json
+from redteam.auth_utils import resolve_auth, get_auth_description
 import re
 import time
 from urllib.parse import urljoin
@@ -206,11 +207,13 @@ class AIScanner:
     def __init__(self, campaign_id, target_url, user_id, auth_config=None,
                  deterministic_findings=None, collection_requests=None, id_list=None,
                  callbacks=None, description="", explore_rounds=15, analysis_rounds=5,
-                 stop_check=None):
+                 stop_check=None, request_graph=None):
         self.campaign_id = campaign_id
         self.target = target_url.rstrip("/")
         self.user_id = user_id
-        self.auth = auth_config or {}
+        self.auth = resolve_auth(auth_config or {})
+        from redteam.request_graph import RequestGraph
+        self.request_graph = request_graph or RequestGraph()
         self.findings_ref = deterministic_findings or []
         self.collection_requests = collection_requests or []
         self.id_list = id_list or {}
@@ -239,11 +242,32 @@ class AIScanner:
     def _setup_session(self):
         self.session = requests.Session()
         self.session.timeout = 15
+        auth_type = self.auth.get("auth_type", "none")
+
+        # Custom headers always applied first
         for k, v in (self.auth.get("headers") or {}).items():
             self.session.headers[k] = v
-        token = self.auth.get("bearer_token")
-        if token:
-            self.session.headers["Authorization"] = f"Bearer {token}"
+
+        if auth_type in ("jwt_bearer", "opaque_token", "jwe"):
+            token = self.auth.get("bearer_token")
+            if token:
+                self.session.headers["Authorization"] = f"Bearer {token}"
+        elif auth_type == "cookie":
+            cookie_name = self.auth.get("cookie_name", "session")
+            cookie_value = self.auth.get("cookie_value", "")
+            if cookie_name and cookie_value:
+                self.session.headers["Cookie"] = f"{cookie_name}={cookie_value}"
+        elif auth_type == "custom":
+            h_name = self.auth.get("custom_header_name", "")
+            h_value = self.auth.get("custom_header_value", "")
+            if h_name and h_value:
+                self.session.headers[h_name] = h_value
+        elif auth_type == "basic":
+            basic_user = self.auth.get("basic_user")
+            basic_pass = self.auth.get("basic_pass")
+            if basic_user and basic_pass:
+                self.session.auth = (basic_user, basic_pass)
+
         proxy = self.auth.get("proxy")
         if proxy:
             self.session.proxies = {"http": proxy, "https": proxy}
@@ -316,6 +340,10 @@ class AIScanner:
                             response_body_preview=body_preview, response_time_ms=elapsed,
                             check_name=f"AI batch: {reasoning[:80]}",
                         )
+                    # Feed request graph (truncated body for performance)
+                    self.request_graph.add_request(method, path, resp.status_code, resp.text[:2000] or "",
+                                                   response_headers=dict(resp.headers),
+                                                   content_type=resp.headers.get("Content-Type", ""))
                     return {
                         "path": path, "method": method, "reasoning": reasoning,
                         "status": resp.status_code, "time_ms": elapsed,
@@ -337,25 +365,54 @@ class AIScanner:
         results = await self._execute_requests(requests_list)
         return json.dumps(results, default=str)
 
+    def _validate_finding_evidence(self, evidence, claimed_severity):
+        """Cross-check finding claims against actual evidence. Returns (adjusted_severity, flag)."""
+        resp_status = evidence.get("response_status", 0)
+        resp_body = evidence.get("response_body", "")
+
+        # No evidence at all → speculative
+        if not evidence or not evidence.get("request_url"):
+            return "info", " [UNVERIFIED — no matching request found]"
+
+        # Validation error → claim not confirmed
+        if resp_status in (400, 422):
+            return "info", " [UNVERIFIED — server returned validation error, not exploitation]"
+
+        # Auth error → not a vuln, just blocked
+        if resp_status in (401, 403) and claimed_severity in ("critical", "high"):
+            return "medium", " [DOWNGRADED — auth error, not exploitation confirmed]"
+
+        # Server error without body evidence of exploit
+        if resp_status >= 500 and not any(kw in resp_body.lower() for kw in ("root:", "admin", "uid=", "/etc/passwd", "select", "union", "<script", "tmp", "/bin/")):
+            return "low", " [DOWNGRADED — 5xx without exploit confirmation]"
+
+        return claimed_severity, ""
+
     def _handle_add_findings(self, args):
         findings = args.get("findings", [])
         for f in findings:
             endpoint = f.get("endpoint", "")
             method = f.get("method", "GET")
+            claimed_severity = f.get("severity", "info")
+
             # Auto-attach evidence from the most recent matching scan log
             evidence = f.get("evidence", {})
             if not evidence or not evidence.get("request_url"):
                 evidence = self._find_matching_evidence(endpoint, method)
+
+            # Validate: cross-check claims vs evidence
+            adjusted_severity, flag = self._validate_finding_evidence(evidence, claimed_severity)
+
             finding = {
-                "title": f.get('title', ''),
-                "severity": f.get("severity", "info"),
+                "title": f.get('title', '') + flag,
+                "severity": adjusted_severity,
                 "category": f.get("category", "AI Deep Scan"),
                 "description": f.get("description", ""),
                 "endpoint": endpoint,
                 "method": method,
                 "evidence": evidence,
                 "remediation": f.get("remediation", ""),
-                "cvss_score": f.get("cvss_score", 0.0),
+                "cvss_score": f.get("cvss_score", 0.0) if adjusted_severity == claimed_severity else 0.0,
                 "cwe_id": f.get("cwe_id", ""),
                 "ai_analysis": f.get("ai_description") or f.get("description", ""),
             }
@@ -364,19 +421,20 @@ class AIScanner:
         return json.dumps({"reported": len(findings)})
 
     def _find_matching_evidence(self, endpoint: str, method: str) -> dict:
-        """Find the most recent scan log matching the endpoint and method."""
+        """Find the most recent scan log matching endpoint+method.
+        For POST/PUT/PATCH, prefer entries that have a request body."""
         try:
             from redteam.database import get_scan_logs
-            logs = get_scan_logs(self.campaign_id, limit=20, page=1)
+            logs = get_scan_logs(self.campaign_id, limit=30, page=1)
+            best_match = None
             for log in logs.get("logs", []):
                 log_endpoint = log.get("endpoint", "")
                 log_method = log.get("method", "")
-                # Normalize: strip base URL from endpoint
                 if self.target in log_endpoint:
                     log_endpoint = log_endpoint.replace(self.target, "")
                 if endpoint in log_endpoint or log_endpoint in endpoint:
                     if method.upper() == log_method.upper():
-                        return {
+                        evidence = {
                             "request_method": log_method,
                             "request_url": log.get("request_url", ""),
                             "request_headers": log.get("request_headers", "{}"),
@@ -385,6 +443,15 @@ class AIScanner:
                             "response_headers": log.get("response_headers", "{}"),
                             "response_body": log.get("response_body_preview", ""),
                         }
+                        # Prefer entries with body for write methods
+                        if method.upper() in ("POST", "PUT", "PATCH"):
+                            if evidence.get("request_body"):
+                                return evidence
+                            if not best_match:
+                                best_match = evidence
+                        else:
+                            return evidence
+            return best_match or {}
         except Exception:
             pass
         return {}
@@ -405,31 +472,49 @@ class AIScanner:
         if self.description:
             parts.append(f"## Campaign description\n{self.description}\n")
 
+        # Request graph from deterministic phase
+        if self.request_graph:
+            parts.append(self.request_graph.to_context_block())
+            parts.append("")
+
+        # Auth-specific test guidance
+        auth_type = self.auth.get("auth_type", "none")
+        auth_guidance = {
+            "jwt_bearer": "JWT auth — test alg:none, alg confusion (RS256→HS256 with JWKS symmetric key), kid injection, expired tokens, missing signature verification.",
+            "opaque_token": "Opaque token — test token replay across endpoints, token truncation, token in URL params, missing auth fallback.",
+            "jwe": "JWE encrypted — test decryption failure handling, key confusion, algorithm downgrade (A256GCM→A128GCM), missing integrity check.",
+            "cookie": "Session cookie — test CSRF (missing/changed Origin/Referer), cookie fixation, HttpOnly/Secure flags, path/domain scope bypass.",
+            "custom": "Custom header auth — test header injection, missing header fallback, header value SQLi/XSS, multiple header values.",
+            "none": "No auth configured — focus on unauthenticated endpoints, rate limiting on public endpoints, information disclosure.",
+        }.get(auth_type, "")
+        if auth_guidance:
+            parts.append(f"## Auth-specific test guidance\nAuth type: {auth_type}\n{auth_guidance}\n")
+
         if self.findings_ref:
-            parts.append(f"## Deterministic scan findings ({len(self.findings_ref)} total)\n")
-            for f in self.findings_ref[:30]:
-                parts.append(f"- [{f.get('severity','?')}] {f.get('title','')} | {f.get('endpoint','')} | {f.get('method','')}")
+            parts.append(f"## Deterministic findings ({len(self.findings_ref)} total)\n")
+            for f in self.findings_ref[:15]:
+                parts.append(f"- [{f.get('severity','?')}] {f.get('title','')} | {f.get('method','?')} {f.get('endpoint','')} | {f.get('category','')}")
             parts.append("")
 
         if self.collection_requests:
-            parts.append(f"## Collection requests ({len(self.collection_requests)} endpoints)\n")
-            for r in self.collection_requests[:50]:
+            parts.append(f"## Known endpoints ({len(self.collection_requests)} total)\n")
+            for r in self.collection_requests[:25]:
                 url = r.get("url", "")[:80]
-                parts.append(f"- {r.get('method','GET').upper()} {url} | name={r.get('name','?')}")
+                parts.append(f"- {r.get('method','GET').upper()} {url}")
             parts.append("")
 
         if self.id_list:
             parts.append(f"## ID list for BOLA testing ({len(self.id_list)} users)\n```json\n{json.dumps(self.id_list, indent=2)}\n```\n")
 
-        # Last 15 scan logs for context
+        # Last 8 scan logs for context
         try:
             from redteam.database import get_scan_logs
-            result = get_scan_logs(self.campaign_id, limit=15, page=1)
+            result = get_scan_logs(self.campaign_id, limit=8, page=1)
             logs = result.get("logs", []) if isinstance(result, dict) else (result or [])
             if logs:
                 parts.append("## Recent scan logs\n")
                 for l in logs:
-                    parts.append(f"- {l.get('method','')} {l.get('endpoint','')} → {l.get('response_status','?')} | {(l.get('response_body_preview') or '')[:100]}")
+                    parts.append(f"- {l.get('method','')} {l.get('endpoint','')} → {l.get('response_status','?')} | {(l.get('response_body_preview') or '')[:80]}")
                 parts.append("")
         except Exception:
             pass
@@ -621,7 +706,7 @@ class AIScanner:
         system = {"role": "system", "content": f"""You are an expert API penetration testing agent with tool access.
 
 TARGET: {self.target}
-AUTH: {'Bearer token configured — make authenticated requests' if self.auth.get('bearer_token') else 'No auth configured'}
+AUTH: {get_auth_description(self.auth)}
 {context}
 
 CRITICAL: You have SIX tools. MAXIMIZE every response — call MULTIPLE tools or batch commands.
@@ -648,37 +733,61 @@ BATCH RULES:
 
 ABSOLUTE RULES:
 - EVERY response MUST call at least ONE tool. Never text-only.
-- If a tool returns empty/error/timeout, IMMEDIATELY fall back to pentest_make_requests. Do NOT retry the same tool.
+- If a tool returns empty/error/timeout, IMMEDIATELY fall back to pentest_make_requests.
 - NEVER describe — CALL THE TOOL.
-- ONLY report findings you have confirmed evidence for."""}
+
+FINDING QUALITY RULES (CRITICAL):
+- ONLY report a finding if you have a RESPONSE that CONFIRMS the vulnerability.
+- A 400/422 validation error is NOT a finding — it just means you forgot a parameter.
+- A 401/403 is NOT an injection/SSRF/RCE finding — it's just blocked.
+- A 200 with no exploit indicators in the body is NOT confirmed.
+- For injection: the response MUST contain evidence of execution (e.g., SQL error, reflected XSS, SSRF response).
+- For auth bypass: you MUST have accessed protected data, not just gotten a different status code.
+- If you are UNCERTAIN: call pentest_make_requests to verify BEFORE calling pentest_add_findings.
+- Findings without matching scan log evidence will be auto-downgraded to INFO/UNVERIFIED."""}
 
         msgs = [system]
         self.conversation = msgs[:]
 
-        # ── Round templates: 3 categories rotated for 50/50 bash↔HTTP regardless of N ──
+        # ── Round templates: 3 categories rotated for 50/50 bash↔HTTP ──
         BASH_ROUNDS = [
-            "BASH RECON: Call bash with commands: ['nmap -sV -p 80,443,8080,8443,3000,5000,8000,9000 --open TARGET', 'curl -s -I https://TARGET', 'curl -s https://TARGET/robots.txt', 'curl -s https://TARGET/.well-known/security.txt', 'dig TARGET A +short']. Then call pentest_make_requests with 8 GET requests to /api, /admin, /docs, /graphql, /swagger, /.well-known/jwks.json, /api/v1, /api/health.",
-            "BASH JWT + INJECTION: Call bash with commands: ['curl -s https://TARGET/.well-known/jwks.json | jq .', 'python3 -c \"import jwt,base64,sys; parts=sys.stdin.read().strip().split(\\\".\\\"); print(base64.urlsafe_b64decode(parts[1]+\\\"==\\\").decode())\" <<< YOUR_JWT', 'curl -s \"https://TARGET/api/users?id=1 OR 1=1--\"', 'curl -s \"https://TARGET/api/users?id=1'\\'' UNION SELECT 1,2,3--\"']. Then call pentest_make_requests with 8 SQLi/XSS payload requests.",
-            "BASH DEEP RECON: Call bash with commands: ['curl -s https://crt.sh/?q=%25.TARGET_DOMAIN&output=json | python3 -c \"import sys,json; [print(c[\\'name_value\\']) for c in json.load(sys.stdin)[:30]]\"', 'dig TARGET_DOMAIN MX TXT NS +short', 'curl -s https://TARGET/sitemap.xml | head -30', 'ffuf -u TARGET/FUZZ -w /usr/share/seclists/Discovery/Web-Content/common.txt -mc 200 -timeout 5 -s | head -15']. Then call pentest_make_requests with 8 requests to newly discovered paths.",
+            "BASH RECON: Call bash: ['nmap -sV -p 80,443,8080,8443,3000,5000,8000,9000 --open TARGET', 'curl -s -I https://TARGET', 'curl -s https://TARGET/robots.txt', 'curl -s https://TARGET/.well-known/security.txt', 'dig TARGET A +short']. Then 8 GET requests to /api, /admin, /docs, /graphql, /swagger, /.well-known/jwks.json, /api/v1, /api/health.",
+            "BASH JWT + INJECTION: Call bash: ['curl -s https://TARGET/.well-known/jwks.json | jq .', 'python3 -c \"import jwt,base64,sys; parts=sys.stdin.read().strip().split(\\\".\\\"); print(base64.urlsafe_b64decode(parts[1]+\\\"==\\\").decode())\" <<< YOUR_JWT', 'curl -s \"https://TARGET/api/users?id=1 OR 1=1--\"', 'curl -s \"https://TARGET/api/users?id=1'\\'' UNION SELECT 1,2,3--\"']. Then 8 SQLi/XSS payload requests.",
+            "BASH DEEP RECON: Call bash: ['curl -s https://crt.sh/?q=%25.TARGET_DOMAIN&output=json | python3 -c \"import sys,json; [print(c[\\'name_value\\']) for c in json.load(sys.stdin)[:30]]\"', 'dig TARGET_DOMAIN MX TXT NS +short', 'curl -s https://TARGET/sitemap.xml | head -30', 'ffuf -u TARGET/FUZZ -w /usr/share/seclists/Discovery/Web-Content/common.txt -mc 200 -timeout 5 -s | head -15']. Then 8 requests to newly discovered paths.",
         ]
         QUICK_ROUNDS = [
-            "SCAN + HTTP: Call pentest_quick_nuclei for TARGET. Then call pentest_make_requests with 10 requests probing .env, /actuator, /actuator/health, /debug, /console, /swagger-ui.html, /api-docs, /graphiql, /metrics, /status with GET method.",
-            "FUZZ + SQLI: Call pentest_quick_ffuf with url TARGET/api/FUZZ. Then call pentest_quick_sqli on the 3 most promising endpoints found so far. Then call pentest_make_requests with 8 requests to ffuf-discovered paths.",
-            "NMAP + HTTP: Call pentest_quick_nmap. Then call pentest_make_requests with 10 requests to any new ports discovered. Also retest all known endpoints with PUT, DELETE, PATCH methods.",
+            "SCAN + HTTP: pentest_quick_nuclei on TARGET. Then 10 GET requests probing .env, /actuator, /actuator/health, /debug, /console, /swagger-ui.html, /api-docs, /graphiql, /metrics, /status.",
+            "FUZZ + SQLI: pentest_quick_ffuf with url TARGET/api/FUZZ. pentest_quick_sqli on the 3 most promising endpoints. Then 8 requests to ffuf-discovered paths.",
+            "NMAP + HTTP: pentest_quick_nmap. Then 10 requests to any new ports discovered. Also retest all known endpoints with PUT, DELETE, PATCH methods.",
         ]
+        # Build HTTP MAP from real collection endpoints if available
+        if self.collection_requests:
+            sample_paths = [r.get("url","").replace(self.target, "") for r in self.collection_requests[:15]]
+            http_map = f"HTTP MAP: 12-15 requests covering ALL known endpoints: {', '.join(sample_paths)}. Test baseline responses with valid auth."
+        else:
+            http_map = "HTTP MAP: 15 requests: GET /api/users, POST /api/login, GET /api/me, GET /api/products, GET /api/orders, POST /api/orders, GET /api/admin/stats, GET /api/wallet, GET /api/health, GET /api/config, PUT /api/users/1, DELETE /api/orders/1, PATCH /api/users/1, POST /api/register, GET /api/teams."
+
+        # Auth bypass template adapted to auth type
+        auth_type = self.auth.get("auth_type", "jwt_bearer")
+        auth_bypass = {
+            "jwt_bearer": "AUTH BYPASS: 12 requests: test ALL known endpoints WITHOUT Authorization header. Test Authorization: Bearer invalid, Bearer null, Bearer ' OR '1'='1. Test JWT alg:none bypass ({\"alg\":\"none\"}). Test unsigned token with modified payload (role=admin). Test expired token.",
+            "opaque_token": "AUTH BYPASS: 12 requests: test ALL known endpoints WITHOUT Authorization header. Test Authorization: Bearer invalid, Bearer '', Bearer ' OR '1'='1. Test token in URL query param (?access_token=X). Test token truncation.",
+            "jwe": "AUTH BYPASS: 12 requests: test ALL known endpoints WITHOUT Authorization. Test with invalid JWE, with alg:none JWE, with tampered encrypted payload. Test decrypted JWT with alg:none after decryption.",
+            "cookie": "AUTH BYPASS: 12 requests: test ALL endpoints WITHOUT Cookie header. Test Cookie with session=invalid, session=' OR '1'='1, session=admin. Test path traversal on cookie scope (/admin with / cookie). Test cookie without HttpOnly/Secure.",
+            "custom": "AUTH BYPASS: 12 requests: test ALL known endpoints WITHOUT the auth header. Test with empty value, invalid value, SQLi/XSS in header value. Test if the header is validated server-side or just passed through.",
+        }.get(auth_type, "AUTH BYPASS: 12 requests: test ALL known endpoints WITHOUT Authorization header. Add Authorization: Bearer invalid, Bearer null, Bearer ' OR '1'='1.")
         HTTP_ROUNDS = [
-            "HTTP MAP: Call pentest_make_requests with 15 requests: GET /api/users, POST /api/login, GET /api/me, GET /api/products, GET /api/orders, POST /api/orders, GET /api/admin/stats, GET /api/wallet, GET /api/health, GET /api/config, PUT /api/users/1, DELETE /api/orders/1, PATCH /api/users/1, POST /api/register, GET /api/teams.",
-            "AUTH BYPASS: Call pentest_make_requests with 12 requests: test ALL known endpoints WITHOUT Authorization header. Add requests with Authorization: Bearer invalid, Bearer null, Bearer ' OR '1'='1. Test JWT alg:none bypass.",
-            "BOLA/IDOR: Call pentest_make_requests with 15 requests: iterate user IDs 1-20 on /api/users/X, /api/orders/X, /api/wallet/X, /api/profile/X. Also test /api/teams/X with different team IDs. Use GET, PUT, DELETE for each.",
-            "BUSINESS LOGIC: Call pentest_make_requests with 15 requests: POST /api/orders with quantity=-1, 0, 99999, price=0, price=-100. POST /api/wallet/transfer with amount=-1, 999999. POST /api/coupons with reuse. PUT /api/users/1 with role=admin, isAdmin=true.",
-            "MASS ASSIGNMENT + LEAKS: Call pentest_make_requests with 15 requests: PATCH/PUT /api/users/X and /api/profile with role=admin, isAdmin=true, permissions=['admin'], verified=true, balance=99999. Check every response for API keys, tokens, passwords, PII, stack traces in headers and body.",
-            "INJECTION SWEEP: Call pentest_make_requests with 15 requests: SQLi on all query params (' UNION SELECT, 1 OR 1=1, admin'--), XSS (<script>, <img onerror>, javascript:), path traversal (../../etc/passwd, ..%2f..%2f), SSTI ({{7*7}}, ${7*7}) on body and headers.",
-            "SSRF + RACE: Call pentest_make_requests with 12 requests: test URL/webhook/callback params with http://169.254.169.254, http://metadata.google.internal, file:///etc/passwd, http://127.0.0.1:8000. Then 5 concurrent requests to state-changing endpoints (wallet transfer, order create, coupon redeem).",
-            "EXPLOIT CHAIN + FINAL: Call bash with commands: ['curl -s -X POST https://TARGET/api/auth/login -H \"Content-Type: application/json\" -d \"{\\\"username\\\":\\\"admin\\\",\\\"password\\\":\\\"admin\\\"}\"', 'curl -s https://TARGET/api/admin -H \"Authorization: Bearer FORGED_TOKEN\"', 'python3 -c \"import jwt,datetime; print(jwt.encode({\\\"sub\\\":\\\"1\\\",\\\"role\\\":\\\"admin\\\",\\\"exp\\\":datetime.datetime.utcnow()+datetime.timedelta(days=1)}, key=\\\"secret\\\", algorithm=\\\"HS256\\\"))\"']. Then call pentest_make_requests with 10 requests chaining discovered exploits. Then call pentest_add_findings with 5-10 confirmed findings.",
+            http_map,
+            auth_bypass,
+            "BOLA/IDOR: 15 requests: iterate user IDs 1-20 on /api/users/X, /api/orders/X, /api/wallet/X, /api/profile/X. Also test /api/teams/X with different team IDs. Use GET, PUT, DELETE for each.",
+            "BUSINESS LOGIC: 15 requests: POST /api/orders with quantity=-1, 0, 99999, price=0, price=-100. POST /api/wallet/transfer with amount=-1, 999999. POST /api/coupons with reuse. PUT /api/users/1 with role=admin, isAdmin=true.",
+            "MASS ASSIGNMENT + LEAKS: 15 requests: PATCH/PUT /api/users/X and /api/profile with role=admin, isAdmin=true, permissions=['admin'], verified=true, balance=99999. Check every response for API keys, tokens, passwords, PII, stack traces.",
+            "INJECTION SWEEP: 15 requests: SQLi on all query params (' UNION SELECT, 1 OR 1=1, admin'--), XSS (<script>, <img onerror>, javascript:), path traversal (../../etc/passwd, ..%2f..%2f), SSTI ({{7*7}}, ${7*7}) on body and headers.",
+            "SSRF + RACE: 12 requests: test URL/webhook/callback params with http://169.254.169.254, http://metadata.google.internal, file:///etc/passwd, http://127.0.0.1:8000. Then 5 concurrent requests to state-changing endpoints (wallet transfer, order create, coupon redeem).",
+            "EXPLOIT CHAIN + FINAL: Call bash: ['curl -s -X POST https://TARGET/api/auth/login -H \"Content-Type: application/json\" -d \"{\\\"username\\\":\\\"admin\\\",\\\"password\\\":\\\"admin\\\"}\"', 'curl -s https://TARGET/api/admin -H \"Authorization: Bearer FORGED_TOKEN\"', 'python3 -c \"import jwt,datetime; print(jwt.encode({\\\"sub\\\":\\\"1\\\",\\\"role\\\":\\\"admin\\\",\\\"exp\\\":datetime.datetime.utcnow()+datetime.timedelta(days=1)}, key=\\\"secret\\\", algorithm=\\\"HS256\\\"))\"']. Then 10 requests chaining discovered exploits. Then pentest_add_findings with 5-10 confirmed findings.",
         ]
 
-        # Distribution pattern: alternates bash↔HTTP, produces ~40/20/40% (bash/quick/http)
-        # regardless of how many rounds are configured
+        # Distribution: ~40/20/40% (bash/quick/http), 30 slots
         DISTRIBUTION = [
             "BASH", "HTTP", "QUICK", "HTTP", "BASH", "HTTP", "BASH", "HTTP",
             "QUICK", "HTTP", "BASH", "HTTP", "HTTP", "QUICK", "HTTP",
@@ -717,12 +826,24 @@ ABSOLUTE RULES:
 
         explore_idx = 0
         analyze_idx = 0
+        dry_rounds = 0
+        prev_total_findings = 0
         # Interleave: distribute analysis rounds evenly among exploration
         explore_per_analyze = max(1, total_explore // max(1, total_analyze))
 
         while explore_idx < total_explore or analyze_idx < total_analyze:
+            # Early exit: 5 consecutive dry rounds → stop
+            if dry_rounds >= 5:
+                break
             # Run a batch of exploration rounds
             batch_end = min(explore_idx + explore_per_analyze, total_explore)
+            # Inject fresh graph summary every 3 rounds to guide exploration
+            if explore_idx > 0 and explore_idx % 3 == 0:
+                unexplored = self.request_graph.get_unexplored_paths()
+                if unexplored:
+                    sample = [p[1] for p in unexplored[:8]]
+                    msgs.append({"role": "user", "content": f"GRAPH UPDATE: {len(unexplored)} unexplored paths found. Top: {', '.join(sample)}. Prioritize these in pentest_make_requests."})
+
             for i in range(explore_idx, batch_end):
                 prompt = exploration_prompts[i]
                 msgs.append({"role": "user", "content": prompt})
@@ -760,6 +881,14 @@ Make at least 5 HTTP requests or 3 bash commands NOW."""})
                     self.callbacks["on_progress"](pct, f"AI explore round {i + 1}/{total_explore}")
             explore_idx = batch_end
 
+            # Track dry rounds for early exit
+            current_total = len(ai_findings) + len(self.findings_ref)
+            if current_total == prev_total_findings:
+                dry_rounds += 1
+            else:
+                dry_rounds = 0
+                prev_total_findings = current_total
+
             # Inject an analysis round
             if analyze_idx < total_analyze:
                 if analyze_idx == 0:
@@ -795,7 +924,12 @@ SUPPLEMENTARY:
 ☐ GraphQL — Auth bypass, field suggestions, introspection leak
 ☐ Cache Poisoning — X-Forwarded-Host reflection, unkeyed headers
 ☐ BOLA via Batch — Per-item auth in bulk endpoints"""}
-                msgs.append({"role": "user", "content": analysis_prompts[analyze_idx]})
+                # Inject current findings into analysis for gap awareness
+                analysis_ctx = analysis_prompts[analyze_idx]
+                if ai_findings:
+                    titles = [f"- [{f.get('severity','?')}] {f.get('title','')}" for f in ai_findings[-10:]]
+                    analysis_ctx += f"\n\nFindings already reported ({len(ai_findings)} total — focus on NEW categories):\n" + "\n".join(titles)
+                msgs.append({"role": "user", "content": analysis_ctx})
                 if _beat(): break
                 try:
                     resp = self.pro.chat(msgs, tools=tools)
@@ -815,6 +949,13 @@ SUPPLEMENTARY:
                     pct = int(90 + (analyze_idx + 1) * 10 / total_analyze)
                     self.callbacks["on_progress"](pct, f"AI analyze round {analyze_idx + 1}/{total_analyze}")
                 analyze_idx += 1
+                # Also check dry rounds after analysis
+                current_total2 = len(ai_findings) + len(self.findings_ref)
+                if current_total2 == prev_total_findings:
+                    dry_rounds += 1
+                else:
+                    dry_rounds = 0
+                    prev_total_findings = current_total2
 
         # ══════════════════════════════════════════════════════════
         # FINAL PASS — Blind spot sweep

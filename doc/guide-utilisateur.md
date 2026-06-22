@@ -314,7 +314,55 @@ Importez vos spécifications d'API et collections pour générer automatiquement
 
 ---
 
-## 9. Requêtes Raw HTTP
+## 9. GED — Gestion Électronique de Documents
+
+La GED (accessible via `/ged`) stocke vos spécifications OpenAPI, Arazzo, fichiers markdown et autres documents. Elle sert de bibliothèque centrale pour tous les modules (Red/Blue/Purple Team).
+
+### 9.1. Interface
+
+| Zone | Description |
+|------|-------------|
+| **Sidebar gauche** | Liste des documents avec filtres par type et recherche textuelle |
+| **Zone centrale** | Visualiseur de document — markdown rendu, JSON formaté, ou texte brut |
+| **Bouton +** | Ajouter un nouveau document |
+
+### 9.2. Ajouter un document
+
+1. Cliquez sur le bouton **+** dans la sidebar
+2. Glissez-déposez un fichier dans la zone, ou cliquez pour parcourir
+3. Renseignez le nom, le type (OpenAPI, Arazzo, Markdown, Autre) et un snippet descriptif
+4. Cliquez **Enregistrer**
+
+Le type est auto-détecté selon l'extension du fichier (`.json`/`.yaml` → OpenAPI, `.md` → Markdown).
+
+### 9.3. Visualiser un document
+
+Cliquez sur un document dans la liste pour l'ouvrir dans le visualiseur :
+
+- **Markdown** : rendu HTML avec coloration syntaxique (titres, tableaux, code, liens)
+- **OpenAPI / Arazzo** : JSON formaté avec indentation
+- **Autre** : texte brut
+
+### 9.4. Actions
+
+| Action | Comment |
+|--------|---------|
+| **Télécharger** | Bouton violet dans le header du visualiseur |
+| **Supprimer** | Icône ✕ sur chaque document dans la sidebar (confirmation demandée) |
+| **Filtrer** | Dropdown par type (OpenAPI, Arazzo, Markdown, Autre) |
+| **Rechercher** | Barre de recherche dans la sidebar (filtre sur nom et snippet) |
+
+### 9.5. Picker GED
+
+Depuis les modules Red Team, Blue Team et Purple Team, vous pouvez lier un document de la GED :
+
+- Cliquez sur **Depuis la GED** dans l'onglet OpenAPI des profils de scan
+- Une modale liste tous les documents disponibles
+- Sélectionnez un document pour l'associer au profil
+
+---
+
+## 10. Requêtes Raw HTTP
 
 Le mode Raw HTTP permet d'envoyer des requêtes forgées manuellement pour tester des edge cases.
 
@@ -350,7 +398,7 @@ Authorization: Bearer eyJhbGciOiJIUzUxMiJ9...
 
 ---
 
-## 10. Le Workflow Builder
+## 11. Le Workflow Builder
 
 Le Workflow Builder permet de créer des scénarios de test automatisés par glisser-déposer.
 
@@ -366,7 +414,7 @@ Depuis l'interface principale, cliquez sur le bouton **Workflows** dans la barre
 | **Canvas central** | Zone de travail où vous placez et connectez les briques |
 | **Panneau droit** | Configuration de la brique sélectionnée + logs d'exécution |
 
-### 10.1. Les briques
+### 11.1. Les briques
 
 Glissez-déposez les briques depuis la palette vers le canvas. Connectez-les en tirant depuis le port de sortie (rond en bas) vers le port d'entrée (rond en haut) d'une autre brique.
 
@@ -444,7 +492,7 @@ Le panneau de config du bloc Assert propose des snippets d'exemples prêts à l'
 - Utile pour extraire un token CSRF, un ID de ressource, ou un token JWT et le réutiliser.
 - Stocke la valeur extraite dans `ctx.extracted_value`.
 
-### 10.2. Le contexte (ctx)
+### 11.2. Le contexte (ctx)
 
 Toutes les briques partagent un objet `ctx` qui circule à travers le workflow.
 
@@ -472,7 +520,7 @@ Toutes les briques partagent un objet `ctx` qui circule à travers le workflow.
 
 **Snippets ctx** : dans le panneau de configuration des briques HTTP Request, Raw Request, Set Data et If/Else, une section *ctx — Contexte du workflow* affiche des snippets cliquables qui s'insèrent à la position du curseur dans le champ actif.
 
-### 10.3. Exécution
+### 11.3. Exécution
 
 1. Placez un bloc **Start** sur le canvas
 2. Ajoutez vos blocs et connectez-les dans l'ordre souhaité
@@ -501,11 +549,11 @@ Vous pouvez **arrêter** l'exécution à tout moment avec le bouton Stop.
 
 ---
 
-## 11. Le Hub
+## 12. Le Hub
 
 Le Hub (accessible via l'icône utilisateur dans le header) centralise la gestion de votre compte et de vos ressources.
 
-### 11.1. Teams
+### 12.1. Teams
 
 - **Créer une team** : bouton "Créer", donnez un nom. Vous êtes automatiquement membre.
 - **Rejoindre une team** : entrez un Team ID et cliquez "Rejoindre". Une demande est envoyée aux membres.
@@ -513,7 +561,7 @@ Le Hub (accessible via l'icône utilisateur dans le header) centralise la gestio
 - **Suivre/Ne plus suivre** : les teams suivies apparaissent dans vos filtres de collections, workflows et pentest.
 - **Copier l'ID** : cliquez sur l'icône de copie à côté du Team ID.
 
-### 11.2. Configuration serveur (`elyria.cfg`)
+### 12.2. Configuration serveur (`elyria.cfg`)
 
 Elyria se configure via le fichier **`elyria.cfg`** à la racine du projet. C'est un fichier INI standard, sans dépendance `.env`.
 
@@ -565,7 +613,7 @@ blocked_hosts = metadata.google.internal,169.254.169.254,host.docker.internal
 - `ELYRIA_SERVER_PORT=9000` → `[server].port`
 - `ELYRIA_DATABASE_PG_PASSWORD=secret` → `[database].pg_password`
 
-### 11.3. Proxy
+### 12.3. Proxy
 
 Configurez vos proxies HTTP pour le forwarding des requêtes.
 
@@ -573,7 +621,7 @@ Configurez vos proxies HTTP pour le forwarding des requêtes.
 - **Définir comme favori** : le proxy favori est injecté dans vos requêtes lorsqu'il est activé.
 - **Supprimer** : icône X sur chaque proxy.
 
-### 11.4. Agent IA
+### 12.4. Agent IA
 
 Gérez vos providers LLM pour le chat IA et le pentest AI.
 
@@ -586,20 +634,26 @@ Gérez vos providers LLM pour le chat IA et le pentest AI.
 - **Définir par défaut** : un seul provider par slot peut être le défaut
 - **Sécurité** : les clés API ne sont jamais renvoyées au frontend (masquées `****`). Vous pouvez les remplacer mais pas les lire.
 
-## 12. Red Team / Pentest
+## 13. Red Team / Pentest
 
 Le module Red Team (accessible via le header ou `/pentest`) permet de scanner vos APIs avec le moteur OWASP API Top 10.
 
-### 12.1. Profils de scan
+### 13.1. Profils de scan
 
 - **Créer un profil** : bouton "+" dans la sidebar "Scan Profiles"
-- **Configurer** : URL cible, authentification (Bearer, headers), OpenAPI spec, ID list (pour BOLA), collection existante, équipe
+- **Configurer** : URL cible, authentification multi-type, OpenAPI spec, ID list (pour BOLA), collection existante, équipe
+  - **JWT Bearer** : token JWT classique (analyse automatique de l'algorithme, des claims, de la signature)
+  - **Jeton d'accès opaque** : token non-JWT (GitHub PAT, API key opaque) — pas d'analyse JWT
+  - **JWE (JSON Web Encryption)** : token chiffré + clé de déchiffrement — le scanner déchiffre puis analyse le JWT interne
+  - **Cookie de session** : nom + valeur du cookie — injecté comme `Cookie` header
+  - **Header personnalisé** : nom + valeur de header libre (ex: `X-API-Key`)
+  - **Headers supplémentaires (JSON)** : headers additionnels quel que soit le type d'auth
 - **Onglet IA** : réglez le nombre de rounds d'exploration (1-50, défaut 15) et d'analyse (1-25, défaut 5)
     - **Mode Expert** : activez l'option Expert pour un scan approfondi (30 rounds d'exploration, 15 d'analyse, rapport détaillé avec documentation)
 - **Modifier** : icône crayon sur le profil
 - **Supprimer** : icône X sur le profil
 
-### 12.2. Campagnes
+### 13.2. Campagnes
 
 - **Lancer un scan** : sélectionnez un profil, cliquez "Lancer le scan". Une campagne est créée.
 - **Progression** : barre de progression avec dégradé de couleurs (rouge → orange → violet)
@@ -607,7 +661,7 @@ Le module Red Team (accessible via le header ou `/pentest`) permet de scanner vo
 - **Supprimer** : icône X sur chaque campagne (purge complète : findings, logs, campagne)
 - **Refresh** : bouton Refresh dans le header ou automatique toutes les 60s
 
-### 12.3. Sandbox (Bash Tool)
+### 13.3. Sandbox (Bash Tool)
 
 Lors de la **Phase 2** (AI Deep Scan), Elyria spawn automatiquement un **conteneur Docker jetable** (`strike-sandbox`) — un environnement Linux isolé équipé d'outils de pentest réels que l'IA peut appeler.
 
@@ -661,7 +715,7 @@ Pour les scans Grey Team (OSINT), le sandbox est **optionnel** et restreint aux 
 
 Chaque commande bash exécutée par l'IA est logguée dans la base de données (`pentest_scan_logs`, `log_type='bash'`) avec stdout, stderr, exit code et temps d'exécution — visibles dans l'onglet **Logs** de la campagne.
 
-### 12.4. Findings et Logs
+### 13.4. Findings et Logs
 
 - **Dashboard** : compteurs par sévérité (Critical, High, Medium, Low, Info)
 - **Findings** : chaque vulnérabilité affiche titre, sévérité, description, remédiation, CWE/CVSS
@@ -671,18 +725,18 @@ Chaque commande bash exécutée par l'IA est logguée dans la base de données (
 - **Filtre par sévérité** : dropdown dans l'onglet Findings
 - **Rafraîchir** : boutons Refresh dans chaque onglet
 
-### 12.5. Rapport
+### 13.5. Rapport
 
 - **Rapport Markdown** : accessible dans l'onglet Rapport
 - **Navigation rapide** : table des matières sticky avec les sections principales
 - **Téléchargement** : bouton Rapport dans le header pour exporter en .md
 - **Annexes** : détails requête/réponse pour chaque finding
 
-## 13. Blue Team / SSDLC
+## 14. Blue Team / SSDLC
 
 Le module Blue Team (accessible via le header ou `/blueteam`) analyse vos spécifications API avec un agent IA expert en security-by-design pour produire un rapport d'exigences de sécurité.
 
-### 13.1. Profils SSDLC
+### 14.1. Profils SSDLC
 
 - **Créer un profil** : bouton "+" dans la sidebar "Profils SSDLC"
 - **Configurer** : URL cible, Master Prompt (instructions pour l'agent), Documentation (contexte métier), spécification OpenAPI, collection
@@ -690,14 +744,14 @@ Le module Blue Team (accessible via le header ou `/blueteam`) analyse vos spéci
 - **Modifier** : bouton crayon dans le header du profil
 - **Supprimer** : bouton poubelle dans le header du profil
 
-### 13.2. Analyse
+### 14.2. Analyse
 
 - **Lancer l'analyse** : sélectionnez un profil, cliquez "Lancer l'analyse"
 - **Progression** : barre de progression + messages de statut en temps réel (polling adaptatif)
 - **Arrêter** : bouton Stop pendant l'analyse
 - **Modèle Pro** : badge affichant le modèle IA utilisé
 
-### 13.3. Rapport
+### 14.3. Rapport
 
 L'agent IA analyse votre spec à travers 8 domaines de sécurité :
 1. Authentification & Autorisation
@@ -716,7 +770,7 @@ Le rapport inclut :
 - Plan d'action priorisé (immédiat, court terme, moyen terme)
 - Diagrammes Mermaid pour illustrer les flux et l'architecture
 
-### 13.4. Import depuis Red Team
+### 14.4. Import depuis Red Team
 
 Vous pouvez importer une campagne Red Team pour générer un plan de remédiation :
 - Depuis Red Team, bouton "Envoyer vers Blue Team" sur une campagne terminée
@@ -724,11 +778,11 @@ Vous pouvez importer une campagne Red Team pour générer un plan de remédiatio
 
 ---
 
-## 14. Grey Team / OSINT
+## 15. Grey Team / OSINT
 
 Le module Grey Team (accessible via le header ou `/greyteam`) effectue de la **reconnaissance passive** (OSINT) sur un domaine cible. Contrairement au Red Team qui attaque activement, le Grey Team collecte des informations publiques sans interagir directement avec les serveurs cibles.
 
-### 14.1. Profils OSINT
+### 15.1. Profils OSINT
 
 - **Créer un profil** : bouton "+" dans la sidebar "Domains"
 - **Configurer** : nom, domaine cible, description, modules OSINT à activer, nombre de rounds d'analyse IA
@@ -736,18 +790,18 @@ Le module Grey Team (accessible via le header ou `/greyteam`) effectue de la **r
 - **Modifier** : bouton Edit dans le header
 - **Supprimer** : bouton Delete dans le header
 
-### 14.2. Dashboard
+### 15.2. Dashboard
 
 - **Risk Score** : jauge 0-100 basée sur le nombre et la sévérité des findings
 - **Compteurs** : Critical, High, Total Findings
 - **6 cartes d'indicateurs** : DNS Health, SSL/TLS, HTTP Security, Subdomains, Email Exposure, Tech Stack
 - **Scan progress** : barre de progression avec polling adaptatif
 
-### 14.3. Modules OSINT (Phase 1)
+### 15.3. Modules OSINT (Phase 1)
 
 13 modules de collecte passive en parallèle : DNS Records, WHOIS, SSL/TLS, Cert Transparency (crt.sh + Cert Spotter + AlienVault OTX), HTTP Headers, Web Paths, Tech Fingerprint (30+ patterns : CMS, frameworks, CDN/WAF), Email Enumeration, Trivial Pages (190+ chemins : .env, .git, wp-admin, backups, configs), Wayback Machine, GitHub Dorks, Google Dorks, Frontend Code (secrets, endpoints API, CVE, déobfuscation IA).
 
-### 14.4. Phase 2 — AI Refinement
+### 15.4. Phase 2 — AI Refinement
 
 L'agent IA (modèles Flash + Pro) enrichit les findings :
 
@@ -756,7 +810,7 @@ L'agent IA (modèles Flash + Pro) enrichit les findings :
 - **osint_correlate_findings** : chaîne les findings en scénarios d'attaque
 - **bash** : commandes OSINT passives en sandbox (dig, whois, curl crt.sh/archive.org/GitHub API)
 
-### 14.5. Findings et filtres
+### 15.5. Findings et filtres
 
 - Tableau trié par sévérité avec titre, catégorie, description, et badge `AI` pour les findings enrichis
 - **Filtres** : sévérité, type de module, source (System / AI Refined)
@@ -766,11 +820,11 @@ L'agent IA (modèles Flash + Pro) enrichit les findings :
 
 ---
 
-## 15. Purple Team / IAST
+## 16. Purple Team / IAST
 
 Le module Purple Team (accessible via le header ou `/purpleteam`) combine **SAST** (Static Application Security Testing), **SCA** (Software Composition Analysis) et **IAST** (Interactive Application Security Testing) pour analyser votre code source.
 
-### 15.1. Profils de scan
+### 16.1. Profils de scan
 
 - **Créer un profil** : bouton "+" dans la sidebar "Repositories"
 - **Configurer** :
@@ -783,7 +837,7 @@ Le module Purple Team (accessible via le header ou `/purpleteam`) combine **SAST
 - **Modifier** : bouton Edit dans le header
 - **Supprimer** : bouton Delete dans le header
 
-### 15.2. Phases de scan
+### 16.2. Phases de scan
 
 Le scan Purple Team s'exécute en trois phases :
 
@@ -793,7 +847,7 @@ Le scan Purple Team s'exécute en trois phases :
 | **Phase 2 — IAST dynamique** | Si un endpoint cible est fourni : validation des findings statiques contre l'API live, tests de configuration (headers, CORS, HTTP methods, error disclosure, auth bypass) |
 | **Phase 3 — Deep Code Review IA** | L'agent IA lit le code source, grep les patterns, fait des requêtes HTTP vers l'API cible, et reporte les vulnérabilités confirmées (business logic, auth flaws, crypto weaknesses, race conditions) |
 
-### 15.3. Rapport en 3 parties
+### 16.3. Rapport en 3 parties
 
 Le rapport Purple Team est structuré en trois sections :
 
@@ -801,7 +855,7 @@ Le rapport Purple Team est structuré en trois sections :
 2. **CWE (Common Weakness Enumeration)** — Faiblesses de code classifiées par CWE ID (CWE-79 XSS, CWE-89 SQLi, CWE-78 CMDi, CWE-798 Hardcoded Credentials, etc.)
 3. **Mauvaises Pratiques & Exploitations Réelles** — Debug mode, secrets hardcodés, CORS permissif, auth désactivée, crypto faible, + findings IA (business logic, IDOR, race conditions)
 
-### 15.4. Findings et filtres
+### 16.4. Findings et filtres
 
 - **Dashboard** : compteurs CVE, CWE, Practices, Critical, High
 - **Filtres** : par partie (CVE, CWE, Practices, AI Discovered), par sévérité, **par CWE/CVE ID** (ex: `CWE-578`), et **par fichier** (filtre textuel sur le chemin du fichier contenant le finding)
@@ -810,14 +864,14 @@ Le rapport Purple Team est structuré en trois sections :
 - **Rapport** : visualisation markdown avec **table des matières** et rendu Mermaid dans l'interface, téléchargement .md
 - **Toggle View Report / View Findings** : le bouton View Report permet de basculer entre la vue rapport et la liste des findings
 
-### 15.5. Envoi vers Blue Team
+### 16.5. Envoi vers Blue Team
 
 Comme pour Red Team, vous pouvez envoyer un rapport Purple Team vers Blue Team pour obtenir un plan de remédiation :
 - Bouton **Send to Blue Team** après un scan terminé
 - Crée automatiquement un profil Blue Team avec un prompt spécial Purple Team
 - L'analyse Blue Team démarre automatiquement
 
-### 15.6. Sécurité du clonage
+### 16.6. Sécurité du clonage
 
 - **Sandbox Docker** : si Docker est disponible, le clonage du dépôt s'effectue dans un conteneur isolé — le token d'auth ne touche jamais le filesystem host
 - **Fallback direct** : si Docker n'est pas disponible, clonage direct avec `--depth 1` et suppression immédiate du `.git`
@@ -825,7 +879,7 @@ Comme pour Red Team, vous pouvez envoyer un rapport Purple Team vers Blue Team p
 
 ---
 
-## 16. Raccourcis clavier
+## 17. Raccourcis clavier
 
 | Raccourci | Action |
 |-----------|--------|

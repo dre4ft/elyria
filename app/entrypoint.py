@@ -23,7 +23,7 @@ from auth_users.oidc_api import app as oidc_router
 from ely.api import app as ely_router
 from ely.api import diary_app as ely_diary_router
 from purpleteam.api import app as purpleteam_router
-from database.ged_api import app as ged_router
+from doc_mgmt.ged_api import app as ged_router
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -167,7 +167,7 @@ def _serve_html(filename: str) -> HTMLResponse:
         from fastapi.responses import Response
         return Response(status_code=404)
     try:
-        with open(f"web_ui/{safe_name}", "r") as f:
+        with open(f"web_ui/{safe_name}", "r", encoding="utf-8") as f:
             html = f.read()
         if os.getenv("ELYRIA_PRODUCTION", "") == "1":
             # Cache-busting: use file mtime as version
@@ -247,7 +247,7 @@ async def get_doc(lang: str = "fr"):
     filename = "guide-utilisateur-en.md" if lang == "en" else "guide-utilisateur.md"
     path = os.path.join("..", "doc", filename)
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return JSONResponse(content={"content": f.read(), "lang": lang})
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Documentation file not found")

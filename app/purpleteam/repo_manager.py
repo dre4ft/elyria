@@ -70,6 +70,9 @@ def _build_auth_url(repo_url, auth_type, auth_key):
 
 
 def _docker_available():
+    from core.config import get_bool
+    if not get_bool("sandbox", "enabled", True):
+        return False
     try:
         result = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
         return result.returncode == 0
@@ -275,58 +278,72 @@ def detect_language(repo_path):
     all_files = list_repo_files(repo_path, max_files=50)
     all_lower = set(f.lower() for f in all_files)
 
-    # Check for framework indicators
+    # Framework indicators — check specific files first
     is_fastapi = any("fastapi" in f.lower() or "starlette" in f.lower() for f in all_lower)
-    is_flask = any("flask" in f.lower() for f in all_lower) and "flask" not in str(all_lower)
+    is_flask = any("flask" in f.lower() for f in all_lower)
     is_django = any("django" in f.lower() for f in all_lower) or "manage.py" in root_files
     is_spring = any(f.endswith("Application.java") or "spring" in f.lower() or "pom.xml" in root_files or "build.gradle" in root_files for f in all_lower)
     is_express = "package.json" in root_files and any("express" in f.lower() for f in all_lower)
-    is_next = "next.config.js" in root_files or "next.config.mjs" in root_files
+    is_next = "next.config.js" in root_files or "next.config.mjs" in root_files or "next.config.ts" in root_files
+    is_nestjs = "package.json" in root_files and any("nestjs" in f.lower() or "@nestjs" in f.lower() for f in all_lower)
     is_go = any(f.endswith(".go") for f in all_lower) or "go.mod" in root_files
     is_rust = "cargo.toml" in root_files
-    is_dotnet = any(f.endswith(".csproj") or f.endswith(".sln") for f in all_lower)
+    is_dotnet = any(f.endswith(".csproj") or f.endswith(".sln") or f.endswith(".cs") for f in all_lower)
+    is_ruby_rails = "gemfile" in root_files and any("rails" in f.lower() for f in all_lower)
+    is_ruby = "gemfile" in root_files or any(f.endswith(".rb") for f in all_lower)
+    is_php_laravel = "composer.json" in root_files and any("laravel" in f.lower() for f in all_lower)
+    is_php_symfony = "composer.json" in root_files and any("symfony" in f.lower() for f in all_lower)
+    is_php = "composer.json" in root_files or any(f.endswith(".php") for f in all_lower)
+    is_kotlin = any(f.endswith(".kt") or f.endswith(".kts") for f in all_lower)
+    is_swift = any(f.endswith(".swift") for f in all_lower) or "package.swift" in root_files
+    is_scala = any(f.endswith(".scala") for f in all_lower) or "build.sbt" in root_files
 
-    if is_fastapi:
-        return "python", "fastapi"
-    if is_flask:
-        return "python", "flask"
-    if is_django:
-        return "python", "django"
-    if is_spring:
-        return "java", "spring"
-    if is_express:
-        return "javascript", "express"
-    if is_next:
-        return "javascript", "nextjs"
-    if is_go:
-        return "go", "go"
-    if is_rust:
-        return "rust", "rust"
-    if is_dotnet:
-        return "csharp", "dotnet"
-    if any(f.endswith(".py") for f in all_lower):
-        return "python", "generic"
-    if any(f.endswith(".java") for f in all_lower):
-        return "java", "generic"
-    if any(f.endswith(".js") or f.endswith(".ts") for f in all_lower):
-        return "javascript", "generic"
-    if any(f.endswith(".go") for f in all_lower):
-        return "go", "generic"
+    # Language detection with framework priority
+    if is_fastapi:  return "python", "fastapi"
+    if is_flask:    return "python", "flask"
+    if is_django:   return "python", "django"
+    if is_spring:   return "java", "spring"
+    if is_nestjs:   return "javascript", "nestjs"
+    if is_express:  return "javascript", "express"
+    if is_next:     return "javascript", "nextjs"
+    if is_go:       return "go", "go"
+    if is_rust:     return "rust", "rust"
+    if is_dotnet:   return "csharp", "dotnet"
+    if is_ruby_rails: return "ruby", "rails"
+    if is_ruby:     return "ruby", "ruby"
+    if is_php_laravel: return "php", "laravel"
+    if is_php_symfony: return "php", "symfony"
+    if is_php:      return "php", "php"
+    if is_kotlin:   return "kotlin", "generic"
+    if is_swift:    return "swift", "generic"
+    if is_scala:    return "scala", "generic"
+    # Fallback by file extension
+    for ext, lang in [(".py", "python"), (".java", "java"), (".js", "javascript"),
+                       (".ts", "javascript"), (".go", "go"), (".rb", "ruby"),
+                       (".php", "php"), (".kt", "kotlin"), (".swift", "swift"),
+                       (".scala", "scala"), (".rs", "rust"), (".cs", "csharp")]:
+        if any(f.endswith(ext) for f in all_lower):
+            return lang, "generic"
     return "unknown", "unknown"
 
 
 def parse_dependencies(repo_path, language):
-    """Extract dependencies from a repo."""
-    deps = []
-    if language == "python":
-        deps = _parse_python_deps(repo_path)
-    elif language == "java":
-        deps = _parse_java_deps(repo_path)
-    elif language == "javascript":
-        deps = _parse_js_deps(repo_path)
-    elif language == "go":
-        deps = _parse_go_deps(repo_path)
-    return deps
+    """Extract dependencies from a repo, dispatching by language."""
+    parsers = {
+        "python": _parse_python_deps,
+        "java": _parse_java_deps,
+        "javascript": _parse_js_deps,
+        "go": _parse_go_deps,
+        "ruby": _parse_ruby_deps,
+        "php": _parse_php_deps,
+        "rust": _parse_rust_deps,
+        "csharp": _parse_dotnet_deps,
+        "kotlin": _parse_java_deps,   # Kotlin uses Gradle/Maven too
+        "scala": _parse_scala_deps,
+        "swift": _parse_swift_deps,
+    }
+    parser = parsers.get(language)
+    return parser(repo_path) if parser else []
 
 
 def _parse_python_deps(repo_path):
@@ -421,6 +438,130 @@ def _parse_go_deps(repo_path):
                             version = parts[1].lstrip("v") if len(parts) > 1 else ""
                             if "/" in name and "." in name:
                                 deps.append({"name": name, "version": version})
+        except Exception:
+            pass
+    return deps
+
+
+def _parse_ruby_deps(repo_path):
+    deps = []
+    gemfile = os.path.join(repo_path, "Gemfile")
+    if os.path.isfile(gemfile):
+        try:
+            with open(gemfile, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    m = re.match(r"""gem\s+['"]([^'"]+)['"]\s*,?\s*(?:['"]([^"]*)['"])?""", line)
+                    if m:
+                        deps.append({"name": m.group(1), "version": m.group(2) or ""})
+        except Exception:
+            pass
+    lockfile = os.path.join(repo_path, "Gemfile.lock")
+    if os.path.isfile(lockfile):
+        try:
+            with open(lockfile, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    m = re.match(r"^\s{4}([\w-]+)\s+\(([\d.]+)\)", line)
+                    if m:
+                        deps.append({"name": m.group(1), "version": m.group(2)})
+        except Exception:
+            pass
+    return deps
+
+
+def _parse_php_deps(repo_path):
+    deps = []
+    composer = os.path.join(repo_path, "composer.json")
+    if os.path.isfile(composer):
+        try:
+            with open(composer, "r") as f:
+                data = json.load(f)
+            for section in ("require", "require-dev"):
+                for name, version in data.get(section, {}).items():
+                    deps.append({"name": name, "version": str(version).lstrip("^~>=<")})
+        except Exception:
+            pass
+    lockfile = os.path.join(repo_path, "composer.lock")
+    if os.path.isfile(lockfile):
+        try:
+            with open(lockfile, "r") as f:
+                lock = json.load(f)
+            for pkg in lock.get("packages", []) + lock.get("packages-dev", []):
+                deps.append({"name": pkg.get("name", ""), "version": pkg.get("version", "")})
+        except Exception:
+            pass
+    return deps
+
+
+def _parse_rust_deps(repo_path):
+    deps = []
+    cargo = os.path.join(repo_path, "Cargo.toml")
+    if os.path.isfile(cargo):
+        try:
+            with open(cargo, "r") as f:
+                content = f.read()
+            in_deps = False
+            for line in content.split("\n"):
+                line = line.strip()
+                if line.startswith("[dependencies"):
+                    in_deps = True
+                    continue
+                if in_deps and line.startswith("["):
+                    in_deps = False
+                    continue
+                if in_deps:
+                    m = re.match(r'([\w-]+)\s*=\s*"([^"]*)"', line)
+                    if m:
+                        deps.append({"name": m.group(1), "version": m.group(2).lstrip("^~")})
+        except Exception:
+            pass
+    return deps
+
+
+def _parse_dotnet_deps(repo_path):
+    deps = []
+    for root, dirs, files in os.walk(repo_path):
+        dirs[:] = [d for d in dirs if d not in ("node_modules", ".git", "bin", "obj")]
+        for f in files:
+            if not f.endswith(".csproj"):
+                continue
+            path = os.path.join(root, f)
+            try:
+                with open(path, "r") as fh:
+                    content = fh.read()
+                for m in re.finditer(r'<PackageReference\s+Include="([^"]+)"\s+Version="([^"]+)"', content):
+                    deps.append({"name": m.group(1), "version": m.group(2)})
+            except Exception:
+                pass
+    return deps
+
+
+def _parse_scala_deps(repo_path):
+    deps = []
+    sbt_file = os.path.join(repo_path, "build.sbt")
+    if os.path.isfile(sbt_file):
+        try:
+            with open(sbt_file, "r") as f:
+                content = f.read()
+            for m in re.finditer(r'"([^"]+)"\s*%\s*"([^"]+)"\s*%\s*"([^"]+)"', content):
+                deps.append({"name": f"{m.group(1)}:{m.group(2)}", "version": m.group(3)})
+        except Exception:
+            pass
+    return deps
+
+
+def _parse_swift_deps(repo_path):
+    deps = []
+    pkg_file = os.path.join(repo_path, "Package.swift")
+    if os.path.isfile(pkg_file):
+        try:
+            with open(pkg_file, "r") as f:
+                content = f.read()
+            for m in re.finditer(r'\.package\(url:\s*"([^"]+)",\s*from:\s*"([^"]+)"\)', content):
+                deps.append({"name": m.group(1), "version": m.group(2)})
+            for m in re.finditer(r'\.package\(url:\s*"([^"]+)",\s*exact:\s*"([^"]+)"\)', content):
+                deps.append({"name": m.group(1), "version": m.group(2)})
         except Exception:
             pass
     return deps

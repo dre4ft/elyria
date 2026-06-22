@@ -1,6 +1,7 @@
 from fastmcp import FastMCP
 from sandbox.tool import BashTool
 from sandbox.manager import Sandbox, SandboxManager
+from core.config import get_bool
 from core.logging import get_logger
 
 _log = get_logger("sandbox.mcp_tool")
@@ -8,7 +9,18 @@ _log = get_logger("sandbox.mcp_tool")
 user_sandboxes = {}
 app = FastMCP(name="mcp")
 
-def get_bash_tool(user_id: str,container_id: str = None) -> BashTool | None:
+
+class _NoOpBashTool:
+    """No-op bash tool when sandbox is disabled."""
+    def handle(self, args): return '{"error": "Sandbox disabled"}'
+    def spawn(self, target=None): return {"status": "error", "detail": "Sandbox disabled"}
+    def destroy(self): pass
+
+
+def get_bash_tool(user_id: str, container_id: str = None):
+    if not get_bool("sandbox", "enabled", True):
+        _log.info("[MCP SANDBOX] Sandbox disabled by config")
+        return _NoOpBashTool()
     if user_id in user_sandboxes:
         return user_sandboxes[user_id]
     if container_id:

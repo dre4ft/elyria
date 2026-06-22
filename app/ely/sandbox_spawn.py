@@ -1,18 +1,32 @@
 from sandbox.tool import BashTool
 from sandbox.manager import SandboxManager, Sandbox
-
+from core.config import get_bool
 from core.logging import get_logger
 
 
 _log = get_logger("ely.sandbox_spawn")
 
 
-
 user_sandboxes = {}
 
 
+class NoOpBashTool:
+    """No-op bash tool when sandbox is disabled via config."""
+    def spawn(self, target=None):
+        return {"status": "error", "detail": "Sandbox disabled in elyria.cfg ([sandbox] enabled=0)"}
+    def handle(self, args):
+        return '{"error": "Sandbox disabled in elyria.cfg"}'
+    def destroy(self):
+        pass
+
+
+def _sandbox_disabled():
+    return not get_bool("sandbox", "enabled", True)
+
 
 def get_sandbox_toollist(user_id: str) -> list[str]:
+    if _sandbox_disabled():
+        return []
     if user_id in user_sandboxes:
         return {"Paquets disponibles": """bash
                                         curl
@@ -50,7 +64,10 @@ def get_sandbox_toollist(user_id: str) -> list[str]:
     return []
 
 
-def get_bash_tool(user_id: str,container_id: str = None) -> BashTool | None:
+def get_bash_tool(user_id: str, container_id: str = None):
+    if _sandbox_disabled():
+        _log.info("[ELY SANDBOX] Sandbox disabled — returning no-op tool")
+        return NoOpBashTool()
     if user_id in user_sandboxes:
         return user_sandboxes[user_id]
     if container_id:

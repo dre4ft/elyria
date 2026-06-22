@@ -51,3 +51,4 @@ CLAUDE.md
 .gate_key
 elyria.cfg
 .pytest_cache/
+app/doc_mgmt/ged_storage/

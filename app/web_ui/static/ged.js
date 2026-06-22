@@ -26,7 +26,28 @@
       this._timer = setTimeout(loadDocuments, 300);
     });
     setupDropZone();
+    loadTypes();
     loadDocuments();
+  }
+
+  async function loadTypes() {
+    try {
+      var res = await fetch(API + '/types', { headers: getAuthHeader() });
+      if (!res.ok) return;
+      var types = await res.json();
+      var labels = { openapi: 'OpenAPI', arazzo: 'Arazzo', markdown: 'Markdown', other: 'Autre' };
+      ['ged-filter-type', 'ged-type'].forEach(function (selId) {
+        var sel = $('#' + selId);
+        if (!sel) return;
+        var current = sel.value;
+        sel.innerHTML = '<option value="">— Tous —</option>';
+        types.forEach(function (t) {
+          sel.innerHTML += '<option value="' + esc(t) + '"' + (t === current ? ' selected' : '') + '>' + (labels[t] || t) + '</option>';
+        });
+      });
+    } catch (e) {
+      console.error('[ged] loadTypes error:', e);
+    }
   }
 
   function setupDropZone() {
@@ -91,19 +112,31 @@
     btn.disabled = true;
     btn.innerHTML = '<svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-opacity=".25"/><path stroke-linecap="round" d="M12 2a10 10 0 019.95 8.9" opacity=".8"/></svg> Envoi...';
     try {
-      var fd = new FormData();
-      fd.append('file', selectedFile);
-      fd.append('name', $('#ged-name').value.trim());
-      fd.append('snippet', $('#ged-snippet').value.trim());
-      fd.append('file_type', $('#ged-type').value);
-      var res = await fetch(API + '/upload', { method: 'POST', headers: getAuthHeader(), body: fd });
+      var content = await new Promise(function (resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function () { resolve(reader.result); };
+        reader.onerror = function () { reject(new Error('Lecture echouee')); };
+        reader.readAsText(selectedFile);
+      });
+      var h = getAuthHeader();
+      h['Content-Type'] = 'application/json';
+      var res = await fetch(API + '/upload', {
+        method: 'POST',
+        headers: h,
+        body: JSON.stringify({
+          name: $('#ged-name').value.trim(),
+          snippet: $('#ged-snippet').value.trim(),
+          file_type: $('#ged-type').value,
+          content: content
+        })
+      });
       if (res.ok) {
         showMsg('Document enregistre', 'success');
         closeGedModal();
         loadDocuments();
       } else {
         var err = await res.json().catch(function () { return {}; });
-        showMsg(err.detail || 'Erreur lors de l\'upload', 'error');
+        showMsg(err.detail || "Erreur lors de l'upload", 'error');
       }
     } catch (e) {
       showMsg('Erreur reseau: ' + e.message, 'error');
@@ -152,8 +185,15 @@
             '<div class="text-[11px] font-medium text-gray-200 truncate">' + esc(d.name) + '</div>' +
             (d.snippet ? '<div class="text-[9px] text-gray-500 truncate mt-0.5">' + esc(d.snippet) + '</div>' : '') +
             '<div class="text-[8px] text-gray-600 mt-0.5">' + (d.created_at || '').substring(0, 10) + '</div>' +
-          '</div>';
+          '</div>' +
+          '<button class="ged-delete-btn shrink-0 w-5 h-5 rounded hover:bg-red-500/10 flex items-center justify-center text-gray-600 hover:text-red-400 transition-colors ml-1" title="Supprimer">' +
+            '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>' +
+          '</button>';
         row.addEventListener('click', function () { viewDocument(d); });
+        row.querySelector('.ged-delete-btn').addEventListener('click', function (e) {
+          e.stopPropagation();
+          deleteGedDoc(d.doc_id);
+        });
         list.appendChild(row);
       });
     } catch (e) {
@@ -164,41 +204,41 @@
   async function viewDocument(doc) {
     activeDocId = doc.doc_id;
     // Highlight active row
-    document.querySelectorAll('.ged-item').forEach(function (el) { el.classList.remove('active'); });
-    var activeRow = document.querySelector('.ged-item[data-doc-id]');
-    var rows = document.querySelectorAll('.ged-item');
-    // Find and highlight
-    rows.forEach(function (r) { r.classList.remove('active'); });
-    // We need to set data-doc-id on rows. Let's just re-render.
-    loadDocuments();
+    document.querySelectorAll('.ged-item').forEach(function (r) { r.classList.remove('active'); });
+    var activeRow = document.querySelector('.ged-item[data-doc-id="' + doc.doc_id + '"]');
+    if (activeRow) activeRow.classList.add('active');
 
     // Show viewer
     $('#ged-viewer-empty').classList.add('hidden');
     $('#ged-viewer').classList.remove('hidden');
-    var typeBadge = $('#ged-viewer-type');
-    typeBadge.textContent = doc.file_type;
-    typeBadge.className = 'ged-type-badge ' + ({
-      openapi: 'ged-type-openapi', arazzo: 'ged-type-arazzo',
-      markdown: 'ged-type-markdown', other: 'ged-type-other'
-    }[doc.file_type] || 'ged-type-other');
-    $('#ged-viewer-name').textContent = doc.name;
-    var snippetEl = $('#ged-viewer-snippet');
-    if (doc.snippet) { snippetEl.textContent = doc.snippet; snippetEl.classList.remove('hidden'); }
-    else { snippetEl.classList.add('hidden'); }
     $('#ged-viewer-download').href = API + '/' + doc.doc_id + '/download';
 
     var content = $('#ged-viewer-content');
     content.innerHTML = '<div class="flex items-center justify-center h-48"><svg class="w-5 h-5 animate-spin text-gray-600" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-opacity=".25"/><path stroke-linecap="round" d="M12 2a10 10 0 019.95 8.9" opacity=".8"/></svg></div>';
 
     try {
-      var res = await fetch(API + '/' + doc.doc_id + '/download', { headers: getAuthHeader() });
+      // Fetch metadata + content from dedicated endpoint
+      var res = await fetch(API + '/' + doc.doc_id, { headers: getAuthHeader() });
       if (!res.ok) { content.innerHTML = '<p class="text-red-400 text-sm p-8">Erreur de chargement</p>'; return; }
-      var text = await res.text();
+      var data = await res.json();
+      var text = data.content || '';
 
-      if (doc.file_type === 'markdown') {
+      // Update viewer header with fresh metadata
+      var fileType = data.file_type || doc.file_type;
+      var typeBadge = $('#ged-viewer-type');
+      typeBadge.textContent = fileType;
+      typeBadge.className = 'ged-type-badge ' + ({
+        openapi: 'ged-type-openapi', arazzo: 'ged-type-arazzo',
+        markdown: 'ged-type-markdown', other: 'ged-type-other'
+      }[fileType] || 'ged-type-other');
+      $('#ged-viewer-name').textContent = data.filename || doc.name;
+      var snippetEl = $('#ged-viewer-snippet');
+      snippetEl.classList.add('hidden');
+
+      if (fileType === 'markdown') {
         var html = typeof marked !== 'undefined' ? marked.parse(text) : '<pre>' + esc(text) + '</pre>';
         content.innerHTML = html;
-      } else if (doc.file_type === 'openapi' || doc.file_type === 'arazzo') {
+      } else if (fileType === 'openapi' || fileType === 'arazzo') {
         var formatted = text;
         try {
           var parsed = JSON.parse(text);

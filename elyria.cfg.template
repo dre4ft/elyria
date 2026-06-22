@@ -56,3 +56,6 @@ button_label = Connexion SSO
 server_wrap_key = abe326cb1521570091370c3cbc11c754f8ee64ad82ed05bf336457531ee90dd1
 # Hosts bloqués pour les requêtes sortantes (SSRF protection)
 blocked_hosts = metadata.google.internal,169.254.169.254,instance-data,host.docker.internal,gateway.docker.internal
+
+[llm]
+validate_ssl = 0

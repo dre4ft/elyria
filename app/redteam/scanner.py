@@ -63,12 +63,15 @@ def _load_wordlist():
     return sorted(paths)
 
 
+from redteam.auth_utils import resolve_auth
+
+
 # ── Scanner orchestrator ──
 class Scanner:
     def __init__(self, target_url, auth_config=None, progress_cb=None, log_cb=None,
                  id_list=None, collection_requests=None):
         self.target = target_url.rstrip("/")
-        self.auth = auth_config or {}
+        self.auth = resolve_auth(auth_config or {})
         self.progress_cb = progress_cb
         self.log_cb = log_cb
         self.id_list = id_list or {}
@@ -76,19 +79,35 @@ class Scanner:
         self.session = _make_session()
         self._apply_auth()
         self._endpoints = None
+        from redteam.request_graph import RequestGraph
+        self.graph = RequestGraph()
 
     def _apply_auth(self):
+        auth_type = self.auth.get("auth_type", "none")
         headers = self.auth.get("headers", {})
         if headers:
             self.session.headers.update(headers)
-        token = self.auth.get("bearer_token")
-        if token:
-            self.session.headers["Authorization"] = f"Bearer {token}"
-        basic_user = self.auth.get("basic_user")
-        basic_pass = self.auth.get("basic_pass")
-        if basic_user and basic_pass:
-            self.session.auth = (basic_user, basic_pass)
-        # Apply proxy if provided in auth_config
+
+        if auth_type in ("jwt_bearer", "opaque_token", "jwe"):
+            token = self.auth.get("bearer_token")
+            if token:
+                self.session.headers["Authorization"] = f"Bearer {token}"
+        elif auth_type == "cookie":
+            cookie_name = self.auth.get("cookie_name", "session")
+            cookie_value = self.auth.get("cookie_value", "")
+            if cookie_name and cookie_value:
+                self.session.headers["Cookie"] = f"{cookie_name}={cookie_value}"
+        elif auth_type == "custom":
+            h_name = self.auth.get("custom_header_name", "")
+            h_value = self.auth.get("custom_header_value", "")
+            if h_name and h_value:
+                self.session.headers[h_name] = h_value
+        elif auth_type == "basic":
+            basic_user = self.auth.get("basic_user")
+            basic_pass = self.auth.get("basic_pass")
+            if basic_user and basic_pass:
+                self.session.auth = (basic_user, basic_pass)
+
         proxy = self.auth.get("proxy")
         if proxy:
             self.session.proxies = {"http": proxy, "https": proxy}
@@ -137,6 +156,12 @@ class Scanner:
             elapsed = int((time.monotonic() - start) * 1000)
             resp_body = resp.text[:2000] if resp.text else ""
             self._log(path, method, url, h, body or "", resp.status_code, dict(resp.headers), resp_body, elapsed, check_name)
+            try:
+                self.graph.add_request(method, path, resp.status_code, resp.text[:2000] or "",
+                                       request_params=None, response_headers=dict(resp.headers),
+                                       content_type=resp.headers.get("Content-Type", ""))
+            except Exception:
+                pass
             return resp, elapsed, req_info
         except Exception as e:
             elapsed = int((time.monotonic() - start) * 1000)
@@ -160,6 +185,7 @@ class Scanner:
             ("Collection Request Fuzzing", self.check_collection_fuzzing),
             ("BOLA / IDOR", self.check_bola),
             ("Business Logic Flaws", self.check_business_logic),
+            ("Smart Parameter Discovery", self.check_smart_params),
         ]
 
         total = len(checks)
@@ -183,6 +209,77 @@ class Scanner:
             self.progress_cb(90, "Phase 1 done — starting AI deep scan")
 
         return all_findings
+
+    async def check_smart_params(self):
+        """Leverage the request graph and ID list to identify and test
+        high-value parameters discovered during the scan."""
+        findings = []
+        ids = self.graph.get_discovered_ids()
+        unexplored = self.graph.get_unexplored_paths()
+
+        # 1. If we have an ID list, cross-reference with graph-discovered IDs
+        if self.id_list and ids:
+            users = list(self.id_list.items())
+            findings.append({
+                "title": f"ID list ready for BOLA ({len(users)} users, {len(ids)} IDs extracted)",
+                "description": f"Extracted resource IDs from responses: {', '.join(ids[:15])}. "
+                               f"These will be cross-referenced against {len(users)} users for BOLA testing.",
+                "severity": "info",
+                "category": "Improper Inventory Management",
+                "endpoint": self.target,
+                "evidence": {"discovered_ids": ids[:20], "user_count": len(users)},
+                "cwe_id": "CWE-639",
+            })
+
+        # 2. Highlight unexplored paths for manual/AI follow-up
+        if unexplored:
+            top = unexplored[:10]
+            findings.append({
+                "title": f"Unexplored API paths discovered ({len(unexplored)} candidates)",
+                "description": f"The graph detected {len(unexplored)} paths linked from responses but not yet tested. "
+                               f"Top candidates: {', '.join(p[1] for p in top)}.",
+                "severity": "info",
+                "category": "Improper Inventory Management",
+                "endpoint": self.target,
+                "evidence": {"unexplored_paths": [p[1] for p in top]},
+                "remediation": "Add these paths to the scan scope.",
+                "cwe_id": "CWE-1057",
+            })
+
+        # 3. Test high-value targets from the graph
+        high_val = self.graph.get_high_value_targets()
+        tested = 0
+        for method, path, statuses in high_val[:15]:
+            if tested >= 10:
+                break
+            # Probe with ID substitution if we have IDs
+            if self.id_list and ids:
+                for id_val in list(ids)[:3]:
+                    test_path = path
+                    # Try to substitute an ID-like segment in the path
+                    for seg in path.split("/"):
+                        if seg in ids or (seg.isdigit() and len(seg) < 10):
+                            test_path = path.replace(f"/{seg}/", f"/{id_val}/", 1).replace(f"/{seg}", f"/{id_val}", 1)
+                            if test_path != path:
+                                break
+                    if test_path != path:
+                        resp, _, _ = self._do_request(method, test_path, check_name="Smart BOLA probe")
+                        if resp and resp.status_code in (200, 201, 202):
+                            findings.append({
+                                "title": f"Possible IDOR: {method} {path} → {test_path} returned {resp.status_code}",
+                                "description": f"Substituting an ID in {path} with {id_val} returned HTTP {resp.status_code}, "
+                                               f"suggesting horizontal privilege escalation.",
+                                "severity": "high",
+                                "category": "Broken Object Level Authorization",
+                                "endpoint": test_path, "method": method,
+                                "evidence": {"original_path": path, "substituted_id": id_val, "status": resp.status_code},
+                                "remediation": f"Verify that {method} {path} enforces ownership for the requested resource.",
+                                "cvss_score": 7.5,
+                                "cwe_id": "CWE-639",
+                            })
+            tested += 1
+
+        return findings
 
     # ── Individual checks ──
 
@@ -706,6 +803,12 @@ class Scanner:
 
     async def check_jwt(self):
         findings = []
+        auth_type = self.auth.get("auth_type", "none")
+
+        # Only check JWT structure for JWT bearer tokens (not opaque, cookie, or none)
+        if auth_type in ("cookie", "none", "opaque_token"):
+            return findings
+
         auth_header = self.session.headers.get("Authorization", "")
         token = None
         if auth_header.startswith("Bearer "):
@@ -716,17 +819,6 @@ class Scanner:
         if not token:
             return findings
 
-        parts = token.split(".")
-        if len(parts) != 3:
-            findings.append({
-                "title": "Malformed JWT token",
-                "description": "The JWT token does not have the standard 3-part header.payload.signature format.",
-                "severity": "low",
-                "category": "Broken Authentication",
-                "cwe_id": "CWE-287",
-            })
-            return findings
-
         import base64
 
         def _pad_decode(part):
@@ -735,6 +827,52 @@ class Scanner:
                 return json.loads(base64.urlsafe_b64decode(padded))
             except Exception:
                 return None
+
+        # JWE: check the original JWE structure first, then check decrypted inner JWT
+        if auth_type == "jwe":
+            jwe_token = self.auth.get("jwe_token", "")
+            if jwe_token:
+                jwe_parts = jwe_token.split(".")
+                if len(jwe_parts) != 5:
+                    findings.append({
+                        "title": "Malformed JWE token",
+                        "description": "The JWE token does not have the standard 5-part compact serialization format.",
+                        "severity": "low",
+                        "category": "Broken Authentication",
+                        "cwe_id": "CWE-287",
+                    })
+                else:
+                    jwe_header = _pad_decode(jwe_parts[0])
+                    if jwe_header:
+                        alg = jwe_header.get("alg", "")
+                        enc = jwe_header.get("enc", "")
+                        if alg == "dir":
+                            key_len = len(self.auth.get("jwe_key", ""))
+                            min_key = {"A128GCM": 16, "A192GCM": 24, "A256GCM": 32}.get(enc, 32)
+                            if key_len < min_key:
+                                findings.append({
+                                    "title": "JWE direct encryption key may be too short",
+                                    "description": f"JWE uses 'dir' (direct encryption) with {enc}. Key length is {key_len} bytes; {min_key} expected.",
+                                    "severity": "medium",
+                                    "category": "Broken Authentication",
+                                    "cwe_id": "CWE-327",
+                                })
+            # Now check the decrypted inner JWT
+            token = self.auth.get("bearer_token", "")
+            if not token:
+                return findings
+
+        parts = token.split(".")
+        if len(parts) != 3:
+            if auth_type == "jwt_bearer":
+                findings.append({
+                    "title": "Malformed JWT token",
+                    "description": "The JWT token does not have the standard 3-part header.payload.signature format.",
+                    "severity": "low",
+                    "category": "Broken Authentication",
+                    "cwe_id": "CWE-287",
+                })
+            return findings
 
         header = _pad_decode(parts[0])
         payload = _pad_decode(parts[1])
@@ -752,13 +890,17 @@ class Scanner:
                     "cwe_id": "CWE-347",
                 })
             if alg.lower().startswith("hs") and len(self.auth.get("jwt_secret", "")) < 32:
-                # Heuristic: warn about weak HMAC secrets
-                pass
+                findings.append({
+                    "title": "JWT uses weak HMAC secret",
+                    "description": "The JWT uses an HMAC algorithm but the configured secret is short (< 32 chars), making it vulnerable to brute-force.",
+                    "severity": "medium",
+                    "category": "Broken Authentication",
+                    "remediation": "Use a long, random secret (at least 32 bytes) for HMAC algorithms.",
+                    "cvss_score": 6.5,
+                    "cwe_id": "CWE-327",
+                })
 
         if payload:
-            if "exp" in payload:
-                # Could check if exp is unreasonably far in the future
-                pass
             if "iat" not in payload:
                 findings.append({
                     "title": "JWT missing 'iat' claim",
@@ -817,15 +959,44 @@ class Scanner:
         return findings
 
     async def check_endpoint_discovery(self):
-        """Discover common API endpoints using the bundled wordlist."""
+        """Discover API endpoints — validate collection + wordlist enumeration."""
         findings = []
-        wordlist = _load_wordlist()
 
+        # 1. Validate collection/OpenAPI endpoints if available
+        if self.collection_requests:
+            coll_discovered = []
+            for req in self.collection_requests[:50]:
+                method = req.get("method", "GET").upper()
+                url = req.get("url", "")
+                path = url.replace(self.target, "") if url else "/"
+                resp, _, _ = self._do_request(method, path, check_name="Endpoint Discovery")
+                status = resp.status_code if resp else 0
+                if status:
+                    coll_discovered.append({"path": path, "method": method, "status": status})
+            if coll_discovered:
+                findings.append({
+                    "title": f"Collection endpoints validated ({len(coll_discovered)} reachable)",
+                    "description": f"All endpoints from the OpenAPI spec/collection have been probed.",
+                    "severity": "info",
+                    "category": "Improper Inventory Management",
+                    "endpoint": self.target,
+                    "evidence": {"endpoints_tested": len(coll_discovered)},
+                    "cwe_id": "CWE-1057",
+                })
+
+        # 2. Always run wordlist enumeration to discover HIDDEN/undocumented endpoints
+        wordlist = _load_wordlist()
         discovered = []
         for path in wordlist:
-            resp, elapsed, _ = self._do_request("GET", path, check_name="Endpoint Discovery")
+            resp, _, _ = self._do_request("GET", path, check_name="Endpoint Discovery")
             if resp and resp.status_code in (200, 301, 302, 401, 403, 405):
                 discovered.append({"path": path, "status": resp.status_code})
+                # Probe discovered paths with additional HTTP methods
+                if resp.status_code in (200, 401, 403):
+                    for m in ("POST", "PUT", "DELETE", "OPTIONS"):
+                        r2, _, _ = self._do_request(m, path, check_name="Endpoint Discovery")
+                        if r2 and r2.status_code != 405:
+                            discovered.append({"path": path, "method": m, "status": r2.status_code})
 
         if len(discovered) > 5:
             findings.append({
@@ -840,19 +1011,21 @@ class Scanner:
             })
 
         # Check for Swagger/OpenAPI exposure
-        if any(d["status"] == 200 and d["path"] in ("/swagger.json", "/openapi.json", "/api-docs") for d in discovered):
-            swagger_path = next(d["path"] for d in discovered if d["status"] == 200 and d["path"] in ("/swagger.json", "/openapi.json", "/api-docs"))
-            findings.append({
-                "title": "API documentation publicly accessible",
-                "description": "OpenAPI/Swagger documentation is exposed. Attackers can use this to map the entire API surface.",
-                "severity": "medium",
-                "category": "Improper Inventory Management",
-                "endpoint": self._url(swagger_path),
-                "method": "GET",
-                "remediation": "Restrict API documentation access to development environments only, or protect it with authentication.",
-                "cvss_score": 5.3,
-                "cwe_id": "CWE-1057",
-            })
+        d_statuses = {d["path"]: d.get("status", d.get("status", 0)) for d in discovered}
+        for sw_path in ("/swagger.json", "/openapi.json", "/api-docs"):
+            if d_statuses.get(sw_path) == 200:
+                findings.append({
+                    "title": "API documentation publicly accessible",
+                    "description": "OpenAPI/Swagger documentation is exposed. Attackers can use this to map the entire API surface.",
+                    "severity": "medium",
+                    "category": "Improper Inventory Management",
+                    "endpoint": self._url(sw_path),
+                    "method": "GET",
+                    "remediation": "Restrict API documentation access to development environments only, or protect it with authentication.",
+                    "cvss_score": 5.3,
+                    "cwe_id": "CWE-1057",
+                })
+                break
 
         return findings
 

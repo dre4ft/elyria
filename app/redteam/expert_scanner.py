@@ -64,11 +64,12 @@ class ExpertAIScanner(AIScanner):
     def __init__(self, campaign_id, target_url, user_id, auth_config=None,
                  deterministic_findings=None, collection_requests=None, id_list=None,
                  callbacks=None, description="", explore_rounds=30, analysis_rounds=15,
-                 master_prompt="", documentation="", openapi_spec="", stop_check=None):
+                 master_prompt="", documentation="", openapi_spec="", stop_check=None,
+                 request_graph=None):
         super().__init__(campaign_id, target_url, user_id, auth_config,
                          deterministic_findings, collection_requests, id_list,
                          callbacks, description, explore_rounds, analysis_rounds,
-                         stop_check=stop_check)
+                         stop_check=stop_check, request_graph=request_graph)
         self.expert_mode = True
         self.master_prompt = master_prompt
         self.documentation = documentation
@@ -586,35 +587,24 @@ Puis, pour chaque finding CRITICAL et HIGH :
 
 IMPORTANT: Write the COMPLETE report. Do not abbreviate. Each section must be fully fleshed out."""}
 
-        report_msgs = [report_system]
-        report_prompts = [
-            "Report round 1: Write the executive summary (Synthese Manageriale) and the scope/methodology section (Demarche et Perimetre). Be precise.",
-            "Report round 2: Write the attack schemas section. Detail each major attack vector discovered. Then start the findings synthesis table.",
-            "Report round 3: Complete the vulnerability synthesis. For each critical and high finding, write the detailed description, proof, ISO 27005 risk, and remediation.",
-            "Report round 4: Write the ISO 27005 risk analysis section with risk matrix and asset classification. Then write the AI synthesis section with all scan metrics.",
-            "Report round 5: Write the annexes. Review the entire report for completeness and consistency. Ensure every section is fully fleshed out. Add any missing details.",
-        ]
-
-        for rp in report_prompts[:report_rounds]:
-            report_msgs.append({"role": "user", "content": rp})
-            try:
-                _beat()
-                resp = self.pro.chat(report_msgs, tools=None)
-                _add_tokens(resp)
-                content = resp.get("content", "")
-                report_msgs.append({"role": "assistant", "content": content})
-            except Exception:
-                pass
-            if self.callbacks.get("on_progress"):
-                pct = int(95 + (report_prompts.index(rp) + 1) * 5 / report_rounds)
-                self.callbacks["on_progress"](pct, f"Writing expert report {report_prompts.index(rp) + 1}/{report_rounds}")
-
-        # Collect report — concatenate all assistant messages in order
-        report_parts = []
-        for msg in report_msgs:
-            if msg.get("role") == "assistant" and msg.get("content"):
-                report_parts.append(msg["content"])
-        report = "\n\n".join(report_parts) if report_parts else ""
+        # Single-round report generation — avoids repetition from multi-round context
+        report_msgs = [report_system, {"role": "user", "content": (
+            "Write the COMPLETE report now, following the structure above. "
+            "Write ALL 7 sections (Synthese Manageriale, Demarche et Perimetre, "
+            "Schemas d'Attaque, Synthese des Vulnerabilites, Analyse des Risques, "
+            "Synthese IA, Annexes). Do not skip any section. "
+            "For each finding, include: description, proof, CVSS, CWE, ISO 27005 risk, remediation. "
+            "Write in French. Use Markdown. Be thorough."
+        )}]
+        try:
+            _beat()
+            resp = self.pro.chat(report_msgs, tools=None)
+            _add_tokens(resp)
+            report = resp.get("content", "")
+        except Exception:
+            report = ""
+        if self.callbacks.get("on_progress"):
+            self.callbacks["on_progress"](97, "Writing expert report")
 
         # Store report in DB
         if report:
