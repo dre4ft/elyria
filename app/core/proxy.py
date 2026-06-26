@@ -6,9 +6,10 @@ Central proxy management — ensures all outgoing traffic uses the configured pr
 
 Two layers:
   1. Global env vars (HTTP_PROXY / HTTPS_PROXY) set at startup from DB — covers
-     libraries that read env vars automatically (requests, urllib, httpx, ollama).
+     libraries that read env vars automatically (requests, urllib, httpx, ollama)
+     and pre-auth requests (OIDC).
   2. Per-request context (ContextVar) set by middleware — allows per-user proxy
-     overrides, and updates env vars for the duration of the request.
+     overrides, and clears env vars when the user has proxy disabled.
 
 Libraries that DON'T read env vars (Playwright, aiohttp) must read from
 get_current_proxy_url() / get_current_proxy_dict() explicitly.
@@ -36,13 +37,16 @@ def refresh_global_proxy():
 
 
 def set_current_proxy(url: str | None):
-    """Set proxy for the current request context + env vars.
-    Pass None to restore the global proxy."""
+    """Set or clear proxy for the current request context + env vars.
+    Pass None to clear (bypass proxy for this request)."""
     _current_proxy_url.set(url)
-    if url is not None:
-        _apply_env(url)
-    else:
-        _apply_env(_global_proxy_url)
+    _apply_env(url)
+
+
+def restore_global_proxy():
+    """Restore env vars to global proxy (called at end of request)."""
+    _current_proxy_url.set(None)
+    _apply_env(_global_proxy_url)
 
 
 def get_current_proxy_url() -> str | None:

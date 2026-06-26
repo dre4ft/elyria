@@ -118,7 +118,7 @@ async def send_raw_request(args, request):
 
 
 
-@_action("ely_fuzz", "fuzz an HTTP request with a list of payloads and send them",
+@_action("ely_fuzz", "fuzz an HTTP request with a list of payloads and send them, use it instead of sandbox tool",
             {"request": {"type": "object", "properties": {
                 "method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]},
                 "url": {"type": "string"},
