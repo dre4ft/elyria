@@ -136,11 +136,21 @@
     return document.documentElement.getAttribute('data-theme') || 'dark';
   }
 
+  function updateElyLogo() {
+    var theme = getTheme();
+    var logos = document.querySelectorAll('.ely-logo');
+    logos.forEach(function(img) {
+      var src = theme === 'light' ? img.getAttribute('data-theme-src-light') : img.getAttribute('data-theme-src-dark');
+      if (src) img.src = src;
+    });
+  }
+
   function setTheme(theme) {
     theme = theme === 'light' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', theme);
     try { document.body.setAttribute('data-theme', theme); } catch(e) {}
     try { localStorage.setItem('elyria-theme', theme); } catch(e) {}
+    updateElyLogo();
   }
 
   function toggleTheme() {
@@ -154,6 +164,9 @@
     var saved;
     try { saved = localStorage.getItem('elyria-theme'); } catch(e) {}
     setTheme(saved || 'dark');
+    // Ensure logo is correct on first paint
+    setTimeout(updateElyLogo, 50);
+    setTimeout(updateElyLogo, 500);
   }
 
   // Bind theme toggle via event delegation on document
@@ -318,7 +331,7 @@
       rightHTML += '<button onclick="navigateTo(\'/doc\')" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-purple-500/10 border border-white/5 hover:border-purple-500/30 text-xs font-medium text-gray-400 hover:text-purple-400 transition-all">Docs</button>';
     }
     rightHTML += '<button id="btn-toggle-copilot" class="h-8 px-3 rounded-lg bg-base-700 hover:bg-primary/20 border border-white/5 hover:border-primary/40 text-xs font-medium text-gray-400 hover:text-primary-light transition-all flex items-center gap-1.5" title="Ely Copilot">'
-      + '<img src="/static/icons/new-icon.png" class="w-3.5 h-3.5 ely-logo" alt="" />'
+      + '<img src="/static/icons/new-icon.png" data-theme-src-dark="/static/icons/new_logo_blanc.png" data-theme-src-light="/static/icons/new-icon.png" class="w-3.5 h-3.5 ely-logo" alt="" />'
       + 'ELY</button>';
     rightHTML += '<span id="header-username" class="text-[10px] text-gray-500 font-medium hidden"></span>';
     if (logoutBtn) {

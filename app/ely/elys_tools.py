@@ -485,7 +485,7 @@ async def list_documents_tool(args, request):
 
 @_action("ely_get_document", "get documents in the GED (Gestion Electronique de Documents) storage",
             {"team_id": {"type": "string", "description": "Optional team ID to filter documentsempty for personnal doc" },"doc_id":{"type": "string", "description": "id of the document"}})
-async def list_documents_tool(args, request):
+async def get_documents_tool(args, request):
     from doc_mgmt.database import get_document,get_document_owner
     from core.auth import get_user, get_user_teams
     _STORAGE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "doc_mgmt", "ged_storage")
@@ -505,7 +505,7 @@ async def list_documents_tool(args, request):
     if team_id and team_id not in user_teams.split(","):
         return "Not a member of the specified team"
     try:
-        with open(_storage_path(doc_id), "rb") as f:
+        with open(_storage_path(doc_id), "r") as f:
             content = f.read()
         return content
     except FileNotFoundError:

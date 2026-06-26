@@ -11,8 +11,13 @@ async def launch_browser():
     """Version async de lancement du browser"""
     _log.info("Launching browser (async)...")
     playwright = await async_playwright().start()
-    browser = await playwright.chromium.launch(headless=True)
-    # Stocker aussi playwright pour pouvoir le fermer
+    launch_args = {"headless": True}
+    from core.proxy import get_current_proxy_url
+    proxy_url = get_current_proxy_url()
+    if proxy_url:
+        launch_args["proxy"] = {"server": proxy_url}
+        _log.info(f"Browser using proxy: {proxy_url}")
+    browser = await playwright.chromium.launch(**launch_args)
     return browser, playwright
 
 async def close_browser(browser, playwright):

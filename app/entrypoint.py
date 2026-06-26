@@ -6,6 +6,9 @@ from fastapi import FastAPI, Request,HTTPException
 from fastapi.responses import JSONResponse,HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+from core.proxy import init_global_proxy, set_current_proxy
+init_global_proxy()
+
 from request_manager.request_api import app as request_router
 from database.request_log_api import app as data_router
 from database.collection_api import app as collection_router
@@ -151,6 +154,32 @@ async def check_authorization(request: Request, call_next):
         return JSONResponse(status_code=401, content={"detail": "Invalid Authorization format"})
 
     return await call_next(request)
+
+
+@app.middleware("http")
+async def set_proxy_context(request: Request, call_next):
+    """Inject per-user proxy into env vars for the duration of this request."""
+    try:
+        token = getattr(request.state, "token", None)
+        if token:
+            from database.connection import get_connection
+            conn = get_connection()
+            row = conn.execute(
+                """SELECT p.url FROM user_favorite_proxy f
+                   JOIN proxies p ON f.proxy_id = p.proxy_id
+                   WHERE f.user_id = ? AND f.enabled = 1 AND p.url != ''""",
+                (token,),
+            ).fetchone()
+            conn.close()
+            if row and row["url"]:
+                set_current_proxy(row["url"])
+    except Exception:
+        pass
+    try:
+        return await call_next(request)
+    finally:
+        set_current_proxy(None)
+
 
 @app.get("/")
 async def serve_root():
