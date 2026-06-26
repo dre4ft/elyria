@@ -32,13 +32,9 @@ def init():
     c = _conn()
     c.executescript("""
         CREATE TABLE IF NOT EXISTS proxies (id INTEGER PRIMARY KEY, proxy_id TEXT UNIQUE, name TEXT, url TEXT NOT NULL,
-            team_ids TEXT DEFAULT '', user_id TEXT DEFAULT '', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+            team_ids TEXT DEFAULT '', user_id TEXT DEFAULT '', payload_encrypted TEXT DEFAULT '', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS user_favorite_proxy (user_id TEXT PRIMARY KEY, proxy_id TEXT, enabled INTEGER DEFAULT 1);
     """)
-    try:
-        c.execute("ALTER TABLE user_favorite_proxy ADD COLUMN enabled INTEGER DEFAULT 1")
-    except:
-        pass
     c.commit(); c.close()
 init()
 

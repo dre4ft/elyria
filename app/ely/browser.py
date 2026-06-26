@@ -61,14 +61,14 @@ async def click_element(browser, url: str, selector: str, timeout: int = 15000):
 async def basic_handler(user_id: str, url: str = None, selector: str = "body", action: str = "query"):
     """Handler asynchrone pour les opérations browser"""
     global browsers
-    
+
     # Stocker un tuple (browser, playwright)
     if user_id not in browsers:
         browser, playwright = await launch_browser()
         browsers[user_id] = (browser, playwright)
     else:
         browser, playwright = browsers[user_id]
-    
+
     try:
         if action == "query":
             if not url:

@@ -64,7 +64,8 @@ def init():
     c.executescript("""
         CREATE TABLE IF NOT EXISTS app_config (
             key   TEXT PRIMARY KEY,
-            value TEXT NOT NULL DEFAULT ''
+            value TEXT NOT NULL DEFAULT '',
+            payload_encrypted TEXT DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS app_fqdn_whitelist (
             id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,7 +80,8 @@ def init():
         );
         CREATE TABLE IF NOT EXISTS app_api_keys (
             key_name  TEXT PRIMARY KEY,
-            key_value TEXT NOT NULL DEFAULT ''
+            key_value TEXT NOT NULL DEFAULT '',
+            payload_encrypted TEXT DEFAULT ''
         );
     """)
     c.commit()
@@ -120,11 +122,21 @@ _DEFAULTS = {
     "log.dir":                "logs",
 }
 
-_DEFAULT_FQDN = {
-    "fetch": ["localhost", "127.0.0.1", "*.example.com"],
-    "proxy": ["localhost", "127.0.0.1"],
-    "llm":   ["api.openai.com", "localhost", "127.0.0.1", "*.ollama.com"],
-}
+def _default_fqdn():
+    """Load FQDN whitelist defaults from elyria.cfg [whitelist]."""
+    from core.config import get as _core_get
+    result = {}
+    for cat in ("fetch", "proxy", "llm"):
+        raw = _core_get("whitelist", cat, "")
+        result[cat] = [h.strip() for h in raw.split(",") if h.strip()]
+    # Fallback if config is empty
+    if not any(result.values()):
+        result = {
+            "fetch": [],
+            "proxy": [],
+            "llm": ["api.openai.com", "localhost", "127.0.0.1", "*.ollama.com"],
+        }
+    return result
 
 _DEFAULT_PROVIDERS = ["openai", "ollama", "lmstudio", "anthropic", "deepseek"]
 
@@ -133,19 +145,7 @@ def _seed_defaults():
     c = _connect()
     for k, v in _DEFAULTS.items():
         c.execute("INSERT OR IGNORE INTO app_config (key,value) VALUES(?,?)", (k, v))
-    # Fixup: ensure SSL defaults are set even for existing rows that got seeded with ""
-    c.execute("UPDATE app_config SET value='cert.pem' WHERE key='ssl.cert_path' AND value=''")
-    c.execute("UPDATE app_config SET value='key.pem' WHERE key='ssl.key_path' AND value=''")
-    # Fixup: seed OIDC defaults for rows that were created empty before defaults existed
-    for k in ("oidc.issuer", "oidc.client_id", "oidc.client_secret",
-              "oidc.provider_name", "oidc.scope", "oidc.button_label"):
-        c.execute(
-            "UPDATE app_config SET value = ? WHERE key = ? AND value = ''",
-            (_DEFAULTS[k], k),
-        )
-    # Ensure oidc.enabled exists (but don't force-enable it)
-    c.execute("INSERT OR IGNORE INTO app_config (key,value) VALUES('oidc.enabled','0')")
-    for cat, hosts in _DEFAULT_FQDN.items():
+    for cat, hosts in _default_fqdn().items():
         for h in hosts:
             c.execute("INSERT OR IGNORE INTO app_fqdn_whitelist (category,pattern) VALUES(?,?)", (cat, h))
     for pt in _DEFAULT_PROVIDERS:

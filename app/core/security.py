@@ -95,47 +95,44 @@ def is_url_safe(url: str) -> tuple[bool, str]:
     if not host:
         return False, "Hostname manquant"
 
+    # 1. Blocked hosts (hostnames)
     for blocked in _load_blocked_hosts():
         if blocked in host or host in blocked:
             return False, f"Host bloque: {blocked}"
 
+    # 2. Blocked TLDs
     for tld in _load_blocked_tlds():
         if host.endswith(tld):
             return False, f"TLD bloque: {tld}"
 
+    # 3. FQDN whitelist — takes priority over IP blocks
     from database.app_config import is_fqdn_allowed
     if is_fqdn_allowed(host, "fetch"):
         return True, ""
 
-    # Check for IPv6-mapped IPv4 (::ffff:x.x.x.x)
-    if host.startswith("::ffff:"):
-        v4_part = host.replace("::ffff:", "").replace("[", "").replace("]", "")
-        try:
-            ip = ipaddress.ip_address(v4_part)
-        except ValueError:
-            ip = None
-        if ip:
-            for net in _load_blocked_networks():
-                if ip in net and not ip.is_loopback:
-                    return False, f"IPv6-mapped IPv4 bloquee: {ip}"
-            return True, ""
-
+    # 4. IP blocking via blocked_networks
+    ip = None
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
-        ip_str = _resolve_host(host)
-        if not ip_str:
-            return False, f"Impossible de resoudre: {host}"
-        try:
-            ip = ipaddress.ip_address(ip_str)
-        except ValueError:
-            return False, f"Adresse IP invalide: {ip_str}"
+        if host.startswith("::ffff:"):
+            v4_part = host.replace("::ffff:", "").replace("[", "").replace("]", "")
+            try:
+                ip = ipaddress.ip_address(v4_part)
+            except ValueError:
+                pass
+        if ip is None:
+            ip_str = _resolve_host(host)
+            if ip_str:
+                try:
+                    ip = ipaddress.ip_address(ip_str)
+                except ValueError:
+                    pass
 
-    for net in _load_blocked_networks():
-        if ip in net:
-            if not _is_production() and ip.is_loopback:
-                return True, ""
-            return False, f"IP privee bloquee: {ip} (range {net})"
+    if ip is not None:
+        for net in _load_blocked_networks():
+            if ip in net:
+                return False, f"IP privee bloquee: {ip} (range {net})"
 
     return True, ""
 
@@ -149,13 +146,7 @@ def validate_url_or_raise(url: str):
 
 
 def _is_safe_url(url: str, allow_localhost: bool = True) -> bool:
-    """Legacy wrapper for redteam campaign_api compatibility. Returns bool only."""
-    if allow_localhost and not _is_production():
-        try:
-            host = (urlparse(url).hostname or "").lower()
-            if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
-                return True
-        except Exception:
-            pass
+    """Legacy wrapper for compatibility. Returns bool only.
+    allow_localhost is ignored — blocked_networks from elyria.cfg is authoritative."""
     safe, _ = is_url_safe(url)
     return safe

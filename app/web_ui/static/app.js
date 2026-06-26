@@ -702,8 +702,13 @@ async function sendStructured() {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
-    const elapsed = Math.round(performance.now() - startTime);
 
+    if (!res.ok) {
+      displayError(data.detail || `HTTP ${res.status}`, res.status);
+      return;
+    }
+
+    const elapsed = Math.round(performance.now() - startTime);
     const responseData = data.response || data;
 
     // Store in history (with resolved values)
@@ -755,8 +760,13 @@ async function sendRaw() {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
-    const elapsed = Math.round(performance.now() - startTime);
 
+    if (!res.ok) {
+      displayError(data.detail || `HTTP ${res.status}`, res.status);
+      return;
+    }
+
+    const elapsed = Math.round(performance.now() - startTime);
     const responseData = data.response || data;
 
     // Parse raw request to extract structured info
@@ -871,16 +881,18 @@ function displayResponse(entry, elapsed) {
   }
 }
 
-function displayError(message) {
-  dom.respStatus.className = 'status-badge s5xx flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold';
-  dom.respStatus.innerHTML = `<span>ERR</span><span class="font-normal opacity-70">Network Error</span>`;
+function displayError(message, status) {
+  const code = status || 0;
+  const statusClass = code >= 500 ? 's5xx' : code >= 400 ? 's4xx' : 's5xx';
+  dom.respStatus.className = 'status-badge ' + statusClass + ' flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold';
+  dom.respStatus.innerHTML = `<span>${code || 'ERR'}</span><span class="font-normal opacity-70">${code ? 'Error' : 'Network Error'}</span>`;
   dom.respStatus.classList.remove('hidden');
   dom.respStatus.classList.add('flex');
   dom.respTime.classList.add('hidden');
 
   dom.respEmpty.classList.add('hidden');
   dom.respBodyContent.classList.remove('hidden');
-  dom.respBodyContent.textContent = `Error: ${message}`;
+  dom.respBodyContent.textContent = message;
 }
 
 // ─────────────────────────────────────────────

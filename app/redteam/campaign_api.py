@@ -302,34 +302,10 @@ def _generate_ids_from_requests(collection_requests):
 
 
 def _is_safe_url(url):
-    """Block SSRF by rejecting URLs pointing to internal/private networks."""
-    try:
-        parsed = urlparse(url)
-        hostname = parsed.hostname
-        if not hostname:
-            return False
-        # Block raw IPs in private ranges
-        try:
-            ip = ipaddress.ip_address(hostname)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_unspecified:
-                return False
-            return True
-        except ValueError:
-            pass
-        # Block cloud metadata endpoints and internal-only TLDs (configurable via app_config)
-        from database.app_config import get as _cfg
-        blocked_raw = _cfg("ssrf.blocked_hosts", "")
-        blocked = [h.strip() for h in blocked_raw.split(",") if h.strip()] if blocked_raw else [
-            "metadata.google.internal", "169.254.169.254",
-            "instance-data", "169.254.170.2",
-        ]
-        if hostname.lower() in blocked:
-            return False
-        if hostname.lower().endswith(".local") or hostname.lower().endswith(".internal"):
-            return False
-        return True
-    except Exception:
-        return False
+    """Block SSRF — delegates to core.security.is_url_safe (elyria.cfg)."""
+    from core.security import is_url_safe
+    safe, _ = is_url_safe(url)
+    return safe
 
 
 

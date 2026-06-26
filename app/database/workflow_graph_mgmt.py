@@ -30,15 +30,11 @@ def init_db():
             graph TEXT NOT NULL DEFAULT '{}',
             user_id TEXT DEFAULT '',
             team_id TEXT DEFAULT '',
+            payload_encrypted TEXT DEFAULT '',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # Migration for existing tables that lack team_id
-    try:
-        conn.execute("ALTER TABLE workflow_graphs ADD COLUMN team_id TEXT DEFAULT ''")
-    except:
-        pass
     conn.commit()
     conn.close()
 

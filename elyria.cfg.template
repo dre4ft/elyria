@@ -56,6 +56,23 @@ button_label = Connexion SSO
 server_wrap_key = abe326cb1521570091370c3cbc11c754f8ee64ad82ed05bf336457531ee90dd1
 # Hosts bloqués pour les requêtes sortantes (SSRF protection)
 blocked_hosts = metadata.google.internal,169.254.169.254,instance-data,host.docker.internal,gateway.docker.internal
+# TLDs bloquées
+blocked_tlds = .local,.internal,.corp,.home,.lan
+# Plages IP privées à bloquer (CIDR)
+blocked_networks = 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,127.0.0.0/8,::1/128,fc00::/7,fe80::/10
+# URLs bloquées (une par ligne ou séparées par des virgules)
+blocked_urls =
 
 [llm]
 validate_ssl = 0
+
+[whitelist]
+# FQDN whitelist — ces hosts bypassent les checks SSRF (blocked_hosts, blocked_networks, etc.)
+# Format : liste séparée par des virgules. Supporte les wildcards : *.example.com
+# Catégories :
+#   fetch  — requêtes sortantes (import OpenAPI, fetch de specs, scans...)
+#   proxy  — connexions au serveur proxy
+#   llm    — APIs des fournisseurs LLM (OpenAI, Ollama, LM Studio...)
+fetch = *.example.com,api.monservice.com
+proxy = 127.0.0.1,192.168.1.100
+llm = api.openai.com,localhost,127.0.0.1,*.ollama.com,api.anthropic.com
