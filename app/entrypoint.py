@@ -311,7 +311,9 @@ app.include_router(ely_diary_router)
 app.include_router(purpleteam_router)
 app.include_router(ged_router)
 from database.ctx_api import app as ctx_router
+from database.skills_api import app as skills_router
 app.include_router(ctx_router)
+app.include_router(skills_router)
 
 if __name__ == "__main__":
     import os

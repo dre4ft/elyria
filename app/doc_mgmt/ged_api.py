@@ -55,12 +55,22 @@ async def api_list_documents(request: Request, team_id: str = None,
 @app.get("/types")
 async def api_list_types():
     """List valid document types."""
-    return ["openapi", "arazzo","markdown", "other"]
+    return ["openapi", "arazzo", "markdown", "other"]
 
 
 @app.get("/{doc_id}")
 async def api_get_document(doc_id: str, request: Request):
-    """Get document metadata."""
+    """Get document metadata or skill content."""
+    # Check if this is the Ely skill or a custom skill
+    from database.skills_api import load_skill
+    skill = load_skill(doc_id)
+    if skill and (doc_id == "ely" or not skill.get("builtin")):
+        return {
+            "filename": skill["name"],
+            "file_type": "skill",
+            "content": skill["content"],
+        }
+
     from core.auth import get_user
     user_id = get_user(request)
     owner_id = get_document_owner(doc_id)
@@ -69,7 +79,7 @@ async def api_get_document(doc_id: str, request: Request):
     doc = get_document(doc_id)
     if not doc:
         raise HTTPException(404, "Document not found")
-    try : 
+    try :
         with open(_storage_path(doc_id), "rb") as f:
             content = f.read()
     except FileNotFoundError:

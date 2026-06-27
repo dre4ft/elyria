@@ -580,6 +580,48 @@ async def diary_delete_tool(args, request):
 
 
 # ═══════════════════════════════════════════════════════════════
+# Skills management
+# ═══════════════════════════════════════════════════════════════
+
+@_action("ely_create_skill", "Create or update a custom agent skill. Skills are markdown files defining agent behavior, methodology, tool usage, and rules.",
+         {"skill_id": {"type": "string", "description": "Unique skill ID (e.g. 'my-api-auditor')"},
+          "name": {"type": "string", "description": "Display name"},
+          "description": {"type": "string", "description": "Short description"},
+          "content": {"type": "string", "description": "Skill markdown with sections: Identity, Methodology, Tool Usage, Rules"},
+          "category": {"type": "string", "description": "Category: custom, pentest, osint, code-audit, general"}})
+async def create_skill_tool(args, request):
+    from core.auth import get_user as get_user_id
+    from database.skills_api import save_skill
+    uid = get_user_id(request)
+    sid = args.get("skill_id", "").strip().lower().replace(" ", "-")
+    if not sid or not args.get("content", "").strip():
+        return {"error": "skill_id and content required"}
+    return save_skill(sid, args.get("name", sid), args.get("description", ""),
+                      args["content"], args.get("category", "custom"), uid)
+
+
+@_action("ely_list_skills", "List all available agent skills (built-in and custom).",
+         {"category": {"type": "string", "description": "Filter by category (optional)"}})
+async def list_skills_tool(args, request):
+    from database.skills_api import list_skills
+    skills = list_skills()
+    cat = args.get("category", "")
+    if cat:
+        skills = [s for s in skills if s.get("category") == cat]
+    return {"skills": skills, "total": len(skills)}
+
+
+@_action("ely_get_skill", "Get the full content of a specific skill by ID.",
+         {"skill_id": {"type": "string", "description": "Skill ID to retrieve"}})
+async def get_skill_tool(args, request):
+    from database.skills_api import load_skill
+    s = load_skill(args.get("skill_id", ""))
+    if not s:
+        return {"error": f"Skill not found: {args.get('skill_id')}"}
+    return s
+
+
+# ═══════════════════════════════════════════════════════════════
 # Purple Team tools
 # ═══════════════════════════════════════════════════════════════
 
@@ -697,7 +739,8 @@ def get_action_definitions(page=None):
         "purpleteam": ["ely_purpleteam_scan", "ely_purpleteam_get_findings", "ely_list_resources", "ely_bash","ely_list_document","ely_get_document"],
     }
     diary_tools = ["ely_diary_add", "ely_diary_query", "ely_diary_list", "ely_diary_get", "ely_diary_delete"]
-    allowed = set(page_actions.get(page, [])) | set(diary_tools)
+    skill_tools = ["ely_create_skill", "ely_list_skills", "ely_get_skill"]
+    allowed = set(page_actions.get(page, [])) | set(diary_tools) | set(skill_tools)
     return [d for d in all_defs if d.get("function", {}).get("name") in allowed or page is None]
 
 

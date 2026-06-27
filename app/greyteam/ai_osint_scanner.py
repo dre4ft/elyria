@@ -24,6 +24,14 @@ from core.logging import get_logger
 _log = get_logger("greyteam.refiner")
 
 
+def _load_skill(name: str) -> str:
+    try:
+        from ai_core.skills_loader import load_agent_skill
+        return load_agent_skill(name)
+    except Exception:
+        return ""
+
+
 def _get_refiner_tools(has_sandbox: bool = False) -> list[dict]:
     tools = [
         {
@@ -778,7 +786,8 @@ RULES:
 - CREATE new findings when you discover something the scanner missed — use bash to verify your suspicion first, then call osint_create_finding.
 - For each refinement, provide a concrete, specific ai_description tied to THIS target ({self.domain}).
 - Correlate at least 2-3 attack chains — think like an attacker.
-- Use bash 'commands' array to run multiple passive lookups efficiently (e.g., dig + whois + crt.sh in one call).""",
+- Use bash 'commands' array to run multiple passive lookups efficiently (e.g., dig + whois + crt.sh in one call).
+{_load_skill("greyteam")}""",
         }
 
         msgs = [system]

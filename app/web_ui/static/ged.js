@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Elyria
-// GED — Gestion Electronique de Documents
+// GED — Gestion Electronique de Documents + Ely Skills
 
 (function () {
   'use strict';
@@ -8,6 +8,7 @@
   var API = '/api/ged';
   var selectedFile = null;
   var activeDocId = null;
+  var skillsActive = false;
 
   var $ = function (s) { return document.querySelector(s); };
   var esc = function (s) {
@@ -17,18 +18,31 @@
     return d.innerHTML;
   };
 
+  // ═══════════════════════════════════════════
+  // Init
+  // ═══════════════════════════════════════════
+
   function init() {
-    $('#btn-ged-upload').addEventListener('click', openGedModal);
+    $('#btn-ged-upload').addEventListener('click', handleUploadClick);
     $('#btn-ged-save').addEventListener('click', uploadDocument);
-    $('#ged-filter-type').addEventListener('change', loadDocuments);
+    $('#ged-filter-type').addEventListener('change', reloadList);
     $('#ged-search').addEventListener('input', function () {
       clearTimeout(this._timer);
-      this._timer = setTimeout(loadDocuments, 300);
+      this._timer = setTimeout(reloadList, 300);
     });
     setupDropZone();
     loadTypes();
+    reloadList();
+  }
+
+  function reloadList() {
+    if (skillsActive) { skillsLoad(); return; }
     loadDocuments();
   }
+
+  // ═══════════════════════════════════════════
+  // Document upload / list / view
+  // ═══════════════════════════════════════════
 
   async function loadTypes() {
     try {
@@ -99,6 +113,11 @@
     $('#ged-type').value = 'openapi';
     $('#ged-msg').classList.add('hidden');
     $('#btn-ged-save').disabled = true;
+  }
+
+  function handleUploadClick() {
+    if (skillsActive) { showSkillEditor(); return; }
+    openGedModal();
   }
 
   window.closeGedModal = function () {
@@ -203,27 +222,24 @@
 
   async function viewDocument(doc) {
     activeDocId = doc.doc_id;
-    // Highlight active row
     document.querySelectorAll('.ged-item').forEach(function (r) { r.classList.remove('active'); });
     var activeRow = document.querySelector('.ged-item[data-doc-id="' + doc.doc_id + '"]');
     if (activeRow) activeRow.classList.add('active');
 
-    // Show viewer
     $('#ged-viewer-empty').classList.add('hidden');
     $('#ged-viewer').classList.remove('hidden');
     $('#ged-viewer-download').href = API + '/' + doc.doc_id + '/download';
+    $('#ged-viewer-download').classList.remove('hidden');
 
     var content = $('#ged-viewer-content');
     content.innerHTML = '<div class="flex items-center justify-center h-48"><svg class="w-5 h-5 animate-spin text-gray-600" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-opacity=".25"/><path stroke-linecap="round" d="M12 2a10 10 0 019.95 8.9" opacity=".8"/></svg></div>';
 
     try {
-      // Fetch metadata + content from dedicated endpoint
       var res = await fetch(API + '/' + doc.doc_id, { headers: getAuthHeader() });
       if (!res.ok) { content.innerHTML = '<p class="text-red-400 text-sm p-8">Erreur de chargement</p>'; return; }
       var data = await res.json();
       var text = data.content || '';
 
-      // Update viewer header with fresh metadata
       var fileType = data.file_type || doc.file_type;
       var typeBadge = $('#ged-viewer-type');
       typeBadge.textContent = fileType;
@@ -232,8 +248,7 @@
         markdown: 'ged-type-markdown', other: 'ged-type-other'
       }[fileType] || 'ged-type-other');
       $('#ged-viewer-name').textContent = data.filename || doc.name;
-      var snippetEl = $('#ged-viewer-snippet');
-      snippetEl.classList.add('hidden');
+      $('#ged-viewer-snippet').classList.add('hidden');
 
       if (fileType === 'markdown') {
         var html = typeof marked !== 'undefined' ? marked.parse(text) : '<pre>' + esc(text) + '</pre>';
@@ -243,9 +258,7 @@
         try {
           var parsed = JSON.parse(text);
           formatted = JSON.stringify(parsed, null, 2);
-        } catch (e) {
-          // YAML or plain text — display as-is
-        }
+        } catch (e) { /* YAML — display as-is */ }
         content.innerHTML = '<pre>' + esc(formatted) + '</pre>';
       } else {
         content.innerHTML = '<pre>' + esc(text) + '</pre>';
@@ -259,7 +272,7 @@
     activeDocId = null;
     $('#ged-viewer-empty').classList.remove('hidden');
     $('#ged-viewer').classList.add('hidden');
-    loadDocuments();
+    reloadList();
   };
 
   window.deleteGedDoc = async function (docId) {
@@ -267,7 +280,7 @@
     try {
       await fetch(API + '/' + docId, { method: 'DELETE', headers: getAuthHeader() });
       if (activeDocId === docId) closeGedViewer();
-      loadDocuments();
+      reloadList();
     } catch (e) {
       console.error('[ged] delete error:', e);
     }
@@ -306,6 +319,145 @@
       });
     modal.addEventListener('click', function (e) { if (e.target === modal) modal.remove(); });
   };
+
+  // ═══════════════════════════════════════════
+  // Skills mode
+  // ═══════════════════════════════════════════
+
+  function skillsLoad() {
+    var list = $('#ged-list'), empty = $('#ged-empty');
+    fetch('/api/ged?file_type=skill&limit=200', { headers: getAuthHeader() })
+      .then(function (r) { return r.json(); })
+      .then(function (docs) {
+        list.querySelectorAll('.ged-item').forEach(function (el) { el.remove(); });
+        if (!docs.length) { empty.classList.remove('hidden'); return; }
+        empty.classList.add('hidden');
+        docs.forEach(function (d) {
+          var row = document.createElement('div');
+          row.className = 'ged-item px-3 py-2.5 flex items-start gap-2.5';
+          row.dataset.docId = d.doc_id;
+          row.innerHTML =
+            '<span class="ged-type-badge ged-type-markdown mt-0.5 shrink-0">skill</span>' +
+            '<div class="flex-1 min-w-0"><div class="text-[11px] font-medium text-gray-200 truncate">' + esc(d.name) + '</div>' +
+            (d.snippet ? '<div class="text-[9px] text-gray-500 truncate mt-0.5">' + esc(d.snippet) + '</div>' : '') + '</div>' +
+            '<button class="sk-edit-btn shrink-0 w-5 h-5 rounded hover:bg-violet-500/10 flex items-center justify-center text-gray-600 hover:text-violet-400 transition-colors ml-1"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg></button>' +
+            '<button class="sk-del-btn shrink-0 w-5 h-5 rounded hover:bg-red-500/10 flex items-center justify-center text-gray-600 hover:text-red-400 transition-colors ml-1"><svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>';
+          row.querySelector('.sk-edit-btn').addEventListener('click', function (e) {
+            e.stopPropagation();
+            fetch('/api/ged/' + d.doc_id, { headers: getAuthHeader() }).then(function (r) { return r.json(); }).then(function (data) {
+              showSkillEditor({ skill_id: d.doc_id, name: d.name, description: d.snippet || '', content: data.content });
+            });
+          });
+          row.querySelector('.sk-del-btn').addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (confirm('Supprimer ce skill ?')) {
+              fetch('/api/skills/' + d.doc_id, { method: 'DELETE', headers: getAuthHeader() }).then(function () { skillsLoad(); });
+            }
+          });
+          row.addEventListener('click', function () {
+            activeDocId = d.doc_id;
+            document.querySelectorAll('.ged-item').forEach(function (r) { r.classList.remove('active'); });
+            row.classList.add('active');
+            $('#ged-viewer-empty').classList.add('hidden');
+            $('#ged-viewer').classList.remove('hidden');
+            $('#ged-viewer-type').textContent = 'skill';
+            $('#ged-viewer-type').className = 'ged-type-badge ged-type-markdown';
+            $('#ged-viewer-name').textContent = d.name;
+            $('#ged-viewer-snippet').classList.add('hidden');
+            $('#ged-viewer-download').classList.add('hidden');
+            fetch('/api/ged/' + d.doc_id, { headers: getAuthHeader() }).then(function (r) { return r.json(); }).then(function (data) {
+              var skillContent = data.content || '';
+              $('#ged-viewer-content').innerHTML =
+                '<div class="mb-4 flex justify-between"><div><h1 class="text-lg font-bold text-white">' + esc(data.filename) + '</h1>' +
+                '<p class="text-xs text-gray-500 mt-1">' + esc(d.snippet || '') + '</p></div>' +
+                '<div class="flex gap-2"><button id="btn-skill-view-edit" class="h-8 px-3 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 text-xs font-medium text-violet-400 hover:text-violet-300 transition-all flex items-center gap-1.5"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>Editer</button>' +
+                '<button id="btn-skill-view-delete" class="h-8 px-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-xs font-medium text-red-400 hover:text-red-300 transition-all flex items-center gap-1.5"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>Supprimer</button></div></div>' +
+                '<div id="skill-content-rendered" class="ged-markdown"></div>';
+              document.getElementById('btn-skill-view-edit').addEventListener('click', function () {
+                showSkillEditor({ skill_id: d.doc_id, name: d.name, description: d.snippet || '', content: skillContent });
+              });
+              document.getElementById('btn-skill-view-delete').addEventListener('click', function () {
+                if (confirm('Supprimer ce skill ?')) {
+                  fetch('/api/skills/' + d.doc_id, { method: 'DELETE', headers: getAuthHeader() }).then(function () {
+                    document.getElementById('ged-viewer').classList.add('hidden');
+                    document.getElementById('ged-viewer-empty').classList.remove('hidden');
+                    skillsLoad();
+                  });
+                }
+              });
+              var rendered = document.getElementById('skill-content-rendered');
+              if (rendered) {
+                rendered.innerHTML = typeof marked !== 'undefined' ? marked.parse(skillContent) : '<pre>' + esc(skillContent) + '</pre>';
+              }
+            });
+          });
+          list.appendChild(row);
+        });
+      });
+  }
+
+  window.toggleSkillsFilter = function () {
+    skillsActive = !skillsActive;
+    var b = document.getElementById('btn-ged-skills');
+    var f = document.getElementById('ged-filter-type');
+    var l = document.getElementById('ged-sidebar-label');
+    var u = document.getElementById('btn-ged-upload');
+    if (skillsActive) {
+      if (b) b.classList.add('bg-violet-500/20', 'border-violet-500/30');
+      if (f) f.style.display = 'none';
+      if (l) l.textContent = 'Skills';
+      if (u) u.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>';
+      if (u) u.title = 'Ajouter un skill';
+      skillsLoad();
+    } else {
+      if (b) b.classList.remove('bg-violet-500/20', 'border-violet-500/30');
+      if (f) f.style.display = '';
+      if (l) l.textContent = 'Documents';
+      if (u) u.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>';
+      if (u) u.title = 'Ajouter un document';
+      loadDocuments();
+    }
+  };
+
+  function showSkillEditor(skill) {
+    var m = document.getElementById('skill-modal');
+    if (!m) return;
+    document.getElementById('skill-modal-title').textContent = skill ? 'Editer ' + skill.name : 'Nouveau Skill';
+    m.classList.remove('hidden'); m.classList.add('flex');
+    document.getElementById('sk-editor-id').value = skill ? skill.skill_id : '';
+    document.getElementById('sk-editor-name').value = skill ? skill.name : '';
+    document.getElementById('sk-editor-desc').value = skill ? (skill.description || '') : '';
+    document.getElementById('sk-editor-content').value = skill ? skill.content : '';
+    var d = document.getElementById('btn-skill-delete');
+    if (d) { d.classList.toggle('hidden', !skill); if (skill) d.setAttribute('data-sid', skill.skill_id); }
+  }
+
+  window._showSkillEditor = showSkillEditor;
+
+  window.closeSkillModal = function () {
+    var m = document.getElementById('skill-modal');
+    if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+  };
+
+  window.saveSkill = function () {
+    var sid = document.getElementById('sk-editor-id').value.trim().toLowerCase().replace(/\s+/g, '-');
+    var name = document.getElementById('sk-editor-name').value.trim() || sid;
+    var desc = document.getElementById('sk-editor-desc').value.trim();
+    var content = document.getElementById('sk-editor-content').value.trim();
+    if (!sid || !content) { alert('Skill ID et contenu requis'); return; }
+    fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeader() }, body: JSON.stringify({ skill_id: sid, name: name, description: desc, content: content }) })
+      .then(function (r) { if (r.ok) { closeSkillModal(); skillsLoad(); } });
+  };
+
+  window.deleteSkillFromEditor = function () {
+    var d = document.getElementById('btn-skill-delete'), sid = d ? d.getAttribute('data-sid') : '';
+    if (!sid || !confirm('Supprimer ?')) return;
+    fetch('/api/skills/' + sid, { method: 'DELETE', headers: getAuthHeader() }).then(function (r) { if (r.ok) { closeSkillModal(); skillsLoad(); } });
+  };
+
+  // ═══════════════════════════════════════════
+  // Boot
+  // ═══════════════════════════════════════════
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

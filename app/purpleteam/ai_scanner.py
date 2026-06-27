@@ -24,6 +24,14 @@ from purpleteam.repo_manager import list_repo_files, detect_language, parse_depe
 _log = get_logger("purpleteam.ai")
 
 
+def _load_skill(name: str) -> str:
+    try:
+        from ai_core.skills_loader import load_agent_skill
+        return load_agent_skill(name)
+    except Exception:
+        return ""
+
+
 class AIPurpleScanner:
     def __init__(self, repo_path, target_endpoint="", user_id="", static_findings=None,
                  controllers=None, call_graph=None):
@@ -403,7 +411,8 @@ Your mission:
 4. Chain vulnerabilities: combine low-severity findings into high-impact attack chains.
 5. Design flaws: rate limiting, password reset flow, session fixation, JWT expiry, debug endpoints.
 
-Tool strategy: list_directory first, grep_codebase for patterns, read_source_file on suspicious files, submit_finding for EACH vulnerability with file_path, line_number, CWE ID, CVSS score, and concrete remediation."""
+Tool strategy: list_directory first, grep_codebase for patterns, read_source_file on suspicious files, submit_finding for EACH vulnerability with file_path, line_number, CWE ID, CVSS score, and concrete remediation.
+{_load_skill("purpleteam")}"""
 
         understanding_prompt = f"""**Phase 1 -- Code Understanding**
 
