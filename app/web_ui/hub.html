@@ -42,9 +42,12 @@
       Ely
     </button>
     <div class="flex-1"></div>
-    <div id="proxy-status" class="p-2 rounded-md bg-base-700/40 border border-white/5 text-[10px] text-gray-500 flex items-center gap-1.5">
-      <svg class="w-3 h-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/></svg>
-      <span>No proxy</span>
+    <div id="proxy-status" class="p-2 rounded-md bg-base-700/40 border border-white/5 text-[10px] flex items-center gap-1.5">
+      <svg id="proxy-dot" class="w-3 h-3 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/></svg>
+      <span id="proxy-label">No proxy</span>
+      <button id="btn-toggle-proxy" class="hidden ml-auto w-8 h-5 rounded-full bg-base-600 border border-white/10 relative transition-colors duration-200 flex-shrink-0" onclick="toggleProxy()" title="Activer/Desactiver le proxy">
+        <span id="proxy-toggle-dot" class="absolute top-0.5 w-4 h-4 rounded-full bg-gray-500 shadow transition-all duration-200" style="left:1px"></span>
+      </button>
     </div>
   </aside>
 
@@ -205,7 +208,17 @@ async function refreshHub() {
   loadAIConfigs();
   if(d.favorite_proxy_id && d.proxies) {
     const fav = d.proxies.find(p=>p.proxy_id===d.favorite_proxy_id);
-    const el = $('#proxy-status'); if(el) el.innerHTML = `<svg class="w-3 h-3 text-green-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/></svg><span class="truncate">${esc(fav.name||fav.url)}</span>`;
+    const btn = $('#btn-toggle-proxy');
+    const dot = $('#proxy-dot');
+    const label = $('#proxy-label');
+    const enabled = d.proxy_enabled === true;
+    if(label) label.innerHTML = `<span class="truncate text-gray-300">${esc(fav.name||fav.url)}</span>`;
+    if(dot) { dot.innerHTML = '<circle cx="12" cy="12" r="5"/>'; dot.setAttribute('fill', enabled?'currentColor':'none'); dot.classList.toggle('text-green-400', enabled); dot.classList.toggle('text-gray-600', !enabled); }
+    if(btn) { btn.classList.remove('hidden'); updateProxyToggleUI(enabled); }
+  } else {
+    const btn = $('#btn-toggle-proxy'); if(btn) btn.classList.add('hidden');
+    const dot = $('#proxy-dot'); if(dot) { dot.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/>'; dot.setAttribute('fill', 'none'); dot.classList.add('text-gray-600'); }
+    const label = $('#proxy-label'); if(label) label.textContent = 'No proxy';
   }
 }
 
@@ -276,6 +289,17 @@ async function unfollow(tid){ await fetch(U.followed+'/'+tid,{method:'DELETE',he
 async function addProxy(){ const n=$('#proxy-name').value.trim(),u=$('#proxy-url').value.trim(); if(!u)return; await fetch(U.proxies,{method:'POST',headers:{'Content-Type':'application/json',...getAuthHeader()},body:JSON.stringify({name:n,url:u})}); $('#proxy-name').value=''; $('#proxy-url').value=''; refreshHub(); }
 async function delProxy(id){ await fetch(U.proxies+'/'+id,{method:'DELETE',headers:{...getAuthHeader()}}); refreshHub(); }
 async function setFav(id){ await fetch(U.fav,{method:'PUT',headers:{'Content-Type':'application/json',...getAuthHeader()},body:JSON.stringify({proxy_id:id})}); refreshHub(); }
+function updateProxyToggleUI(enabled) {
+  const btn = $('#btn-toggle-proxy');
+  const dot = $('#proxy-toggle-dot');
+  if(btn) btn.classList.toggle('bg-green-500/30', enabled);
+  if(dot) { dot.style.left = enabled ? 'calc(100% - 17px)' : '1px'; dot.classList.toggle('bg-green-400', enabled); dot.classList.toggle('bg-gray-500', !enabled); }
+}
+async function toggleProxy() {
+  const enabled = !($('#proxy-toggle-dot').classList.contains('bg-green-400'));
+  const r = await fetch('/api/proxies/toggle', {method:'PUT',headers:{'Content-Type':'application/json',...getAuthHeader()},body:JSON.stringify({enabled})});
+  if(r.ok) updateProxyToggleUI(enabled);
+}
 function copyToClipboard(text){ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(function(){ showCopyToast('Copie !'); }).catch(function(){ fallbackCopy(text); }); }else{ fallbackCopy(text); } }
 function fallbackCopy(text){ var ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.left='-9999px'; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy'); showCopyToast('Copie !');}catch(e){ alert('Team ID: '+text); } document.body.removeChild(ta); }
 function showCopyToast(msg){ var t=document.getElementById('copy-toast'); if(!t){ t=document.createElement('div'); t.id='copy-toast'; t.className='fixed top-4 left-1/2 -translate-x-1/2 bg-green-500/90 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 transition-all opacity-0 pointer-events-none'; document.body.appendChild(t); } t.textContent=msg; t.classList.remove('opacity-0'); setTimeout(function(){ t.classList.add('opacity-0'); },1500); }

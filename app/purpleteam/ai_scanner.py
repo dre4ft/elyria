@@ -2,8 +2,11 @@
 # SPDX-FileCopyrightText: 2026 Elyria
 
 """
-AI-powered Purple Team scanner — deep code analysis with tool use.
+AI-powered Purple Team scanner -- deep code analysis with tool use.
 Two-model architecture: Flash model for exploration, Pro model for analysis.
+
+Uses ai_core.shared_tools for common tool definitions (bash, browser, search,
+code analysis, HTTP requests, findings) -- avoids redefining tools per team.
 """
 
 import json
@@ -15,118 +18,21 @@ from core.logging import get_logger
 from database.ai_config_mgmt import get_default_config
 from database.app_config import get_api_key
 from ai_core.ai_wrapper import AIWrapper
+from ai_core.shared_tools import build_tool_set, handle_tool
 from purpleteam.repo_manager import list_repo_files, detect_language, parse_dependencies
 
 _log = get_logger("purpleteam.ai")
 
 
-def _get_tools(has_target=False):
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "list_directory",
-                "description": "List files and subdirectories in a directory. Use FIRST to map the project tree before reading files — saves tokens by exploring efficiently.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "subdirectory": {"type": "string", "description": "Directory to list (e.g. 'src', 'app/routes', '' for root)"},
-                    },
-                    "required": [],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "read_source_file",
-                "description": "Read a source file. Content limited to key excerpts. Use AFTER listing directories to target high-value files: auth modules, route handlers, DB queries, config files, middleware.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "file_path": {"type": "string", "description": "Relative path to the source file"},
-                        "reasoning": {"type": "string", "description": "What vulnerability class are you investigating?"},
-                    },
-                    "required": ["file_path", "reasoning"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "grep_codebase",
-                "description": "Search all source files for a pattern. Use to find dangerous function calls, hardcoded secrets, auth bypass patterns. Returns file:line matches (max 50).",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "pattern": {"type": "string", "description": "Regex or keyword to search for"},
-                        "file_pattern": {"type": "string", "description": "File glob filter (e.g. '*.py', '*.java', '*.js')"},
-                        "reasoning": {"type": "string", "description": "What vulnerability are you hunting?"},
-                    },
-                    "required": ["pattern", "reasoning"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "submit_finding",
-                "description": "Report a confirmed vulnerability. Call this IMMEDIATELY for each finding — do not batch. One call = one vulnerability.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "findings": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {"type": "string"},
-                                    "severity": {"type": "string", "enum": ["critical", "high", "medium", "low", "info"]},
-                                    "description": {"type": "string", "description": "Impact and exploitability (max 500 chars)"},
-                                    "file_path": {"type": "string"},
-                                    "line_number": {"type": "integer"},
-                                    "remediation": {"type": "string"},
-                                    "cwe_id": {"type": "string"},
-                                    "cvss_score": {"type": "number"},
-                                },
-                                "required": ["title", "severity", "description", "file_path"],
-                            },
-                            "minItems": 1,
-                        },
-                    },
-                    "required": ["findings"],
-                },
-            },
-        },
-    ]
-    if has_target:
-        tools.append({
-            "type": "function",
-            "function": {
-                "name": "make_test_request",
-                "description": "Send an HTTP request to the TARGET API to VALIDATE a suspected vulnerability. Use to prove exploitability — do NOT use for exploration.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]},
-                        "path": {"type": "string", "description": "URL path (e.g. /api/users/1)"},
-                        "headers": {"type": "object"},
-                        "body": {"type": "string", "description": "JSON body as string"},
-                        "reasoning": {"type": "string", "description": "What vulnerability are you trying to exploit?"},
-                    },
-                    "required": ["method", "path", "reasoning"],
-                },
-            },
-        })
-    return tools
-
-
 class AIPurpleScanner:
-    def __init__(self, repo_path, target_endpoint="", user_id="", static_findings=None):
+    def __init__(self, repo_path, target_endpoint="", user_id="", static_findings=None,
+                 controllers=None, call_graph=None):
         self.repo_path = repo_path
         self.target_endpoint = target_endpoint
         self.user_id = user_id
         self.static_findings = static_findings or []
+        self.controllers = controllers or []
+        self.call_graph = call_graph or {}
         self.language, self.framework = detect_language(repo_path)
         self._files = list_repo_files(repo_path)
         self._wrapper = None
@@ -154,7 +60,7 @@ class AIPurpleScanner:
                 return {"provider_type": cfg["provider_type"], "url": url, "api_key": api_key, "model": cfg["model"] or fallback_model}
             api_key = get_api_key("openai_api_key")
             if not api_key:
-                raise RuntimeError(f"No API key for slot '{slot}' — set a default in /hub")
+                raise RuntimeError(f"No API key for slot '{slot}' -- set a default in /hub")
             return {"provider_type": "openai", "url": "https://api.openai.com/v1", "api_key": api_key, "model": fallback_model}
 
         flash_cfg = _resolve("flash", "gpt-4o-mini")
@@ -240,22 +146,53 @@ class AIPurpleScanner:
 
     def _handle_make_test_request(self, args):
         if not self.target_endpoint:
-            return json.dumps({"error": "No target endpoint configured"})
+            return json.dumps({"error": "No target endpoint configured", "exploitable": False})
         method = args.get("method", "GET")
         path = args.get("path", "/")
         headers = args.get("headers", {})
         body = args.get("body", "")
+        reasoning = args.get("reasoning", "")
         try:
             from urllib.parse import urljoin
             url = urljoin(self.target_endpoint, path)
-            resp = self._session.request(method, url, headers=headers, data=body, timeout=10)
+            req_kwargs = {"headers": headers, "timeout": 10, "allow_redirects": False}
+            if body and method in ('POST', 'PUT', 'PATCH'):
+                try:
+                    req_kwargs["json"] = json.loads(body)
+                except (json.JSONDecodeError, TypeError):
+                    req_kwargs["data"] = body
+            resp = self._session.request(method, url, **req_kwargs)
+            resp_body = resp.text[:2000]
+            # Detect vulnerability indicators
+            indicators = []
+            exploitable = False
+            body_lower = resp_body.lower()
+            if any(kw in body_lower for kw in ['sql', 'mysql', 'postgresql', 'syntax error', 'ora-']):
+                indicators.append('possible_sql_error')
+                exploitable = True
+            if any(kw in body_lower for kw in ['traceback', 'stack trace', 'exception', 'at line']):
+                indicators.append('error_disclosure')
+                exploitable = True
+            if any(kw in body_lower for kw in ['root:', 'daemon:', 'uid=', 'gid=']):
+                indicators.append('possible_command_output')
+                exploitable = True
+            if resp.status_code == 200 and len(resp_body) > 100:
+                indicators.append('data_returned')
+            if resp.status_code == 500:
+                indicators.append('server_error')
+                exploitable = True
             return json.dumps({
                 "status": resp.status_code,
                 "headers": dict(resp.headers),
-                "body_preview": resp.text[:2000],
+                "body_preview": resp_body,
+                "body_length": len(resp.text),
+                "exploitable": exploitable,
+                "indicators": indicators,
+                "attack_context": reasoning,
+                "hint": "If exploitable=true, call submit_finding NOW with this request/response as evidence. If status=200 and you got data, test with other IDs/params for IDOR."
             })
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            return json.dumps({"error": str(e), "exploitable": False})
 
     def _handle_list_source_files(self, args):
         subdir = args.get("subdirectory", "")
@@ -265,15 +202,26 @@ class AIPurpleScanner:
         return json.dumps({"files": files[:100], "total": len(files)})
 
     def _handle_submit_finding(self, args):
-        """Handle the submit_finding tool — store findings directly."""
-        findings_list = args.get("findings", [])
+        """Handle the submit_finding tool -- accepts BOTH formats:
+        Batch: {"findings": [{"title": ..., "severity": ...}, ...]}
+        Single: {"title": ..., "severity": ..., "description": ...}
+        """
+        # Accept both single and batch format
+        if "findings" in args:
+            findings_list = args["findings"]
+        elif "title" in args:
+            findings_list = [args]  # wrap single finding
+        else:
+            _log.warning(f"[AI:submit_finding] Unknown format: {json.dumps(args)[:200]}")
+            return json.dumps({"reported": 0, "error": "No findings or title field"})
+
         _log.info(f"[AI:submit_finding] Called with {len(findings_list)} finding(s)")
         reported = 0
         for f in findings_list:
             title = f.get("title", "")
             if not title:
                 continue
-            _log.info(f"[AI:submit_finding] → [{f.get('severity','?')}] {title[:100]}")
+            _log.info(f"[AI:submit_finding] -> [{f.get('severity','?')}] {title[:100]}")
             self._ai_findings.append({
                 "title": f"[AI] {title}",
                 "description": f.get("description", ""),
@@ -287,7 +235,7 @@ class AIPurpleScanner:
                 "cwe_id": f.get("cwe_id", ""),
             })
             reported += 1
-        return json.dumps({"reported": reported})
+        return json.dumps({"reported": reported, "hint": "Finding stored. Continue with next vulnerability or call submit_finding again for more."})
 
     # ── Main scan loop ──
 
@@ -301,7 +249,7 @@ class AIPurpleScanner:
                 p = min(95, pct_start + int((turn / (max_rounds * 3)) * (pct_end - pct_start)))
                 progress_cb(p, f"AI {phase_name} turn {turn}")
 
-            _log.info(f"[AI:{phase_name}] Turn {turn} — sending {len(msgs)} msgs to {model_name}")
+            _log.info(f"[AI:{phase_name}] Turn {turn} -- sending {len(msgs)} msgs to {model_name}")
             resp = model.chat(msgs, tools=tools)
             self._tokens["prompt"] += (resp.get("usage") or {}).get("prompt_tokens", 0)
             self._tokens["completion"] += (resp.get("usage") or {}).get("completion_tokens", 0)
@@ -317,14 +265,17 @@ class AIPurpleScanner:
                 _log.info(f"[AI:{phase_name}] Content: {content[:300]}")
 
             if not tool_calls:
-                _log.info(f"[AI:{phase_name}] Model stopped making tool calls — phase complete")
+                _log.info(f"[AI:{phase_name}] Model stopped making tool calls -- phase complete")
                 if content:
                     _log.info(f"[AI:{phase_name}] Final content: {content[:500]}")
                 break
 
-            if turn == 12:
-                _log.info(f"[AI:{phase_name}] Nudging model to report findings after {turn} turns")
-                msgs.append({"role": "user", "content": "You have gathered enough information. Now call submit_finding for each confirmed vulnerability you discovered. If you found none, state that explicitly."})
+            if turn == 8:
+                _log.info(f"[AI:{phase_name}] Nudge: remind to submit findings")
+                msgs.append({"role": "user", "content": "You've explored enough. STOP exploring and CALL submit_finding NOW for every vulnerability found. Use format: submit_finding(title=\"...\", severity=\"critical\", description=\"...\", file_path=\"...\", line_number=N)"})
+            if turn == 15:
+                _log.info(f"[AI:{phase_name}] Final nudge: force submit")
+                msgs.append({"role": "user", "content": "FINAL REMINDER: You MUST call submit_finding before continuing. If you found SQL injection, hardcoded passwords, missing auth, or insecure deserialization -- REPORT THEM NOW with submit_finding(). Do not explore more files."})
 
             normalized = _normalize_tool_calls(tool_calls)
             msgs.append({"role": "assistant", "content": content, "tool_calls": normalized})
@@ -336,7 +287,7 @@ class AIPurpleScanner:
                 try:
                     args = json.loads(tc_args)
                     result = handler(args)
-                    _log.info(f"[AI:{phase_name}] Tool result: {tc_name} → {len(result)} chars")
+                    _log.info(f"[AI:{phase_name}] Tool result: {tc_name} -> {len(result)} chars")
                 except Exception as e:
                     result = json.dumps({"error": f"invalid arguments: {e}"})
                     _log.error(f"[AI:{phase_name}] Tool {tc_name} failed: {e}")
@@ -345,19 +296,34 @@ class AIPurpleScanner:
     def run(self, scan_id, add_finding_fn, progress_cb=None, explore_rounds=15, analysis_rounds=5):
         self._setup_providers()
         self._ai_findings = []
-        _log.info(f"[AI] Starting — flash={self._flash_model}, pro={self._pro_model}, "
+        _log.info(f"[AI] Starting -- flash={self._flash_model}, pro={self._pro_model}, "
                   f"repo={self.repo_path}, target={self.target_endpoint or 'none'}, "
                   f"files={len(self._files)}, static_findings={len(self.static_findings)}")
         has_target = bool(self.target_endpoint)
-        tools = _get_tools(has_target=has_target)
-        tool_map = {
-            "list_directory": self._handle_list_directory,
-            "read_source_file": self._handle_read_source_file,
-            "grep_codebase": self._handle_grep_codebase,
-            "submit_finding": self._handle_submit_finding,
+        ctx = {
+            "repo_path": self.repo_path,
+            "target_endpoint": self.target_endpoint,
+            "scan_id": scan_id,
+            "add_finding_fn": add_finding_fn,
+            "user_id": self.user_id,
         }
+        # Understanding phase: code-only tools (no make_test_request)
+        understand_tools, understand_tool_map = build_tool_set(
+            ["list_directory", "read_source_file", "grep_codebase", "submit_finding"],
+            **ctx,
+        )
+        # Override submit_finding to track findings in memory
+        understand_tool_map["submit_finding"] = self._handle_submit_finding
+
+        # Interactive phase: code tools + target testing
+        interactive_tools, interactive_tool_map = [], {}
         if has_target:
-            tool_map["make_test_request"] = self._handle_make_test_request
+            interactive_tools, interactive_tool_map = build_tool_set(
+                ["list_directory", "read_source_file", "grep_codebase",
+                 "submit_finding", "make_test_request"],
+                **ctx,
+            )
+            interactive_tool_map["submit_finding"] = self._handle_submit_finding
 
         deps = parse_dependencies(self.repo_path, self.language)
         dep_text = "\n".join(f"- {d['name']} @ {d.get('version', '?')}" for d in deps[:30]) or "(none)"
@@ -366,100 +332,153 @@ class AIPurpleScanner:
             for f in self.static_findings[:30]
         ) or "(none)"
 
+        # ── Build controller + call graph context ──
+        ctrl_text = ""
+        if self.controllers:
+            ctrl_lines = []
+            for c in self.controllers[:30]:
+                auth_info = ""
+                for g in self.call_graph.get('auth_gates', []):
+                    if g.get('controller', {}).get('handler') == c.get('handler'):
+                        auth_info = f" [auth: {g.get('type', '?')}]"
+                        break
+                ctrl_lines.append(
+                    f"- {c['method']:6s} {c['path']:30s} -> {c.get('handler', '?')} "
+                    f"({c.get('file', '?')}:{c.get('line', '?')}){auth_info}"
+                )
+            ctrl_text = "\n".join(ctrl_lines)
+
+        sinks_text = ""
+        sink_types = {}
+        for s in self.call_graph.get('sinks', []):
+            st = s.get('type', '?')
+            sink_types.setdefault(st, []).append(s)
+        if sink_types:
+            sink_lines = []
+            for st, items in sink_types.items():
+                sink_lines.append(f"\n**{st}** ({len(items)} found):")
+                for s in items[:3]:
+                    sink_lines.append(f"  - `{s.get('file', '?')}:{s.get('line', '?')}` -- `{s.get('code', '')[:100]}`")
+            sinks_text = "\n".join(sink_lines)
+
         # Tech-specific vulnerability patterns
         tech_guidance = {
-            ("python", "fastapi"): "FastAPI — check Pydantic model strictness, Depends() auth bypass, middleware order, CORSMiddleware config, path parameter type confusion.",
-            ("python", "flask"): "Flask — check app.config['SECRET_KEY'] hardness, @login_required gaps, Jinja2 autoescape, before_request auth bypass, session cookie signing.",
-            ("python", "django"): "Django — check settings.DEBUG, ALLOWED_HOSTS, CSRF middleware gaps, raw() queryset SQLi, FileField upload validation.",
-            ("java", "spring"): "Spring Boot — check SecurityFilterChain gaps, @PreAuthorize bypass, actuator endpoints, JPA native query concatenation, Jackson deserialization.",
-            ("javascript", "express"): "Express — check middleware order, helmet.js config, express.json() limit, req.params type coercion, JWT verify() algorithm param.",
-            ("javascript", "nestjs"): "NestJS — check @Guards() ordering, class-validator gaps, GraphQL resolver auth, TypeORM raw query usage, CORS config.",
-            ("go", "go"): "Go — check chi/gin/echo middleware chains, sqlx raw queries, template/html escaping, crypto/rand vs math/rand for tokens.",
-            ("ruby", "rails"): "Rails — check Strong Parameters gaps, protect_from_forgery config, ActiveRecord SQL injection via where(), devise auth config.",
-            ("php", "laravel"): "Laravel — check Eloquent mass assignment ($guarded), debug mode, CSRF middleware, raw DB::statement() calls, .env exposure.",
-            ("php", "symfony"): "Symfony — check security.yaml firewalls, isGranted() gaps, Doctrine raw SQL, Twig autoescape, .env.local exposure.",
+            ("python", "fastapi"): "FastAPI -- check Pydantic model strictness, Depends() auth bypass, middleware order, CORSMiddleware config, path parameter type confusion.",
+            ("python", "flask"): "Flask -- check app.config['SECRET_KEY'] hardness, @login_required gaps, Jinja2 autoescape, before_request auth bypass, session cookie signing.",
+            ("python", "django"): "Django -- check settings.DEBUG, ALLOWED_HOSTS, CSRF middleware gaps, raw() queryset SQLi, FileField upload validation.",
+            ("java", "spring"): "Spring Boot -- check SecurityFilterChain gaps, @PreAuthorize bypass, actuator endpoints, JPA native query concatenation, Jackson deserialization.",
+            ("javascript", "express"): "Express -- check middleware order, helmet.js config, express.json() limit, req.params type coercion, JWT verify() algorithm param.",
+            ("javascript", "nestjs"): "NestJS -- check @Guards() ordering, class-validator gaps, GraphQL resolver auth, TypeORM raw query usage, CORS config.",
+            ("go", "go"): "Go -- check chi/gin/echo middleware chains, sqlx raw queries, template/html escaping, crypto/rand vs math/rand for tokens.",
+            ("ruby", "rails"): "Rails -- check Strong Parameters gaps, protect_from_forgery config, ActiveRecord SQL injection via where(), devise auth config.",
+            ("php", "laravel"): "Laravel -- check Eloquent mass assignment ($guarded), debug mode, CSRF middleware, raw DB::statement() calls, .env exposure.",
+            ("php", "symfony"): "Symfony -- check security.yaml firewalls, isGranted() gaps, Doctrine raw SQL, Twig autoescape, .env.local exposure.",
         }.get((self.language, self.framework), f"Focus on {self.language}-specific injection patterns, auth middleware, and framework misconfigurations.")
 
-        mode = "IAST (static + dynamic)" if has_target else "SAST (static code review only)"
-        target_note = f"\n**Target endpoint:** {self.target_endpoint} — validate findings with make_test_request." if has_target else "\n**No target endpoint** — SAST-only. Focus on code-level findings: hardcoded secrets, SQLi patterns, auth bypass in code, crypto weaknesses."
+        system_prompt = f"""You are an expert application security engineer performing a white-box IAST audit on a {self.language}/{self.framework} codebase.
 
-        system_prompt = f"""You are an expert application security engineer performing a {mode} on a {self.language}/{self.framework} codebase.
-
-**Static analysis already found:**
+**Static analysis findings (already found, may need validation):**
 {static_text}
 
-**Dependencies:** {len(deps)} packages detected.
+**REST Controllers detected (attack surface):**
+{ctrl_text or '(none detected -- explore codebase to find endpoints)'}
 
-**Tech-specific guidance:** {tech_guidance}
-{target_note}
+**Sensitive sinks detected (potential vulnerability targets):**
+{sinks_text or '(none detected -- explore codebase to find sinks)'}
 
-**Your mission — find what the static scanner MISSED:**
-- Business logic flaws (auth bypass, privilege escalation, workflow abuse, race conditions)
-- Injection points missed by regex (NoSQL injection, template injection, XPath, LDAP, GraphQL injection)
-- Insecure framework defaults, debug mode, exposed admin panels
-- Cryptographic weaknesses (weak keys, predictable RNG, MD5/SHA1 for passwords)
-- Authorization flaws (missing ownership checks, BOLA/IDOR, function-level auth gaps)
-- Chained vulnerabilities (combine low-severity into high-impact)
-- Hardcoded API keys, tokens, cloud credentials, JWT secrets in code/config
+**Dependencies:** {len(deps)} packages.
+**Framework guidance:** {tech_guidance}
+{"**Live target:** " + self.target_endpoint + " -- use make_test_request to validate EVERY suspected vulnerability." if has_target else "**No target endpoint** -- SAST-only code review."}
 
-**Method:**
-1. list_directory to map the project tree (start from root, explore subdirectories)
-2. grep_codebase for high-risk patterns specific to {self.language}/{self.framework}
-3. read_source_file to analyze suspicious code — read the FULL file when you find something
-4. submit_finding IMMEDIATELY for each confirmed vulnerability — do not batch
+**IMPORTANT -- How to report findings:**
+Call submit_finding with: title, severity (critical/high/medium/low/info), description (include code evidence and exploitation details), file_path, line_number, remediation, cwe_id, cvss_score.
+Example: submit_finding(title="SQL Injection in UserService", severity="critical", description="The search parameter flows directly into execute() without sanitization at UserService.java:42", file_path="src/main/java/com/example/UserService.java", line_number=42, remediation="Use parameterized queries with PreparedStatement", cwe_id="CWE-89", cvss_score=8.5)
 
-**TOKEN DISCIPLINE:** Use list_directory BEFORE reading files. Only read files that are likely to contain vulnerabilities. Do not read boilerplate, tests, or generated code."""
+**You MUST call submit_finding for EVERY vulnerability you discover.** Do NOT just describe them in text -- use the tool. Aim for at least 3-5 findings.
 
-        exploration_prompt = f"""Explore this {self.language}/{self.framework} codebase methodically:
+Your mission:
+1. Map REST controllers against the call graph. Trace how user input flows from controllers to sinks.
+2. Find what static analysis missed: business logic, IDOR/BOLA, auth bypass, injection, deserialization, race conditions.
+3. Validate on target if available: use make_test_request to confirm exploitability.
+4. Chain vulnerabilities: combine low-severity findings into high-impact attack chains.
+5. Design flaws: rate limiting, password reset flow, session fixation, JWT expiry, debug endpoints.
 
-1. list_directory('') to see the root structure
-2. list_directory on key subdirectories (src/, app/, routes/, controllers/, middleware/, config/)
-3. grep_codebase for {self.language}-specific dangerous patterns
-4. read_source_file on files that matched dangerous patterns
-5. submit_finding for each vulnerability you CONFIRM — be aggressive, every finding matters
+Tool strategy: list_directory first, grep_codebase for patterns, read_source_file on suspicious files, submit_finding for EACH vulnerability with file_path, line_number, CWE ID, CVSS score, and concrete remediation."""
 
-Focus on: auth logic, database queries, input handling, crypto, config files, API routes."""
+        understanding_prompt = f"""**Phase 1 -- Code Understanding**
 
-        analysis_prompt = f"""Phase 2 — Deep analysis of this {self.language}/{self.framework} codebase:
+Review this {self.language}/{self.framework} codebase systematically. For each vulnerability found, call submit_finding IMMEDIATELY.
 
-1. Read the main auth/authorization modules in full — trace how authentication tokens are validated, how sessions are managed, how password reset works
-2. For every API route handler found, verify ownership checks exist — can user A access user B's resources?
-3. Check all database queries for injection — concatenation, f-strings, raw queries, ORM bypasses
-4. Audit the cryptography: password hashing, token generation (RNG source), key storage, encryption algorithms
-5. Review configuration files for debug mode, hardcoded credentials, exposed admin panels, insecure defaults
-6. Check error handlers — do they leak stack traces, SQL, or internal paths?
+Method:
+1. list_directory('') to see root -> list_directory on src/, controllers/, services/, config/
+2. grep_codebase for dangerous patterns: 'execute(', 'createQuery(', 'Statement', 'Runtime.exec', 'ProcessBuilder', 'readObject', 'eval(', 'password', 'secret', 'apiKey', 'token'
+3. read_source_file on files that matched -- trace the full data flow from user input to sink
+4. Call submit_finding for EACH confirmed vulnerability with exact file path, line number, CWE, CVSS
 
-For each finding: call submit_finding with exact file path, line number, CWE ID, CVSS score, and a concrete remediation."""
+Start now. Be aggressive -- report everything suspicious."""
+
+        target = self.target_endpoint
+        interactive_prompt = f"""**Phase 2 -- EXPLOIT findings on the live target at {target}**
+
+You MUST use make_test_request to validate EVERY suspected vulnerability.
+
+Concrete test plan:
+1. For each controller endpoint you analyzed, send a test request to establish baselines
+2. For SQL injection: send payloads like \" OR 1=1 on endpoints with DB queries in their call chain
+3. For auth bypass: send requests WITHOUT the Authorization header on protected endpoints
+4. For IDOR: change resource IDs in paths like /api/orders/123 and check if you get other users data
+5. For deserialization: send malformed JSON/objects to endpoints that deserialize
+6. For SSRF: try to make the target fetch http://127.0.0.1:9999 or file:///etc/passwd
+
+**IMPORTANT**: Do NOT submit a finding without first calling make_test_request to confirm exploitability. For each confirmed vulnerability, include in the description:
+- The exact request you sent (method, path, headers, body)
+- The response status and body excerpt proving exploitation
+- The vulnerable code location
+
+Start now -- call make_test_request on the first suspicious endpoint."""
 
         total_findings = 0
 
-        # ── Phase 1: Flash exploration ──
+        # ── Phase 1: Understanding (Flash model) -- code analysis only ──
         if self._flash_model and explore_rounds > 0:
             if progress_cb:
-                progress_cb(10, "AI Phase 1: Exploring codebase...")
+                progress_cb(10, "AI Understanding: mapping codebase...")
             try:
                 msgs = [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": exploration_prompt},
+                    {"role": "user", "content": understanding_prompt},
                 ]
-                self._run_phase(self._flash, self._flash_model, msgs, tools, tool_map,
-                               scan_id, add_finding_fn, explore_rounds, "explore",
-                               progress_cb, 10, 40)
+                self._run_phase(self._flash, self._flash_model, msgs, understand_tools,
+                               understand_tool_map, scan_id, add_finding_fn,
+                               explore_rounds, "understand", progress_cb, 10, 40)
             except Exception as e:
-                _log.warning(f"Flash exploration failed: {e}")
+                _log.warning(f"Understanding phase failed: {e}")
 
-        # ── Phase 2: Pro deep analysis ──
-        if self._pro_model and analysis_rounds > 0:
+        # ── Phase 2: Exploit on target (Pro model) -- with make_test_request ──
+        if self._pro_model and analysis_rounds > 0 and has_target:
             if progress_cb:
-                progress_cb(45, "AI Phase 2: Deep analysis...")
+                progress_cb(45, "AI Exploitation: testing on target...")
             try:
+                # Include Phase 1 findings as context for exploitation
+                ai_findings_text = "\n".join(
+                    f"- {f['title']} ({f.get('file_path', '?')})"
+                    for f in self._ai_findings[:20]
+                ) or "(no AI findings yet)"
+
+                exploit_system_prompt = system_prompt + f"""
+
+**Phase 1 discoveries to exploit:**
+{ai_findings_text}
+
+**CRITICAL INSTRUCTION**: You now have access to the `make_test_request` tool. This is an EXPLOITATION phase -- your job is to PROVE that the vulnerabilities found in Phase 1 are actually exploitable on the running target at {self.target_endpoint}. For every finding from Phase 1, send at least one test request to confirm it. Do not analyze more code -- EXPLOIT what you already found."""
+
                 msgs = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": analysis_prompt},
+                    {"role": "system", "content": exploit_system_prompt},
+                    {"role": "user", "content": interactive_prompt},
                 ]
-                self._run_phase(self._pro, self._pro_model, msgs, tools, tool_map,
-                               scan_id, add_finding_fn, analysis_rounds, "analysis",
-                               progress_cb, 45, 85)
+                self._run_phase(self._pro, self._pro_model, msgs, interactive_tools,
+                               interactive_tool_map, scan_id, add_finding_fn,
+                               analysis_rounds, "exploit", progress_cb, 45, 85)
             except Exception as e:
                 _log.warning(f"Pro analysis failed: {e}")
 

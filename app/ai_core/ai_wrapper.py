@@ -5,14 +5,14 @@ import json
 
 from ai_core.providers_api import ollama as ollama_provider
 from ai_core.providers_api import openai as openai_provider
-from ai_core import tools as tools
+from ai_core import tools as _tools_module
 import database.ai_mgmt as ai_mgmt
 
 
-
-
 class AIWrapper:
-    def __init__(self, provider_type, url=None, api_key=None, model=None, tools = tools.get_tools(),tools_rounds :int =5):
+    def __init__(self, provider_type, url=None, api_key=None, model=None, tools=None, tools_rounds :int =5):
+        if tools is None:
+            tools = _tools_module.get_tools()
         if provider_type == 'ollama':
             self.provider = ollama_provider.OllamaProvider(model=model, host=url)
         elif provider_type in ('openai', 'lmstudio'):
@@ -61,7 +61,7 @@ class AIWrapper:
             if raw_tool_calls:
                 for tc in raw_tool_calls:
                     tool_params = json.loads(tc.function.arguments)
-                    tool_response = tools.handle_tool_call(user_id, tc.function.name, tool_params)
+                    tool_response = _tools_module.handle_tool_call(user_id, tc.function.name, tool_params)
                     tool_msg = {
                         "role": "tool",
                         "tool_call_id": tc.id,
