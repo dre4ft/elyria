@@ -190,6 +190,21 @@ async def api_start_scan(profile_id: str, request: Request):
 
             _progress_fn(5, f"Detected: {language}/{framework}")
 
+            # ── Phase 0: Controller detection + Call graph ──
+            controllers = []
+            call_graph_data = {}
+            try:
+                from purpleteam.controller_scanner import detect_controllers
+                controllers = detect_controllers(repo_path, language, framework)
+                _progress_fn(6, f"Found {len(controllers)} REST endpoints")
+                if controllers:
+                    from purpleteam.call_graph import build_call_graph
+                    call_graph_data = build_call_graph(repo_path, language, framework, controllers)
+                    _log.info(f"Call graph built: {len(call_graph_data.get('functions', {}))} functions, "
+                             f"{len(call_graph_data.get('sinks', []))} sinks")
+            except Exception as e:
+                _log.warning(f"Controller detection skipped: {e}")
+
             # ── Phase 1: Static Analysis ──
             _progress_fn(8, "Starting static analysis...")
             from purpleteam.static_scanner import StaticScanner
@@ -199,28 +214,90 @@ async def api_start_scan(profile_id: str, request: Request):
 
             # ── Phase 2: Dynamic IAST Testing ──
             dynamic_count = 0
+            workflow_count = 0
             target_endpoint = p.get("target_endpoint", "")
-            if target_endpoint and scan_depth in ("full", "iast"):
-                _progress_fn(85, "Starting dynamic IAST testing...")
-                from purpleteam.dynamic_scanner import DynamicScanner
-                auth_config = {}
-                if p.get("repo_auth_type") == "bearer" and p.get("repo_auth_key"):
-                    auth_config["bearer_token"] = p["repo_auth_key"]
-                static_findings = get_scan_findings(sid)
-                dynamic = DynamicScanner(target_endpoint, static_findings=static_findings, auth_config=auth_config)
-                dynamic_count = dynamic.run(sid, add_finding, _progress_fn)
-                _log.info(f"Dynamic testing: {dynamic_count} findings")
+            auth_config = {}
+            if p.get("repo_auth_type") == "bearer" and p.get("repo_auth_key"):
+                auth_config["bearer_token"] = p["repo_auth_key"]
 
-            # ── Phase 3: AI Deep Analysis ──
+            if target_endpoint and scan_depth in ("full", "iast"):
+                # 2a: Controller-driven dynamic testing
+                _progress_fn(30, "Dynamic IAST: targeted probes...")
+                from purpleteam.dynamic_scanner import DynamicScanner
+                static_findings = get_scan_findings(sid)
+                dynamic = DynamicScanner(target_endpoint, static_findings=static_findings,
+                                        auth_config=auth_config, controllers=controllers,
+                                        call_graph=call_graph_data)
+                dynamic_count = dynamic.run(sid, add_finding, _progress_fn)
+                _log.info(f"Dynamic IAST: {dynamic_count} findings")
+
+                # 2b: Multi-step workflow testing
+                _progress_fn(55, "Workflow: multi-step testing...")
+                try:
+                    from purpleteam.workflow_tester import WorkflowTester
+                    wf = WorkflowTester(target_endpoint, controllers=controllers,
+                                       auth_config=auth_config)
+                    workflow_count = wf.run(sid, add_finding, _progress_fn)
+                    _log.info(f"Workflow tests: {workflow_count} findings")
+                except Exception as e:
+                    _log.warning(f"Workflow tests skipped: {e}")
+
+                # 2c: OpenAPI-driven testing
+                openapi_count = 0
+                openapi_url = p.get("openapi_spec_url", "")
+                if openapi_url:
+                    _progress_fn(65, "OpenAPI: schema-based testing...")
+                    try:
+                        from purpleteam.openapi_tester import OpenAPITester
+                        oapi = OpenAPITester(target_endpoint, openapi_url=openapi_url,
+                                            auth_config=auth_config)
+                        openapi_count = oapi.run(sid, add_finding, _progress_fn)
+                        _log.info(f"OpenAPI tests: {openapi_count} findings")
+                    except Exception as e:
+                        _log.warning(f"OpenAPI tests skipped: {e}")
+
+            # ── Phase 3: Taint tracking ──
+            taint_count = 0
+            try:
+                from purpleteam.taint_tracker import track_taint
+                # Run taint tracker even without controllers — will use generic source detection
+                targets = controllers if controllers else [{
+                    'method': '*', 'path': '/', 'handler': '', 'file': '',
+                    'line': 1, 'params': [], 'framework': framework,
+                }]
+                taint_flows = track_taint(repo_path, language, framework, targets)
+                _log.info(f"Taint tracking on {language}/{framework} with {len(targets)} targets: {len(taint_flows)} flows found")
+                for tf in taint_flows[:30]:
+                    if tf.get('has_sanitizer'):
+                        continue
+                    add_finding(
+                        scan_id=sid,
+                        title=f"[Taint] {tf['sink_type'].replace('_', ' ').title()}: {tf['source_controller']}",
+                        description=f"Data flow: {tf['flow_path']}\n\n{tf['description']}\n\nSource: {tf['source_file']}:{tf['source_handler']}\nSink: {tf['sink_file']}:{tf['sink_line']}",
+                        severity=tf['severity'],
+                        category=f"taint_{tf['sink_type']}",
+                        file_path=tf.get('sink_file', ''),
+                        line_number=tf.get('sink_line', 0),
+                        evidence=tf,
+                        finding_part="practices",
+                    )
+                    taint_count += 1
+                _log.info(f"Taint analysis: {taint_count} findings")
+            except Exception as e:
+                _log.warning(f"Taint analysis skipped: {e}")
+
+            # ── Phase 4: AI Deep Analysis ──
             ai_count = 0
             tokens = {}
             models = {}
             if scan_depth in ("full", "iast"):
-                _progress_fn(88, "Starting AI deep code analysis...")
+                _progress_fn(80, "Starting AI deep analysis...")
                 try:
                     from purpleteam.ai_scanner import AIPurpleScanner
                     static_findings = get_scan_findings(sid)
-                    ai = AIPurpleScanner(repo_path, target_endpoint, scan_user_id, static_findings)
+                    ai = AIPurpleScanner(repo_path, target_endpoint, scan_user_id,
+                                        static_findings, controllers=controllers,
+                                        call_graph=call_graph_data)
                     ai_count = ai.run(sid, add_finding, _progress_fn)
                     tokens = ai.get_tokens()
                     models = ai.get_models()
@@ -231,7 +308,7 @@ async def api_start_scan(profile_id: str, request: Request):
                 except Exception as e:
                     _log.warning(f"AI analysis skipped: {e}")
 
-            total = static_count + dynamic_count + ai_count
+            total = static_count + dynamic_count + workflow_count + openapi_count + taint_count + ai_count
             update_scan(sid, status="completed", scan_progress=100)
             _progress[profile_id] = {"pct": 100, "msg": "Complete", "status": "completed",
                                       "total_findings": total, "language": language, "framework": framework,

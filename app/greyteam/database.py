@@ -31,6 +31,9 @@ def init_greyteam_db():
             team_ids TEXT DEFAULT '',
             explore_rounds INTEGER DEFAULT 15,
             analysis_rounds INTEGER DEFAULT 5,
+            scan_progress INTEGER DEFAULT 0,
+            tokens_used INTEGER DEFAULT 0,
+            target_domain TEXT DEFAULT '',
             status TEXT DEFAULT 'pending',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -79,36 +82,6 @@ def init_greyteam_db():
             FOREIGN KEY (report_id) REFERENCES greyteam_reports(report_id) ON DELETE CASCADE
         );
     """)
-    # Migrations — profiles
-    for col, ctype in [
-        ("scan_progress", "INTEGER DEFAULT 0"),
-        ("tokens_used", "INTEGER DEFAULT 0"),
-        ("target_domain", "TEXT DEFAULT ''"),
-    ]:
-        try:
-            conn.execute(f"ALTER TABLE greyteam_profiles ADD COLUMN {col} {ctype}")
-        except Exception:
-            pass
-    # Migrations — reports
-    for col, ctype in [
-        ("tokens_used", "INTEGER DEFAULT 0"),
-        ("description", "TEXT DEFAULT ''"),
-        ("categories", "TEXT DEFAULT '[]'"),
-        ("target_path", "TEXT DEFAULT ''"),
-        ("target_domain", "TEXT DEFAULT ''"),
-    ]:
-        try:
-            conn.execute(f"ALTER TABLE greyteam_reports ADD COLUMN {col} {ctype}")
-        except Exception:
-            pass
-    # Migrations — findings
-    for col, ctype in [
-        ("finding_type", "TEXT DEFAULT 'osint'"),
-    ]:
-        try:
-            conn.execute(f"ALTER TABLE greyteam_findings ADD COLUMN {col} {ctype}")
-        except Exception:
-            pass
     conn.commit()
     conn.close()
 

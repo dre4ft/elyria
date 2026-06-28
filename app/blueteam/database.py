@@ -32,6 +32,10 @@ def init_blueteam_db():
             user_id TEXT DEFAULT '',
             team_ids TEXT DEFAULT '',
             pro_model TEXT DEFAULT '',
+            scan_progress INTEGER DEFAULT 0,
+            tokens_used INTEGER DEFAULT 0,
+            source_type TEXT DEFAULT '',
+            source_id TEXT DEFAULT '',
             status TEXT DEFAULT 'pending',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -46,21 +50,11 @@ def init_blueteam_db():
             analysis_rounds INTEGER DEFAULT 0,
             tokens_used INTEGER DEFAULT 0,
             pro_model TEXT DEFAULT '',
+            payload_encrypted TEXT DEFAULT '',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (profile_id) REFERENCES blueteam_profiles(profile_id) ON DELETE CASCADE
         );
     """)
-    # Migrations
-    for col, ctype in [("scan_progress", "INTEGER DEFAULT 0"), ("tokens_used", "INTEGER DEFAULT 0")]:
-        try:
-            conn.execute(f"ALTER TABLE blueteam_profiles ADD COLUMN {col} {ctype}")
-        except:
-            pass
-    for col, ctype in [("source_type", "TEXT DEFAULT ''"), ("source_id", "TEXT DEFAULT ''")]:
-        try:
-            conn.execute(f"ALTER TABLE blueteam_profiles ADD COLUMN {col} {ctype}")
-        except:
-            pass
     conn.commit()
     conn.close()
 

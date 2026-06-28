@@ -86,6 +86,14 @@ Tool GO:
 
 def build_system_prompt(page, context_snapshot=None):
     parts = [BASE_PROMPT]
+    # Load Ely skill
+    try:
+        from ai_core.skills_loader import load_agent_skill
+        skill = load_agent_skill("ely")
+        if skill:
+            parts.append(skill)
+    except Exception:
+        pass
     if page in PAGE_CONTEXTS:
         parts.append(PAGE_CONTEXTS[page])
     if context_snapshot:

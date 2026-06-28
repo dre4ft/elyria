@@ -37,6 +37,10 @@ def init_pentest_db():
             team_ids TEXT DEFAULT '',
             explore_rounds INTEGER DEFAULT 15,
             analysis_rounds INTEGER DEFAULT 5,
+            master_prompt TEXT DEFAULT '',
+            documentation TEXT DEFAULT '',
+            expert_mode INTEGER DEFAULT 0,
+            payload_encrypted TEXT DEFAULT '',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -56,6 +60,14 @@ def init_pentest_db():
             team_ids TEXT DEFAULT '',
             status TEXT DEFAULT 'pending',
             scan_progress INTEGER DEFAULT 0,
+            explore_rounds INTEGER DEFAULT 15,
+            analysis_rounds INTEGER DEFAULT 5,
+            expert_report TEXT DEFAULT '',
+            expert_report_md TEXT DEFAULT '',
+            flash_model TEXT DEFAULT '',
+            pro_model TEXT DEFAULT '',
+            tokens_used INTEGER DEFAULT 0,
+            payload_encrypted TEXT DEFAULT '',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -75,6 +87,7 @@ def init_pentest_db():
             response_body_preview TEXT DEFAULT '',
             response_time_ms INTEGER DEFAULT 0,
             check_name TEXT DEFAULT '',
+            payload_encrypted TEXT DEFAULT '',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (campaign_id) REFERENCES pentest_campaigns(campaign_id) ON DELETE CASCADE
         );
@@ -94,51 +107,12 @@ def init_pentest_db():
             cvss_score REAL DEFAULT 0,
             cwe_id TEXT DEFAULT '',
             ai_analysis TEXT DEFAULT '',
+            linked_finding_id TEXT DEFAULT '',
+            payload_encrypted TEXT DEFAULT '',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (campaign_id) REFERENCES pentest_campaigns(campaign_id) ON DELETE CASCADE
         );
     """)
-    # Migrations — add missing columns to existing tables
-    for col, ctype in [("openapi_spec_url", "TEXT DEFAULT ''"), ("id_list", "TEXT DEFAULT '{}'"),
-                         ("user_id", "TEXT DEFAULT ''"), ("collection_id", "TEXT DEFAULT ''"),
-                         ("profile_id", "TEXT DEFAULT ''"), ("team_ids", "TEXT DEFAULT ''"),
-                         ("explore_rounds", "INTEGER DEFAULT 15"), ("analysis_rounds", "INTEGER DEFAULT 5")]:
-        try:
-            conn.execute(f"ALTER TABLE pentest_campaigns ADD COLUMN {col} {ctype}")
-        except Exception:
-            pass
-    for col, ctype in [("explore_rounds", "INTEGER DEFAULT 15"), ("analysis_rounds", "INTEGER DEFAULT 5")]:
-        try:
-            conn.execute(f"ALTER TABLE pentest_scan_profiles ADD COLUMN {col} {ctype}")
-        except Exception:
-            pass
-    for col, ctype in [("master_prompt", "TEXT DEFAULT ''"), ("documentation", "TEXT DEFAULT ''"),
-                         ("expert_mode", "INTEGER DEFAULT 0")]:
-        try:
-            conn.execute(f"ALTER TABLE pentest_scan_profiles ADD COLUMN {col} {ctype}")
-        except Exception:
-            pass
-    for col, ctype in [("expert_report", "TEXT DEFAULT ''"), ("expert_report_md", "TEXT DEFAULT ''")]:
-        try:
-            conn.execute(f"ALTER TABLE pentest_campaigns ADD COLUMN {col} {ctype}")
-        except Exception:
-            pass
-    for col, ctype in [("flash_model", "TEXT DEFAULT ''"), ("pro_model", "TEXT DEFAULT ''"),
-                         ("tokens_used", "INTEGER DEFAULT 0")]:
-        try:
-            conn.execute(f"ALTER TABLE pentest_campaigns ADD COLUMN {col} {ctype}")
-        except Exception:
-            pass
-    for col, ctype in [("linked_finding_id", "TEXT DEFAULT ''")]:
-        try:
-            conn.execute(f"ALTER TABLE pentest_findings ADD COLUMN {col} {ctype}")
-        except Exception:
-            pass
-    # Migration: log_type for bash command logs
-    try:
-        conn.execute("ALTER TABLE pentest_scan_logs ADD COLUMN log_type TEXT DEFAULT 'http'")
-    except Exception:
-        pass
     conn.commit()
     conn.close()
     # Auto-repair unlinked AI findings from previous runs

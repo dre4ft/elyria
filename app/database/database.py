@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS ai_messages (
     conversation_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
     message TEXT NOT NULL,
-    timestamp DATETIME NOT NULL
+    timestamp DATETIME NOT NULL,
+    payload_encrypted TEXT DEFAULT ''
 )
 """
 
@@ -66,12 +67,27 @@ CREATE TABLE IF NOT EXISTS users (
     salt TEXT NOT NULL DEFAULT '',
     username TEXT UNIQUE NOT NULL,
     teams TEXT,
+    email TEXT DEFAULT '',
+    email_verified INTEGER DEFAULT 0,
+    verification_code TEXT DEFAULT '',
+    verification_code_expiry TEXT DEFAULT '',
     oidc_sub TEXT DEFAULT '',
     oidc_provider TEXT DEFAULT '',
     oidc_id_token TEXT DEFAULT '',
     oidc_access_token TEXT DEFAULT '',
     oidc_refresh_token TEXT DEFAULT '',
     oidc_expires_at REAL DEFAULT 0,
+    wrapped_user_key TEXT DEFAULT '',
+    salt_pw TEXT DEFAULT '',
+    salt_auth TEXT DEFAULT '',
+    salt_rec TEXT DEFAULT '',
+    auth_verifier TEXT DEFAULT '',
+    master_key_blob_pw TEXT DEFAULT '',
+    master_key_blob_rec TEXT DEFAULT '',
+    recovery_words_shown INTEGER DEFAULT 0,
+    pending_recovery TEXT DEFAULT '',
+    failed_login_attempts INTEGER DEFAULT 0,
+    locked_until TEXT DEFAULT '',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_login_at DATETIME
 )
@@ -92,7 +108,8 @@ CREATE TABLE IF NOT EXISTS requests (
     request_body_is_json BOOLEAN,     
     response_headers TEXT,
     response_body TEXT,
-    response_body_is_json BOOLEAN
+    response_body_is_json BOOLEAN,
+    payload_encrypted TEXT DEFAULT ''
 )
 """
 
@@ -136,102 +153,6 @@ def connect():
     return get_connection()
 
 
-def _table_columns(cursor, table: str) -> set:
-    """Return the set of column names for a table (works on SQLite and PostgreSQL)."""
-    db_backend = os.getenv("DB_BACKEND", "sqlite")
-    if db_backend == "postgres":
-        cursor.execute(
-            "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
-            (table,),
-        )
-        return {row[0] for row in cursor.fetchall()}
-    else:
-        return {row[1] for row in cursor.execute(f"PRAGMA table_info({table})").fetchall()}
-
-
-def _safe_add_column(cursor, table: str, col: str, col_def: str):
-    """Add a column if it doesn't exist (DB-agnostic)."""
-    if col not in _table_columns(cursor, table):
-        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}")
-
-
-def _migrate_crypto_columns(cursor, conn):
-    """Add encryption columns to tables that need them."""
-    for tbl in ("saved_requests", "workflow_graphs"):
-        _safe_add_column(cursor, tbl, "payload_encrypted", "TEXT DEFAULT ''")
-        _safe_add_column(cursor, tbl, "team_id", "TEXT DEFAULT ''")
-    _safe_add_column(cursor, "users", "wrapped_user_key", "TEXT DEFAULT ''")
-    _safe_add_column(cursor, "team_users", "encrypted_team_key", "TEXT DEFAULT ''")
-    # Refresh token columns on keys table
-    for col, cdef in [("refresh_token_hash", "TEXT DEFAULT ''"), ("refresh_count", "INTEGER DEFAULT 0"), ("max_refreshes", "INTEGER DEFAULT 2")]:
-        _safe_add_column(cursor, "keys", col, cdef)
-    conn.commit()
-
-
-def _migrate_oidc_columns(cursor, conn):
-    """Add OIDC columns to users table if they don't exist (safe to call multiple times)."""
-    oidc_cols = [
-        ("oidc_sub", "TEXT DEFAULT ''"),
-        ("oidc_provider", "TEXT DEFAULT ''"),
-        ("oidc_id_token", "TEXT DEFAULT ''"),
-        ("oidc_access_token", "TEXT DEFAULT ''"),
-        ("oidc_refresh_token", "TEXT DEFAULT ''"),
-        ("oidc_expires_at", "REAL DEFAULT 0"),
-        ("created_at", "TEXT DEFAULT ''"),
-        ("last_login_at", "TEXT DEFAULT ''"),
-    ]
-    existing = _table_columns(cursor, "users")
-    for col_name, col_def in oidc_cols:
-        if col_name not in existing:
-            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
-    conn.commit()
-
-
-def _migrate_crypto_v2_columns(cursor, conn):
-    """Add Argon2id + envelope encryption columns (v2 crypto architecture)."""
-    crypto_cols = [
-        ("salt_pw", "TEXT DEFAULT ''"),
-        ("salt_auth", "TEXT DEFAULT ''"),
-        ("salt_rec", "TEXT DEFAULT ''"),
-        ("auth_verifier", "TEXT DEFAULT ''"),
-        ("master_key_blob_pw", "TEXT DEFAULT ''"),
-        ("master_key_blob_rec", "TEXT DEFAULT ''"),
-        ("recovery_words_shown", "INTEGER DEFAULT 0"),
-        ("pending_recovery", "TEXT DEFAULT ''"),
-        ("failed_login_attempts", "INTEGER DEFAULT 0"),
-        ("locked_until", "TEXT DEFAULT ''"),
-    ]
-    existing = _table_columns(cursor, "users")
-    for col_name, col_def in crypto_cols:
-        if col_name not in existing:
-            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
-    # Add wrapped_tvk to team_users
-    _safe_add_column(cursor, "team_users", "wrapped_tvk", "TEXT DEFAULT ''")
-    # Add payload_encrypted to tables storing sensitive data
-    for tbl in ["requests", "ai_messages", "pentest_scan_profiles", "pentest_campaigns",
-                "pentest_findings", "pentest_scan_logs", "blueteam_reports",
-                "ai_providers", "app_config", "app_api_keys", "proxies"]:
-        _safe_add_column(cursor, tbl, "payload_encrypted", "TEXT DEFAULT ''")
-    conn.commit()
-
-
-def _migrate_email_verification_columns(cursor, conn):
-    """Add email + verification columns to users table (safe to call multiple times)."""
-    email_cols = [
-        ("email", "TEXT DEFAULT ''"),
-        ("email_verified", "INTEGER DEFAULT 0"),
-        ("verification_code", "TEXT DEFAULT ''"),
-        ("verification_code_expiry", "TEXT DEFAULT ''"),
-    ]
-    existing = _table_columns(cursor, "users")
-    for col_name, col_def in email_cols:
-        if col_name not in existing:
-            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
-    # Make email unique if not already (SQLite doesn't support ALTER ADD CONSTRAINT,
-    # uniqueness is enforced at application level)
-    conn.commit()
-
-
 def init_db():
     global _IS_INIT
     if _IS_INIT:
@@ -252,10 +173,5 @@ def init_db():
         from database.ctx_mgmt import INIT_USER_CTX
         c.execute(INIT_USER_CTX)
         conn.commit()
-        # ── Migrations: add columns that didn't exist in older schemas ──
-        _migrate_oidc_columns(c, conn)
-        _migrate_crypto_columns(c, conn)
-        _migrate_crypto_v2_columns(c, conn)
-        _migrate_email_verification_columns(c, conn)
         conn.close()
         _IS_INIT = True

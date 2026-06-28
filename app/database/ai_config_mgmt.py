@@ -32,16 +32,11 @@ def init_ai_config():
             model TEXT DEFAULT '',
             is_default INTEGER DEFAULT 0,
             user_id TEXT NOT NULL DEFAULT '',
+            payload_encrypted TEXT DEFAULT '',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # Migrations
-    for col in ("slot", "user_id"):
-        try:
-            conn.execute(f"ALTER TABLE ai_providers ADD COLUMN {col} TEXT DEFAULT 'pro'" if col == "slot" else f"ALTER TABLE ai_providers ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
-        except:
-            pass
     conn.commit()
     conn.close()
 

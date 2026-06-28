@@ -43,8 +43,8 @@ def init_teams():
     c = _conn()
     c.executescript("""
         CREATE TABLE IF NOT EXISTS teams (id INTEGER PRIMARY KEY, team_id TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
-            creator_user_id TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS team_users (team_id TEXT NOT NULL, user_id TEXT NOT NULL,
+            creator_user_id TEXT NOT NULL, encrypted_team_key TEXT NOT NULL DEFAULT '', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS team_users (team_id TEXT NOT NULL, user_id TEXT NOT NULL, wrapped_tvk TEXT DEFAULT '',
             PRIMARY KEY(team_id, user_id), FOREIGN KEY(team_id) REFERENCES teams(team_id));
         CREATE TABLE IF NOT EXISTS pending_team_requests (team_id TEXT NOT NULL, user_id TEXT NOT NULL,
             validators TEXT DEFAULT '[]', needed_validator INTEGER DEFAULT 1,
@@ -52,16 +52,6 @@ def init_teams():
         CREATE TABLE IF NOT EXISTS user_followed_teams (user_id TEXT NOT NULL, team_id TEXT NOT NULL,
             PRIMARY KEY(user_id, team_id));
     """)
-    # Migration: add encrypted_team_key to teams
-    try: c.execute("ALTER TABLE teams ADD COLUMN encrypted_team_key TEXT NOT NULL DEFAULT ''")
-    except: pass
-    # Migrations for team integration
-    for tbl, col in [("folders", "team_id"), ("saved_requests", "team_id"), ("workflow_graphs", "team_id"), ("pentest_scan_profiles", "team_ids")]:
-        try: c.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} TEXT DEFAULT ''")
-        except: pass
-    # Migration: wrapped_tvk for team key storage
-    try: c.execute("ALTER TABLE team_users ADD COLUMN wrapped_tvk TEXT DEFAULT ''")
-    except: pass
     c.commit(); c.close()
 init_teams()
 

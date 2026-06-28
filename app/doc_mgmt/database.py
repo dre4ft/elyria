@@ -77,6 +77,41 @@ def delete_document(doc_id: str):
 def list_documents(author_user_id: str = None, team_id: str = None,
                    file_type: str = None, search: str = None, limit: int = None):
     conn = _connect()
+
+    # Skills: return from ely_skills table
+    if file_type == "skill":
+        query = "SELECT skill_id AS doc_id, name, description AS snippet, 'skill' AS file_type, created_at FROM ely_skills"
+        conds = []
+        params = []
+        if search:
+            conds.append("(name LIKE ? OR description LIKE ?)")
+            like = f"%{search}%"
+            params.extend([like, like])
+        if conds:
+            query += " WHERE " + " AND ".join(conds)
+        query += " ORDER BY created_at DESC"
+        if limit:
+            query += f" LIMIT {int(limit)}"
+        rows = conn.execute(query, params).fetchall()
+        # Only ely built-in skill (scanners have static skills, not user-facing)
+        from database.skills_api import BUILT_IN
+        results = []
+        ely_info = BUILT_IN.get("ely")
+        if ely_info and (not search or search.lower() in ely_info["name"].lower()):
+            results.append({
+                "doc_id": "ely", "name": ely_info["name"],
+                "snippet": ely_info["description"], "file_type": "skill",
+                "created_at": "",
+            })
+        for row in rows:
+            results.append({
+                "doc_id": row["doc_id"], "name": row["name"],
+                "snippet": row["snippet"] or "", "file_type": "skill",
+                "created_at": row["created_at"] or "",
+            })
+        conn.close()
+        return results[:int(limit)] if limit else results
+
     query = "SELECT filename AS name, file_id AS doc_id, snippet, file_type, created_at FROM documents"
     conditions = []
     params = []

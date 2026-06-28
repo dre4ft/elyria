@@ -11,8 +11,13 @@ async def launch_browser():
     """Version async de lancement du browser"""
     _log.info("Launching browser (async)...")
     playwright = await async_playwright().start()
-    browser = await playwright.chromium.launch(headless=True)
-    # Stocker aussi playwright pour pouvoir le fermer
+    launch_args = {"headless": True}
+    from core.proxy import get_current_proxy_url
+    proxy_url = get_current_proxy_url()
+    if proxy_url:
+        launch_args["proxy"] = {"server": proxy_url}
+        _log.info(f"Browser using proxy: {proxy_url}")
+    browser = await playwright.chromium.launch(**launch_args)
     return browser, playwright
 
 async def close_browser(browser, playwright):
@@ -56,14 +61,14 @@ async def click_element(browser, url: str, selector: str, timeout: int = 15000):
 async def basic_handler(user_id: str, url: str = None, selector: str = "body", action: str = "query"):
     """Handler asynchrone pour les opérations browser"""
     global browsers
-    
+
     # Stocker un tuple (browser, playwright)
     if user_id not in browsers:
         browser, playwright = await launch_browser()
         browsers[user_id] = (browser, playwright)
     else:
         browser, playwright = browsers[user_id]
-    
+
     try:
         if action == "query":
             if not url:

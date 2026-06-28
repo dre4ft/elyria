@@ -23,6 +23,14 @@ from ely.browser import basic_handler
 _log = get_logger("redteam.scanner")
 
 
+def _load_skill(name: str) -> str:
+    try:
+        from ai_core.skills_loader import load_agent_skill
+        return load_agent_skill(name)
+    except Exception:
+        return ""
+
+
 # ═══════════════════════════════════════════════════════════════
 # TOOLS — minimal set, data is injected in prompt not read via tools
 # ═══════════════════════════════════════════════════════════════
@@ -744,7 +752,8 @@ FINDING QUALITY RULES (CRITICAL):
 - For injection: the response MUST contain evidence of execution (e.g., SQL error, reflected XSS, SSRF response).
 - For auth bypass: you MUST have accessed protected data, not just gotten a different status code.
 - If you are UNCERTAIN: call pentest_make_requests to verify BEFORE calling pentest_add_findings.
-- Findings without matching scan log evidence will be auto-downgraded to INFO/UNVERIFIED."""}
+- Findings without matching scan log evidence will be auto-downgraded to INFO/UNVERIFIED.
+{_load_skill("redteam")}"""}
 
         msgs = [system]
         self.conversation = msgs[:]
