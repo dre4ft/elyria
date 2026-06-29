@@ -234,7 +234,9 @@
         + '.ely-tools-used{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);}'
         + '.ely-tool-badge{font-size:10px;padding:2px 7px;border-radius:5px;font-family:"JetBrains Mono",monospace;}'
         + '.ely-tool-ok{background:rgba(34,197,94,.1);color:#4ade80;border:1px solid rgba(34,197,94,.15);}'
-        + '.ely-tool-err{background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.15);}';
+        + '.ely-tool-err{background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.15);}'
+        + '.ely-tool-skill{background:rgba(124,58,237,.1);color:#a78bfa;border:1px solid rgba(124,58,237,.2);}'
+        + '.ely-tool-skill-custom{background:rgba(139,92,246,.08);color:#c4b5fd;border:1px solid rgba(139,92,246,.15);}';
         + '.diary-entry .line-clamp-2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}'
         + '[data-theme="light"] .ely-logo{filter:invert(1);}'
         + '[data-theme="light"] .ely-msg-body strong{color:#1e293b;}'
@@ -546,6 +548,17 @@
         }
         toolsHtml += '</div>';
       }
+
+      if (data.skills && data.skills.length) {
+        toolsHtml += '<div class="ely-tools-used" style="padding-top:6px;margin-top:6px;">';
+        for (var s = 0; s < data.skills.length; s++) {
+          var sk = data.skills[s];
+          var cls = sk.source === 'built-in' ? 'ely-tool-skill' : 'ely-tool-skill-custom';
+          toolsHtml += '<span class="ely-tool-badge ' + cls + '"><svg style="width:10px;height:10px;vertical-align:-1px;margin-right:2px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>' + _esc(sk.name) + '</span>';
+        }
+        toolsHtml += '</div>';
+      }
+
       if (data.reply) {
         _addMessage('ely', data.reply + toolsHtml);
         state.messages.push({ role: 'assistant', content: data.reply });

@@ -73,9 +73,11 @@ def _resolve_folder_id(collection_id: str, user_id: str) -> str | None:
     # Already a folder UUID
     if cid.startswith("f-") and len(cid) >= 10:
         return cid
-    # Resolve by name or path
+    # Resolve by name or path (personal + team folders)
     from database.collection_mgmt import find_folder_by_path
-    resolved = find_folder_by_path(cid, user_id)
+    from database.collection_api import _get_followed_team_ids
+    team_ids = _get_followed_team_ids(user_id)
+    resolved = find_folder_by_path(cid, user_id, team_ids=team_ids if team_ids else None)
     if resolved:
         return resolved
     # Fallback: return original value (may be orphaned but won't crash)
@@ -373,17 +375,26 @@ async def get_findings(args, request):
     return {"status": 200, "data": {"findings": findings, "total": len(findings)}}
 
 
-@_action("ely_list_resources", "List resources (profiles, collections, workflows)",
+@_action("ely_list_resources", "List resources (profiles, collections, workflows). Default: personal collections only. Use scope='all' to include followed teams.",
          {"resource": {"type": "string", "enum": ["collections", "redteam_profiles",
-                          "greyteam_profiles", "blueteam_profiles", "workflows"]}})
+                          "greyteam_profiles", "blueteam_profiles", "workflows"]},
+          "scope": {"type": "string", "enum": ["personal", "all"], "description": "'personal' (default) = own collections only, 'all' = include followed teams."}},
+         optional=["scope"])
 async def list_resources(args,request):
     from core.auth import get_user as get_user_id
     user_id = get_user_id(request)
     r = args["resource"]
+    scope = args.get("scope", "personal")
     try:
         if r == "collections":
             from database.collection_mgmt import get_collection_tree as L
-            items = L(user_id)
+            from database.collection_api import _get_followed_team_ids
+            if scope == "personal":
+                team_ids = None
+            else:
+                team_ids = _get_followed_team_ids(user_id)
+                team_ids = team_ids if team_ids else None
+            items = L(user_id, team_ids=team_ids, light=True)
         elif r == "redteam_profiles":
             from redteam.database import list_profiles as L
             items = L(user_id=user_id)
@@ -396,11 +407,57 @@ async def list_resources(args,request):
         else:
             from database.workflow_graph_mgmt import list_workflows as L
             items = L(user_id=user_id)
-        return {"status": 200, "data": {"items": items[:100], "total": len(items)}}
+        return {"status": 200, "data": {"items": items, "total": len(items)}}
     except Exception as e:
         return {"error": str(e)[:200]}
 
 
+
+@_action("ely_get_collection", "Get detailed contents of a collection folder: sub-folders and requests with URL, method, headers, body. folder_id can be a UUID (f-xxx), name, or path.",
+         {"folder_id": {"type": "string", "description": "Folder UUID (f-xxx), name, or path like 'Parent/Child'."}})
+async def get_collection(args, request):
+    from core.auth import get_user as get_user_id
+    from database.collection_mgmt import get_folder_contents
+    try:
+        user_id = get_user_id(request)
+        fid = _resolve_folder_id(args["folder_id"], user_id)
+        if not fid:
+            return {"error": f"Folder not found: {args['folder_id']}"}
+        contents = get_folder_contents(fid, user_id)
+        if not contents:
+            return {"error": f"Folder not found or access denied: {args['folder_id']}"}
+        return {"status": 200, "data": contents}
+    except Exception as e:
+        return {"error": str(e)[:200]}
+
+@_action("ely_get_request", "Get full details of a saved request by its ID (r-xxxxxxxx). Returns name, method, url, headers, body.",
+         {"request_id": {"type": "string", "description": "Request ID (r-xxxxxxxx) from a collection folder."}})
+async def get_request(args, request):
+    from core.auth import get_user as get_user_id
+    from database.collection_mgmt import get_request_by_id
+    try:
+        user_id = get_user_id(request)
+        rid = args["request_id"].strip()
+        if not rid.startswith("r-"):
+            return {"error": f"Invalid request ID format: {rid}. Must start with 'r-'."}
+        req = get_request_by_id(rid, requester_user_id=user_id)
+        if not req:
+            return {"error": f"Request not found or access denied: {rid}"}
+        return {
+            "status": 200,
+            "data": {
+                "id": req.get("saved_request_id", rid),
+                "name": req.get("name", ""),
+                "method": req.get("method", "GET"),
+                "url": req.get("url", ""),
+                "headers": req.get("headers"),
+                "body": req.get("body"),
+                "isDoneByAI": bool(req.get("is_done_by_ai", False)),
+                "folder_id": req.get("folder_id"),
+            }
+        }
+    except Exception as e:
+        return {"error": str(e)[:200]}
 
 @_action("ely_get_doc", "look up a documentation snippet from the Ely knowledge base",
          {"page": {"type": "string"}})

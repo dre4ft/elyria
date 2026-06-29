@@ -38,11 +38,11 @@ def create_folder(name: str, author_user_id: str, parent_id: str = None, team_id
             conn.close()
 
 
-def find_folder_by_path(path: str, author_user_id: str) -> str | None:
+def find_folder_by_path(path: str, author_user_id: str, team_ids: list = None) -> str | None:
     """Resolve a folder path like 'Parent/Child' or simple name to a folder_id.
 
     Returns the folder_id (f-xxxxxxxx) of the deepest matching folder, or None.
-    Matches case-insensitively. Creates no folders.
+    Matches case-insensitively. Searches personal folders + team folders if team_ids provided.
     """
     if not path or not path.strip():
         return None
@@ -50,6 +50,21 @@ def find_folder_by_path(path: str, author_user_id: str) -> str | None:
     if not parts:
         return None
     folders = get_folders_by_user(author_user_id)
+    # Also load team-scoped folders
+    if team_ids:
+        seen = {f["folder_id"] for f in folders}
+        for tid in team_ids:
+            try:
+                conn = connect()
+                tfolders = conn.execute("SELECT * FROM folders WHERE team_id=?", (tid,)).fetchall()
+                conn.close()
+                for r in tfolders:
+                    d = dict(r)
+                    if d["folder_id"] not in seen:
+                        seen.add(d["folder_id"])
+                        folders.append(d)
+            except Exception:
+                pass
     # Build lookup: parent_id -> list of children
     by_parent = {}
     for f in folders:
@@ -336,10 +351,72 @@ def delete_saved_request(saved_request_id: str, author_user_id: str):
 
 
 # ═══════════════════════════════════════════════
+# FOLDER CONTENTS (detailed view of a single folder)
+# ═══════════════════════════════════════════════
+
+def get_folder_contents(folder_id: str, author_user_id: str) -> dict | None:
+    """Return the full contents of a folder: its info, child folders, and requests with details."""
+    conn = None
+    try:
+        conn = connect()
+        cursor = conn.cursor()
+        # Get the folder itself
+        frow = cursor.execute(
+            "SELECT * FROM folders WHERE folder_id=? AND author_user_id=?",
+            (folder_id, author_user_id)
+        ).fetchone()
+        if not frow:
+            conn.close()
+            return None
+        folder = dict(frow)
+        # Get child folders
+        child_folders = cursor.execute(
+            "SELECT folder_id, name FROM folders WHERE parent_id=? AND author_user_id=? ORDER BY name",
+            (folder_id, author_user_id)
+        ).fetchall()
+        # Get requests in this folder (exclude payload_encrypted, use cleartext columns)
+        requests = cursor.execute(
+            "SELECT saved_request_id, name, method, url, headers, body, body_is_json, is_done_by_ai FROM saved_requests WHERE folder_id=? AND author_user_id=? ORDER BY name",
+            (folder_id, author_user_id)
+        ).fetchall()
+        conn.close()
+
+        result = {
+            "id": folder["folder_id"],
+            "name": folder["name"],
+            "type": "folder",
+            "parent_id": folder.get("parent_id"),
+            "created_at": str(folder.get("created_at", "")),
+            "folders": [{"id": f["folder_id"], "name": f["name"]} for f in child_folders],
+            "requests": [],
+        }
+        for r in requests:
+            rd = {
+                "id": r["saved_request_id"],
+                "name": r["name"],
+                "method": r["method"],
+                "url": r["url"] or "",
+                "isDoneByAI": bool(r["is_done_by_ai"]),
+            }
+            if r["headers"]:
+                rd["headers"] = json_helper.to_json(r["headers"])
+            if r["body"]:
+                rd["body"] = json_helper.deserialize_body(r["body"], r["body_is_json"])
+            result["requests"].append(rd)
+        return result
+    except Exception as e:
+        _log.exception("get_folder_contents error")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+# ═══════════════════════════════════════════════
 # TREE BUILDER  (for GET /api/collections)
 # ═══════════════════════════════════════════════
 
-def get_collection_tree(author_user_id: str, team_ids: list = None):
+def get_collection_tree(author_user_id: str, team_ids: list = None, light: bool = False):
     folders = get_folders_by_user(author_user_id)
     saved = get_saved_requests_by_user(author_user_id)
     # If team_ids is None: personal only. If empty list: no teams. If list: include those teams.
@@ -383,13 +460,15 @@ def get_collection_tree(author_user_id: str, team_ids: list = None):
 
     folder_map = {}
     for f in folders:
-        folder_map[f["folder_id"]] = {
+        node = {
             "id": f["folder_id"],
             "name": f["name"],
             "type": "folder",
-            "expanded": False,
             "children": [],
         }
+        if not light:
+            node["expanded"] = False
+        folder_map[f["folder_id"]] = node
 
     root_items = []
 
@@ -400,23 +479,34 @@ def get_collection_tree(author_user_id: str, team_ids: list = None):
         else:
             root_items.append(node)
 
-    for r in saved:
-        req_node = {
-            "id": r["saved_request_id"],
-            "name": r["name"],
-            "type": "request",
-            "method": r["method"],
-            "url": r["url"],
-            "isDoneByAI": bool(r["is_done_by_ai"]),
-        }
-        if r["headers"]:
-            req_node["headers"] = json_helper.to_json(r["headers"])
-        if r["body"]:
-            req_node["body"] = json_helper.deserialize_body(r["body"], r["body_is_json"])
+    # In light mode, skip request nodes — only return folder tree with request counts
+    if not light:
+        for r in saved:
+            req_node = {
+                "id": r["saved_request_id"],
+                "name": r["name"],
+                "type": "request",
+                "method": r["method"],
+                "url": r["url"],
+                "isDoneByAI": bool(r["is_done_by_ai"]),
+            }
+            if r["headers"]:
+                req_node["headers"] = json_helper.to_json(r["headers"])
+            if r["body"]:
+                req_node["body"] = json_helper.deserialize_body(r["body"], r["body_is_json"])
 
-        if r["folder_id"] and r["folder_id"] in folder_map:
-            folder_map[r["folder_id"]]["children"].append(req_node)
-        else:
-            root_items.append(req_node)
+            if r["folder_id"] and r["folder_id"] in folder_map:
+                folder_map[r["folder_id"]]["children"].append(req_node)
+            else:
+                root_items.append(req_node)
+
+    # Add request counts to folders (both modes)
+    request_counts = {}
+    for r in saved:
+        if r["folder_id"]:
+            request_counts[r["folder_id"]] = request_counts.get(r["folder_id"], 0) + 1
+    for fid, count in request_counts.items():
+        if fid in folder_map:
+            folder_map[fid]["request_count"] = count
 
     return root_items

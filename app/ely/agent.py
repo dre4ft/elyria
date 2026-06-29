@@ -177,6 +177,18 @@ async def chat(page, messages, request, stream_cb=None, slot="flash"):
 
     context_snapshot = get_context_for_page(page, request)
     system_content = build_system_prompt(page, context_snapshot)
+
+    # Collect loaded skills for frontend notification
+    loaded_skills = []
+    try:
+        from database.skills_api import BUILT_IN, load_custom_skills
+        ely_info = BUILT_IN.get("ely")
+        if ely_info:
+            loaded_skills.append({"name": ely_info["name"], "source": "built-in"})
+        for cs in load_custom_skills():
+            loaded_skills.append({"name": cs.get("name", cs.get("skill_id", "")), "source": "custom"})
+    except Exception:
+        pass
     if memory_prompt:
         system_content = memory_prompt + "\n\n" + system_content
     system_msg = {"role": "system", "content": system_content}
@@ -346,6 +358,7 @@ async def chat(page, messages, request, stream_cb=None, slot="flash"):
     return {
         "reply": reply,
         "actions": actions_executed,
+        "skills": loaded_skills,
         "tokens": {"total": tokens_used},
     }
 
