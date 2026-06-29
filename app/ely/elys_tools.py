@@ -35,7 +35,8 @@ def _sanitize_url(url: str) -> str:
 ACTIONS = {}
 
 
-def _action(name, description, parameters):
+def _action(name, description, parameters, optional=None):
+    optional = optional or []
     def decorator(handler):
         ACTIONS[name] = {
             "definition": {
@@ -46,7 +47,7 @@ def _action(name, description, parameters):
                     "parameters": {
                         "type": "object",
                         "properties": parameters,
-                        "required": list(parameters.keys()),
+                        "required": [k for k in parameters.keys() if k not in optional],
                     },
                 },
             },
@@ -57,6 +58,28 @@ def _action(name, description, parameters):
 
 
 
+
+
+def _resolve_folder_id(collection_id: str, user_id: str) -> str | None:
+    """Resolve a collection identifier to a folder UUID.
+
+    Accepts: folder UUID (f-xxxxxxxx), simple name, or path like 'Parent/Child'.
+    Returns the folder UUID if found, None if collection_id is empty, or the
+    original value if it already looks like a UUID.
+    """
+    if not collection_id or not collection_id.strip():
+        return None
+    cid = collection_id.strip()
+    # Already a folder UUID
+    if cid.startswith("f-") and len(cid) >= 10:
+        return cid
+    # Resolve by name or path
+    from database.collection_mgmt import find_folder_by_path
+    resolved = find_folder_by_path(cid, user_id)
+    if resolved:
+        return resolved
+    # Fallback: return original value (may be orphaned but won't crash)
+    return cid if cid.startswith("f-") else None
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -142,13 +165,14 @@ async def fuzz(args, request):
     except Exception as e:
         return {"error": str(e)[:200]}
 
-@_action("ely_create_request", "Create an HTTP request",
+@_action("ely_create_request", "Create an HTTP request. collection_id can be a folder UUID (f-xxxxxxxx), a folder name, or a path like 'Parent/Child'. Omit to create at root.",
          {"method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]},
           "url":    {"type": "string"},
           "headers":{"type": "string"},
           "body":   {"type": "string"},
           "name":   {"type": "string"},
-          "collection_id": {"type": "string"}})
+          "collection_id": {"type": "string", "description": "Folder UUID (f-xxx), name, or path like 'Parent/Child'. Leave empty for root."}},
+         optional=["collection_id"])
 async def create_request(args, request):
     from database.collection_api import api_create_request, CreateRequestBody
     try:
@@ -156,23 +180,28 @@ async def create_request(args, request):
     except Exception:
         hdrs = None
     try:
+        from core.auth import get_user as get_user_id
+        folder_id = _resolve_folder_id(args.get("collection_id", ""), get_user_id(request))
         _request = CreateRequestBody(
             name=args["name"],
             method=args["method"],
             url=args["url"],
             headers=hdrs,
             body=args.get("body", ""),
-            folderId=args.get("collection_id"),
+            folderId=folder_id,
             team_id="",
             isDoneByAI=True)
         exit = api_create_request(_request, request)
         if exit.status_code == 201:
             return {"status": 201, "data": {"message": "Request created successfully"}}
         else:
-            return {"error": f"Failed to create request: {exit.content.decode()[:200]}"}
-
+            body = getattr(exit, 'body', b'') or b''
+            return {"error": f"Failed to create request: {body.decode()[:200]}"}
     except Exception as e:
+        import traceback
+        _log.error(f"create_request failed: {traceback.format_exc()}")
         return {"error": str(e)[:200]}
+
 @_action("ely_request_ctx", "Get the user context dictionary. Returns all keys available for use with {{ctx.xxx}} syntax in request tools.",
          {})
 async def get_ctx(args, request):
@@ -184,22 +213,28 @@ async def get_ctx(args, request):
 
 
 
-@_action("ely_create_collection", "Create a new collection/folder to organize requests",
-         {"name": {"type": "string"}, "parent_id": {"type": "string"}})
+@_action("ely_create_collection", "Create a new collection/folder to organize requests. parent_id can be a folder UUID (f-xxx), name, or path like 'Parent/Child'. Omit for root.",
+         {"name": {"type": "string"}, "parent_id": {"type": "string", "description": "Parent folder UUID, name, or path. Leave empty for root."}},
+         optional=["parent_id"])
 async def create_collection(args, request):
     from database.collection_api import api_create_folder, CreateFolderBody
     try:
+        from core.auth import get_user as get_user_id
+        parent_id = _resolve_folder_id(args.get("parent_id", ""), get_user_id(request))
         _request = CreateFolderBody(
             name=args["name"],
-            parentId=args.get("parent_id"),
+            parentId=parent_id,
             team_id="",
         )
         exit = api_create_folder(_request, request)
         if exit.status_code == 201:
             return {"status": 201, "data": {"message": "Collection created successfully"}}
         else:
-            return {"error": f"Failed to create collection: {exit.content.decode()[:200]}"}
+            body = getattr(exit, 'body', b'') or b''
+            return {"error": f"Failed to create collection: {body.decode()[:200]}"}
     except Exception as e:
+        import traceback
+        _log.error(f"create_collection failed: {traceback.format_exc()}")
         return {"error": str(e)[:200]}
 
 
@@ -361,7 +396,7 @@ async def list_resources(args,request):
         else:
             from database.workflow_graph_mgmt import list_workflows as L
             items = L(user_id=user_id)
-        return {"status": 200, "data": {"items": items[:20], "total": len(items)}}
+        return {"status": 200, "data": {"items": items[:100], "total": len(items)}}
     except Exception as e:
         return {"error": str(e)[:200]}
 

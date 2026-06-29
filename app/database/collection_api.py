@@ -37,7 +37,7 @@ def _get_followed_team_ids(user_id: str) -> list:
 
 class CreateFolderBody(BaseModel):
     name: str
-    parentId: str = None
+    parentId: str | None = None
     team_id: str = ""
 
 
@@ -45,26 +45,26 @@ class CreateRequestBody(BaseModel):
     name: str
     method: str = "GET"
     url: str = ""
-    folderId: str = None
+    folderId: str | None = None
     team_id: str = ""
-    headers: dict = None
-    body: str = None
+    headers: dict | None = None
+    body: str | None = None
     isDoneByAI: bool = False
 
 
 class UpdateRequestBody(BaseModel):
-    name: str = None
-    method: str = None
-    url: str = None
-    folderId: str = None
-    headers: dict = None
-    body: str = None
+    name: str | None = None
+    method: str | None = None
+    url: str | None = None
+    folderId: str | None = None
+    headers: dict | None = None
+    body: str | None = None
 
 
 class CurlCompileBody(BaseModel):
     curl: str
     name: str = ""
-    folderId: str = None
+    folderId: str | None = None
     team_id: str = ""
 
 

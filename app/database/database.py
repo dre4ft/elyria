@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS folders (
     name TEXT NOT NULL,
     parent_id TEXT,
     author_user_id TEXT NOT NULL,
+    team_id TEXT DEFAULT '',
     created_at DATETIME NOT NULL
 )
 """
@@ -166,6 +167,10 @@ def init_db():
         c.execute(INIT_AI_MESSAGES)
         c.execute(INIT_REQUEST)
         c.execute(INIT_FOLDERS)
+        try:
+            c.execute("ALTER TABLE folders ADD COLUMN team_id TEXT DEFAULT ''")
+        except Exception:
+            pass
         c.execute(INIT_SAVED_REQUESTS)
         c.execute(INIT_KEYS)
         c.execute(INIT_VERIFICATION_TOKENS)

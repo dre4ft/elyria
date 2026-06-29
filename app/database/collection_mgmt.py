@@ -38,6 +38,39 @@ def create_folder(name: str, author_user_id: str, parent_id: str = None, team_id
             conn.close()
 
 
+def find_folder_by_path(path: str, author_user_id: str) -> str | None:
+    """Resolve a folder path like 'Parent/Child' or simple name to a folder_id.
+
+    Returns the folder_id (f-xxxxxxxx) of the deepest matching folder, or None.
+    Matches case-insensitively. Creates no folders.
+    """
+    if not path or not path.strip():
+        return None
+    parts = [p.strip() for p in path.strip().split("/") if p.strip()]
+    if not parts:
+        return None
+    folders = get_folders_by_user(author_user_id)
+    # Build lookup: parent_id -> list of children
+    by_parent = {}
+    for f in folders:
+        pid = f["parent_id"] or "__root__"
+        by_parent.setdefault(pid, []).append(f)
+    current_parent = "__root__"
+    for i, part in enumerate(parts):
+        candidates = by_parent.get(current_parent, [])
+        match = None
+        for f in candidates:
+            if f["name"].strip().lower() == part.lower():
+                match = f
+                break
+        if not match:
+            return None
+        if i == len(parts) - 1:
+            return match["folder_id"]
+        current_parent = match["folder_id"]
+    return None
+
+
 def get_folders_by_user(author_user_id: str):
     conn = None
     try:
