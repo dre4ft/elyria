@@ -21,6 +21,7 @@ At-rest guarantees:
   - Password change → re-wrap master_key, O(1), no data re-encryption
 """
 
+import json
 import time
 from database.crypto import (
     generate_key,
@@ -51,6 +52,18 @@ _dek_cache: dict[tuple[str, str], tuple[bytes, float]] = {}
 # Pending recovery words for first login (user_id → words)
 _pending_recovery: dict[str, str] = {}
 
+# Dummy key used when BYOK is disabled — all user-data encryption is bypassed
+_DUMMY_KEY = b"\x00" * 32
+
+
+def _is_byok_enabled() -> bool:
+    import os
+    env_val = os.environ.get("ELYRIA_SECURITY_BYOK_ENABLED", "")
+    if env_val:
+        return env_val.lower() in ("1", "true", "yes", "on")
+    from core.config import get_bool
+    return get_bool("security", "byok_enabled", False)
+
 
 def _prune(cache: dict, ttl: float):
     now = time.time()
@@ -75,6 +88,9 @@ def register_master_key(user_id: str, password: str,
     pw_key = Argon2id(password, salt_pw)[32:] — memory, unwraps master_key.
     master_key_blob_pw = AES-GCM(pw_key, master_key) — stored DB.
     """
+    if not _is_byok_enabled():
+        return "", "", ""
+
     master_key = generate_key()
     auth_verifier, pw_key = derive_auth_and_key(password, salt_pw)
 
@@ -165,6 +181,8 @@ def consume_pending_recovery(user_id: str) -> str:
 
 def get_master_key(user_id: str) -> bytes | None:
     """Get master_key from memory cache. Returns None if not logged in."""
+    if not _is_byok_enabled():
+        return _DUMMY_KEY
     entry = _master_key_cache.get(user_id)
     if entry and time.time() - entry[1] < _USER_CACHE_TTL:
         return entry[0]
@@ -175,6 +193,8 @@ def get_master_key(user_id: str) -> bytes | None:
 
 def clear_master_key(user_id: str):
     """Remove master_key from memory (logout). Also clears derived TVK/DEK caches."""
+    if not _is_byok_enabled():
+        return
     _master_key_cache.pop(user_id, None)
     to_remove_tvk = [k for k in _tvk_cache if k[0] == user_id]
     for k in to_remove_tvk:
@@ -251,6 +271,9 @@ def create_collection_key(user_id: str, collection_id: str, team_id: str = "") -
     Otherwise: DEK wrapped by user's master_key.
     Returns the DEK (bytes, in-memory only).
     """
+    if not _is_byok_enabled():
+        return _DUMMY_KEY
+
     parent_key = get_master_key(user_id)
     if not parent_key:
         raise RuntimeError("User not authenticated")
@@ -277,6 +300,9 @@ def create_collection_key(user_id: str, collection_id: str, team_id: str = "") -
 
 def get_collection_key(user_id: str, collection_id: str, team_id: str = "") -> bytes | None:
     """Get the DEK for a collection (from cache or DB). Scoped by user_id."""
+    if not _is_byok_enabled():
+        return _DUMMY_KEY
+
     cache_key = (user_id, collection_id)
     entry = _dek_cache.get(cache_key)
     if entry and time.time() - entry[1] < _USER_CACHE_TTL:
@@ -313,6 +339,9 @@ def get_collection_key(user_id: str, collection_id: str, team_id: str = "") -> b
 
 def create_tvk(team_id: str, creator_user_id: str) -> bytes:
     """Generate TVK, wrap it for the creator, store it. Returns TVK."""
+    if not _is_byok_enabled():
+        return _DUMMY_KEY
+
     tvk = generate_key()
     creator_mk = get_master_key(creator_user_id)
     if not creator_mk:
@@ -436,6 +465,9 @@ def remove_member_from_team(team_id: str, removed_user_id: str) -> int:
 
 def get_tvk(user_id: str, team_id: str) -> bytes | None:
     """Get TVK for a team member (from cache or DB)."""
+    if not _is_byok_enabled():
+        return _DUMMY_KEY
+
     cache_key = (user_id, team_id)
     entry = _tvk_cache.get(cache_key)
     if entry and time.time() - entry[1] < _TEAM_CACHE_TTL:
@@ -529,6 +561,8 @@ def seal_sensitive(user_id: str, data: dict) -> str:
     """Encrypt sensitive data with user's master_key. Returns base64 blob."""
     if not data:
         return ""
+    if not _is_byok_enabled():
+        return json.dumps(data)
     mk = get_master_key(user_id)
     if not mk:
         return ""
@@ -539,6 +573,11 @@ def open_sensitive(user_id: str, encrypted: str) -> dict:
     """Decrypt sensitive data with user's master_key. Returns dict or {}."""
     if not encrypted:
         return {}
+    if not _is_byok_enabled():
+        try:
+            return json.loads(encrypted)
+        except (json.JSONDecodeError, TypeError):
+            return {}
     mk = get_master_key(user_id)
     if not mk:
         return {}
@@ -549,6 +588,8 @@ def seal_sensitive_str(user_id: str, value: str) -> str:
     """Encrypt a single string value with user's master_key."""
     if not value:
         return ""
+    if not _is_byok_enabled():
+        return value
     mk = get_master_key(user_id)
     if not mk:
         return ""
@@ -559,6 +600,8 @@ def open_sensitive_str(user_id: str, encrypted: str) -> str:
     """Decrypt a single string value with user's master_key."""
     if not encrypted:
         return ""
+    if not _is_byok_enabled():
+        return encrypted
     mk = get_master_key(user_id)
     if not mk:
         return ""
@@ -574,6 +617,8 @@ def crypto_seal(data: dict, user_id: str, collection_id: str = "", team_id: str 
     """Encrypt data. Uses DEK if collection_id provided, master_key otherwise."""
     if not data:
         return ""
+    if not _is_byok_enabled():
+        return json.dumps(data)
     if collection_id:
         key = get_collection_key(user_id, collection_id, team_id)
     else:
@@ -587,6 +632,11 @@ def crypto_open(encrypted: str, user_id: str, collection_id: str = "", team_id: 
     """Decrypt data. Returns {} on failure."""
     if not encrypted:
         return {}
+    if not _is_byok_enabled():
+        try:
+            return json.loads(encrypted)
+        except (json.JSONDecodeError, TypeError):
+            return {}
     if collection_id:
         key = get_collection_key(user_id, collection_id, team_id)
     else:

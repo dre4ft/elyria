@@ -19,7 +19,7 @@ from database.ai_config_mgmt import get_default_config
 from database.app_config import get_api_key
 from ai_core.ai_wrapper import AIWrapper
 from ai_core.shared_tools import build_tool_set, handle_tool
-from purpleteam.repo_manager import list_repo_files, detect_language, parse_dependencies
+from purpleteam.repo_manager import list_repo_files, detect_language
 
 _log = get_logger("purpleteam.ai")
 
@@ -103,8 +103,8 @@ class AIPurpleScanner:
             # Limit to avoid huge listings
             return json.dumps({
                 "path": clean or "/",
-                "directories": dirs[:30],
-                "files": files[:50],
+                "directories": dirs[:20],
+                "files": files[:20],
                 "total_entries": len(dirs) + len(files),
             })
         except Exception as e:
@@ -119,8 +119,8 @@ class AIPurpleScanner:
             return json.dumps({"error": f"File not found: {file_path}"})
         try:
             with open(full_path, "r", errors="replace") as f:
-                content = f.read()[:10000]
-            return json.dumps({"file_path": file_path, "content": content, "lines": content.count(chr(10)) + 1})
+                content = f.read()[:2000]
+            return json.dumps({"file_path": file_path, "content": content, "lines": content.count(chr(10)) + 1, "truncated": len(content) >= 2000})
         except Exception as e:
             return json.dumps({"error": str(e)})
 
@@ -144,13 +144,13 @@ class AIPurpleScanner:
                     for i, line in enumerate(fh, 1):
                         if pat.search(line):
                             results.append({"file": f, "line": i, "content": line.strip()[:200]})
-                            if len(results) >= 50:
+                            if len(results) >= 10:
                                 break
-                if len(results) >= 50:
+                if len(results) >= 10:
                     break
             except Exception:
                 pass
-        return json.dumps({"matches": results[:50], "total": len(results)})
+        return json.dumps({"matches": results[:10], "total": len(results)})
 
     def _handle_make_test_request(self, args):
         if not self.target_endpoint:
@@ -245,6 +245,80 @@ class AIPurpleScanner:
             reported += 1
         return json.dumps({"reported": reported, "hint": "Finding stored. Continue with next vulnerability or call submit_finding again for more."})
 
+    # ── Vulnerability briefs builder ──
+
+    def _read_lines(self, file_path, line_number, before=10, after=10):
+        """Read ±N lines around a specific line in a source file. Returns formatted string."""
+        full_path = os.path.join(self.repo_path, file_path)
+        if not os.path.isfile(full_path):
+            return ""
+        try:
+            with open(full_path, "r", errors="replace") as f:
+                lines = f.readlines()
+            start = max(0, line_number - before - 1)
+            end = min(len(lines), line_number + after)
+            result = []
+            for i in range(start, end):
+                prefix = ">>>" if i == line_number - 1 else "   "
+                result.append(f"{prefix} {i+1}: {lines[i].rstrip()}")
+            return "\n".join(result)
+        except Exception:
+            return ""
+
+    def _build_vuln_briefs(self):
+        """Build compact vulnerability candidates from static findings + call graph sinks.
+        Each candidate includes ±10 lines of surrounding code context (~100 tokens avg)."""
+        candidates = {}  # (file_path, line_number) -> candidate dict
+
+        for f in self.static_findings:
+            fp = f.get("file_path", "")
+            ln = f.get("line_number", 0)
+            if not fp or not ln:
+                continue
+            key = (fp, ln)
+            if key not in candidates:
+                candidates[key] = {
+                    "title": f.get("title", "Unknown"),
+                    "severity": f.get("severity", "info"),
+                    "file_path": fp,
+                    "line_number": ln,
+                    "cwe_id": f.get("cwe_id", ""),
+                    "sink_type": f.get("category", ""),
+                }
+
+        for s in self.call_graph.get("sinks", []):
+            fp = s.get("file", "")
+            ln = s.get("line", 0)
+            if not fp or not ln:
+                continue
+            key = (fp, ln)
+            if key not in candidates:
+                candidates[key] = {
+                    "title": f"Sink: {s.get('type', 'unknown')}",
+                    "severity": "medium",
+                    "file_path": fp,
+                    "line_number": ln,
+                    "cwe_id": "",
+                    "sink_type": s.get("type", ""),
+                }
+
+        briefs = []
+        for i, (key, c) in enumerate(candidates.items()):
+            fp, ln = key
+            context = self._read_lines(fp, ln, before=10, after=10)
+            if not context:
+                continue
+            sink_str = f" | {c['sink_type']}" if c.get("sink_type") else ""
+            cwe_str = f" | {c['cwe_id']}" if c.get("cwe_id") else ""
+            brief = (
+                f"### Candidate {i+1}: {c['title'][:120]}{sink_str}\n"
+                f"Severity: {c['severity']}{cwe_str} | File: {fp}:{ln}\n"
+                f"```\n{context}\n```"
+            )
+            briefs.append(brief)
+
+        return briefs
+
     # ── Main scan loop ──
 
     def _run_phase(self, model, model_name, msgs, tools, tool_map, scan_id, add_finding_fn, max_rounds, phase_name, progress_cb, pct_start, pct_end):
@@ -333,163 +407,147 @@ class AIPurpleScanner:
             )
             interactive_tool_map["submit_finding"] = self._handle_submit_finding
 
-        deps = parse_dependencies(self.repo_path, self.language)
-        dep_text = "\n".join(f"- {d['name']} @ {d.get('version', '?')}" for d in deps[:30]) or "(none)"
-        static_text = "\n".join(
-            f"- [{f['severity']}] {f['title']} ({f.get('file_path', '?')})"
-            for f in self.static_findings[:30]
-        ) or "(none)"
-
-        # ── Build controller + call graph context ──
-        ctrl_text = ""
-        if self.controllers:
-            ctrl_lines = []
-            for c in self.controllers[:30]:
-                auth_info = ""
-                for g in self.call_graph.get('auth_gates', []):
-                    if g.get('controller', {}).get('handler') == c.get('handler'):
-                        auth_info = f" [auth: {g.get('type', '?')}]"
-                        break
-                ctrl_lines.append(
-                    f"- {c['method']:6s} {c['path']:30s} -> {c.get('handler', '?')} "
-                    f"({c.get('file', '?')}:{c.get('line', '?')}){auth_info}"
-                )
-            ctrl_text = "\n".join(ctrl_lines)
-
-        sinks_text = ""
-        sink_types = {}
-        for s in self.call_graph.get('sinks', []):
-            st = s.get('type', '?')
-            sink_types.setdefault(st, []).append(s)
-        if sink_types:
-            sink_lines = []
-            for st, items in sink_types.items():
-                sink_lines.append(f"\n**{st}** ({len(items)} found):")
-                for s in items[:3]:
-                    sink_lines.append(f"  - `{s.get('file', '?')}:{s.get('line', '?')}` -- `{s.get('code', '')[:100]}`")
-            sinks_text = "\n".join(sink_lines)
-
-        # Tech-specific vulnerability patterns
+        # Compact tech guidance — 2 lines max per framework
         tech_guidance = {
-            ("python", "fastapi"): "FastAPI -- check Pydantic model strictness, Depends() auth bypass, middleware order, CORSMiddleware config, path parameter type confusion.",
-            ("python", "flask"): "Flask -- check app.config['SECRET_KEY'] hardness, @login_required gaps, Jinja2 autoescape, before_request auth bypass, session cookie signing.",
-            ("python", "django"): "Django -- check settings.DEBUG, ALLOWED_HOSTS, CSRF middleware gaps, raw() queryset SQLi, FileField upload validation.",
-            ("java", "spring"): "Spring Boot -- check SecurityFilterChain gaps, @PreAuthorize bypass, actuator endpoints, JPA native query concatenation, Jackson deserialization.",
-            ("javascript", "express"): "Express -- check middleware order, helmet.js config, express.json() limit, req.params type coercion, JWT verify() algorithm param.",
-            ("javascript", "nestjs"): "NestJS -- check @Guards() ordering, class-validator gaps, GraphQL resolver auth, TypeORM raw query usage, CORS config.",
-            ("go", "go"): "Go -- check chi/gin/echo middleware chains, sqlx raw queries, template/html escaping, crypto/rand vs math/rand for tokens.",
-            ("ruby", "rails"): "Rails -- check Strong Parameters gaps, protect_from_forgery config, ActiveRecord SQL injection via where(), devise auth config.",
-            ("php", "laravel"): "Laravel -- check Eloquent mass assignment ($guarded), debug mode, CSRF middleware, raw DB::statement() calls, .env exposure.",
-            ("php", "symfony"): "Symfony -- check security.yaml firewalls, isGranted() gaps, Doctrine raw SQL, Twig autoescape, .env.local exposure.",
-        }.get((self.language, self.framework), f"Focus on {self.language}-specific injection patterns, auth middleware, and framework misconfigurations.")
+            ("python", "fastapi"): "Check Pydantic strictness, Depends() auth bypass, middleware order, path param type confusion.",
+            ("python", "flask"): "Check SECRET_KEY hardness, @login_required gaps, Jinja2 autoescape, before_request bypass.",
+            ("python", "django"): "Check DEBUG, ALLOWED_HOSTS, CSRF gaps, raw() queryset SQLi, FileField validation.",
+            ("java", "spring"): "Check SecurityFilterChain gaps, @PreAuthorize bypass, actuator exposure, JPA native query SQLi.",
+            ("javascript", "express"): "Check middleware order, helmet.js, req.params coercion, JWT verify() algorithm.",
+            ("javascript", "nestjs"): "Check @Guards() ordering, class-validator gaps, GraphQL resolver auth, TypeORM raw queries.",
+            ("go", "go"): "Check middleware chains, sqlx raw queries, template/html escaping, crypto/rand for tokens.",
+            ("ruby", "rails"): "Check Strong Parameters, protect_from_forgery, AR SQLi via where(), devise config.",
+            ("php", "laravel"): "Check Eloquent $guarded, debug mode, CSRF, raw DB::statement(), .env exposure.",
+            ("php", "symfony"): "Check security.yaml firewalls, isGranted() gaps, Doctrine raw SQL, Twig autoescape.",
+        }.get((self.language, self.framework), f"Focus on {self.language}-specific injection, auth, and misconfigurations.")
 
-        system_prompt = f"""You are an expert application security engineer performing a white-box IAST audit on a {self.language}/{self.framework} codebase.
+        has_target = bool(self.target_endpoint)
 
-**Static analysis findings (already found, may need validation):**
-{static_text}
+        # Compact system prompt — ~350 tokens vs ~2500 before
+        system_prompt = f"""You are a security engineer auditing a {self.language}/{self.framework} codebase.
+Tech guidance: {tech_guidance}
 
-**REST Controllers detected (attack surface):**
-{ctrl_text or '(none detected -- explore codebase to find endpoints)'}
+{"Live target: " + self.target_endpoint + " — use make_test_request to validate exploitability." if has_target else "SAST-only: no live target available."}
 
-**Sensitive sinks detected (potential vulnerability targets):**
-{sinks_text or '(none detected -- explore codebase to find sinks)'}
+Your job: validate vulnerability candidates and report confirmed findings.
 
-**Dependencies:** {len(deps)} packages.
-**Framework guidance:** {tech_guidance}
-{"**Live target:** " + self.target_endpoint + " -- use make_test_request to validate EVERY suspected vulnerability." if has_target else "**No target endpoint** -- SAST-only code review."}
+Report with submit_finding(title, severity, description, file_path, line_number, remediation, cwe_id, cvss_score).
+severity: critical|high|medium|low|info
+Include the vulnerable code snippet and exploitation evidence in description.
+cwe_id format: "CWE-89"
+cvss_score: float 0.0-10.0
 
-**IMPORTANT -- How to report findings:**
-Call submit_finding with: title, severity (critical/high/medium/low/info), description (include code evidence and exploitation details), file_path, line_number, remediation, cwe_id, cvss_score.
-Example: submit_finding(title="SQL Injection in UserService", severity="critical", description="The search parameter flows directly into execute() without sanitization at UserService.java:42", file_path="src/main/java/com/example/UserService.java", line_number=42, remediation="Use parameterized queries with PreparedStatement", cwe_id="CWE-89", cvss_score=8.5)
-
-**You MUST call submit_finding for EVERY vulnerability you discover.** Do NOT just describe them in text -- use the tool. Aim for at least 3-5 findings.
-
-Your mission:
-1. Map REST controllers against the call graph. Trace how user input flows from controllers to sinks.
-2. Find what static analysis missed: business logic, IDOR/BOLA, auth bypass, injection, deserialization, race conditions.
-3. Validate on target if available: use make_test_request to confirm exploitability.
-4. Chain vulnerabilities: combine low-severity findings into high-impact attack chains.
-5. Design flaws: rate limiting, password reset flow, session fixation, JWT expiry, debug endpoints.
-
-Tool strategy: list_directory first, grep_codebase for patterns, read_source_file on suspicious files, submit_finding for EACH vulnerability with file_path, line_number, CWE ID, CVSS score, and concrete remediation.
+{"For exploitable findings, FIRST call make_test_request with a payload, THEN submit_finding with the response as evidence." if has_target else ""}
 {_load_skill("purpleteam")}"""
 
-        understanding_prompt = f"""**Phase 1 -- Code Understanding**
+        # Compact understanding prompt — candidates are injected separately
+        understanding_prompt = "Validate each vulnerability candidate below. For each one, read the surrounding code, trace the data flow, and call submit_finding if confirmed. Be precise about file paths and line numbers."
 
-Review this {self.language}/{self.framework} codebase systematically. For each vulnerability found, call submit_finding IMMEDIATELY.
+        # Phase 2: targeted exploitation — only sends confirmed findings
+        interactive_prompt_template = """**Exploit confirmed findings on {target}**
 
-Method:
-1. list_directory('') to see root -> list_directory on src/, controllers/, services/, config/
-2. grep_codebase for dangerous patterns: 'execute(', 'createQuery(', 'Statement', 'Runtime.exec', 'ProcessBuilder', 'readObject', 'eval(', 'password', 'secret', 'apiKey', 'token'
-3. read_source_file on files that matched -- trace the full data flow from user input to sink
-4. Call submit_finding for EACH confirmed vulnerability with exact file path, line number, CWE, CVSS
+For each finding below, send a test request with make_test_request to prove exploitability:
+1. Craft a payload specific to the vulnerability type
+2. Send the request to the appropriate endpoint
+3. If exploitable, call submit_finding with the request/response as evidence
 
-Start now. Be aggressive -- report everything suspicious."""
-
-        target = self.target_endpoint
-        interactive_prompt = f"""**Phase 2 -- EXPLOIT findings on the live target at {target}**
-
-You MUST use make_test_request to validate EVERY suspected vulnerability.
-
-Concrete test plan:
-1. For each controller endpoint you analyzed, send a test request to establish baselines
-2. For SQL injection: send payloads like \" OR 1=1 on endpoints with DB queries in their call chain
-3. For auth bypass: send requests WITHOUT the Authorization header on protected endpoints
-4. For IDOR: change resource IDs in paths like /api/orders/123 and check if you get other users data
-5. For deserialization: send malformed JSON/objects to endpoints that deserialize
-6. For SSRF: try to make the target fetch http://127.0.0.1:9999 or file:///etc/passwd
-
-**IMPORTANT**: Do NOT submit a finding without first calling make_test_request to confirm exploitability. For each confirmed vulnerability, include in the description:
-- The exact request you sent (method, path, headers, body)
-- The response status and body excerpt proving exploitation
-- The vulnerable code location
-
-Start now -- call make_test_request on the first suspicious endpoint."""
+Findings to exploit:
+{findings_list}"""
 
         total_findings = 0
 
-        # ── Phase 1: Understanding (Flash model) -- code analysis only ──
-        if self._flash_model and explore_rounds > 0:
+        # ── Build vulnerability briefs from static findings + call graph sinks ──
+        briefs = self._build_vuln_briefs()
+        _log.info(f"[AI] Built {len(briefs)} vulnerability briefs from "
+                  f"{len(self.static_findings)} static findings + "
+                  f"{len(self.call_graph.get('sinks', []))} sinks")
+
+        use_model = self._flash if self._flash_model else self._pro
+        use_model_name = self._flash_model or self._pro_model
+        has_model = bool(self._flash_model or self._pro_model)
+
+        # ── Phase 1: Validate candidates in batches of 5 (fresh conversation each) ──
+        batch_size = 5
+        total_batches = (len(briefs) + batch_size - 1) // batch_size if briefs else 1
+
+        if has_model and briefs:
+            for batch_idx in range(total_batches):
+                start = batch_idx * batch_size
+                batch = briefs[start:start + batch_size]
+                if not batch:
+                    break
+
+                pct_start = 10 + int(batch_idx / max(1, total_batches) * 55)
+                pct_end = 10 + int((batch_idx + 1) / max(1, total_batches) * 55)
+                if progress_cb:
+                    progress_cb(pct_start, f"AI validating batch {batch_idx+1}/{total_batches}")
+
+                batch_text = "\n\n".join(batch)
+                user_msg = f"{understanding_prompt}\n\n**Vulnerability candidates to validate:**\n\n{batch_text}"
+
+                msgs = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_msg},
+                ]
+
+                try:
+                    self._run_phase(use_model, use_model_name, msgs, understand_tools,
+                                   understand_tool_map, scan_id, add_finding_fn,
+                                   max(3, explore_rounds // max(1, total_batches)),
+                                   f"batch{batch_idx+1}", progress_cb, pct_start, pct_end)
+                except Exception as e:
+                    _log.warning(f"Batch {batch_idx+1}/{total_batches} failed: {e}")
+
+            _log.info(f"[AI] Phase 1 done — {len(self._ai_findings)} findings collected across {total_batches} batches")
+        elif has_model:
+            # No briefs — fall back to free exploration
             if progress_cb:
-                progress_cb(10, "AI Understanding: mapping codebase...")
+                progress_cb(10, "AI exploring codebase...")
             try:
                 msgs = [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": understanding_prompt},
+                    {"role": "user", "content": f"Explore this {self.language}/{self.framework} codebase and find vulnerabilities. Use list_directory to see the structure, grep_codebase for dangerous patterns (execute, eval, password, secret, token, Runtime.exec, readObject), read_source_file on suspicious files, and submit_finding for each vulnerability found."},
                 ]
-                self._run_phase(self._flash, self._flash_model, msgs, understand_tools,
+                self._run_phase(use_model, use_model_name, msgs, understand_tools,
                                understand_tool_map, scan_id, add_finding_fn,
-                               explore_rounds, "understand", progress_cb, 10, 40)
+                               explore_rounds, "explore", progress_cb, 10, 65)
             except Exception as e:
-                _log.warning(f"Understanding phase failed: {e}")
+                _log.warning(f"Exploration phase failed: {e}")
 
-        # ── Phase 2: Exploit on target (Pro model) -- with make_test_request ──
-        if self._pro_model and analysis_rounds > 0 and has_target:
+        # ── Phase 2: Exploit confirmed findings on target (Pro model, minimal context) ──
+        if self._pro_model and analysis_rounds > 0 and has_target and self._ai_findings:
             if progress_cb:
-                progress_cb(45, "AI Exploitation: testing on target...")
+                progress_cb(70, "AI exploiting confirmed findings...")
+
+            findings_list = "\n".join(
+                f"- [{f['severity']}] {f['title']} ({f.get('file_path', '?')}:{f.get('line_number', 0)})"
+                for f in self._ai_findings[:15]
+            )
+
+            exploit_system = system_prompt + (
+                "\n\n**PHASE 2 — EXPLOITATION**: You now have make_test_request. "
+                "For each finding below, prove exploitability by sending a test request. "
+                "Submit confirmed exploits with the request/response as evidence. "
+                "Do NOT explore more code — only test the findings listed below."
+            )
+
+            exploit_msg = interactive_prompt_template.format(
+                target=self.target_endpoint,
+                findings_list=findings_list,
+            )
+
             try:
-                # Include Phase 1 findings as context for exploitation
-                ai_findings_text = "\n".join(
-                    f"- {f['title']} ({f.get('file_path', '?')})"
-                    for f in self._ai_findings[:20]
-                ) or "(no AI findings yet)"
-
-                exploit_system_prompt = system_prompt + f"""
-
-**Phase 1 discoveries to exploit:**
-{ai_findings_text}
-
-**CRITICAL INSTRUCTION**: You now have access to the `make_test_request` tool. This is an EXPLOITATION phase -- your job is to PROVE that the vulnerabilities found in Phase 1 are actually exploitable on the running target at {self.target_endpoint}. For every finding from Phase 1, send at least one test request to confirm it. Do not analyze more code -- EXPLOIT what you already found."""
-
                 msgs = [
-                    {"role": "system", "content": exploit_system_prompt},
-                    {"role": "user", "content": interactive_prompt},
+                    {"role": "system", "content": exploit_system},
+                    {"role": "user", "content": exploit_msg},
                 ]
                 self._run_phase(self._pro, self._pro_model, msgs, interactive_tools,
                                interactive_tool_map, scan_id, add_finding_fn,
-                               analysis_rounds, "exploit", progress_cb, 45, 85)
+                               analysis_rounds, "exploit", progress_cb, 70, 90)
             except Exception as e:
-                _log.warning(f"Pro analysis failed: {e}")
+                _log.warning(f"Exploit phase failed: {e}")
+        elif has_target and not self._ai_findings:
+            _log.info("[AI] Skipping exploit phase — no findings to exploit")
 
         # ── Save all AI findings to DB ──
         _log.info(f"[AI] Collected {len(self._ai_findings)} findings via submit_finding: "

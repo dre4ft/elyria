@@ -33,7 +33,6 @@ def init_greyteam_db():
             analysis_rounds INTEGER DEFAULT 5,
             scan_progress INTEGER DEFAULT 0,
             tokens_used INTEGER DEFAULT 0,
-            target_domain TEXT DEFAULT '',
             status TEXT DEFAULT 'pending',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

@@ -51,6 +51,9 @@ scope = openid profile email
 button_label = Connexion SSO
 
 [security]
+# BYOK (Bring Your Own Key) : chiffrement envelope des données utilisateur.
+# 0 = désactivé (données stockées en clair), 1 = activé (chiffrement par mot de passe)
+byok_enabled = 0
 # Clé de chiffrement serveur (64 chars hex). Générée automatiquement si absente.
 # ⚠️ En production : mettez une valeur fixe pour ne pas perdre les données au restart.
 server_wrap_key = abe326cb1521570091370c3cbc11c754f8ee64ad82ed05bf336457531ee90dd1

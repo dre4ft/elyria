@@ -36,6 +36,7 @@ _DEFAULTS = {
     },
     "security": {
         "server_wrap_key": "",
+        "byok_enabled": "0",
         "blocked_hosts": "metadata.google.internal,169.254.169.254,instance-data,host.docker.internal,gateway.docker.internal",
         "blocked_tlds": ".local,.internal,.corp,.home,.lan",
         "blocked_networks": "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,127.0.0.0/8,::1/128,fc00::/7,fe80::/10",

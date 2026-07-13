@@ -11,6 +11,9 @@ import sys
 
 import pytest
 
+# Force BYOK enabled for crypto tests
+os.environ["ELYRIA_SECURITY_BYOK_ENABLED"] = "1"
+
 # Ensure we can import from app/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
@@ -88,6 +91,8 @@ def team_with_members(unlocked_user):
         register_master_key, login_and_unlock,
     )
     from database.connection import get_connection
+    from database.teams_api import init_teams
+    init_teams()
 
     uid = unlocked_user["user_id"]
 
